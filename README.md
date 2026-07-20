@@ -20,10 +20,10 @@
 
 ## 2. Target Repository Structure
 
-The GitOps repository (`bosgame-ai-infra`) contains all code, declarations, and configurations required to construct and run the system.
+The GitOps repository (`local-ai-machine`) contains all code, declarations, and configurations required to construct and run the system.
 
 ```text
-bosgame-ai-infra/
+local-ai-machine/
 ├── flake.nix                  # Flake entrypoint referencing host configuration
 ├── configuration.nix          # Declarative OS, kernel params, systemd, SMB mounts
 ├── hardware-configuration.nix # Auto-generated host hardware specs
@@ -135,7 +135,7 @@ bosgame-ai-infra/
       "/var/lib/docker/volumes/turnstone_postgres_data"
       "/var/lib/docker/volumes/hermes_data"
       "/etc/nixos"
-      "/home/chris/bosgame-ai-infra"
+      "/home/chris/local-ai-machine"
     ];
     timerConfig = {
       OnCalendar = "03:00";
@@ -314,16 +314,16 @@ flowchart TD
 ### Phase 1: Pre-Arrival Preparation (START TODAY)
 *Objective: Build and validate the entire software stack repository before physical hardware arrives.*
 
-- [ ] **Task 1.1: Git Repository Initialization**
-  Initialize `bosgame-ai-infra` private repository with the folder structure detailed in Section 2.
-- [ ] **Task 1.2: Code Nix Flake Declarations**
+- [x] **Task 1.1: Git Repository Initialization**
+  Initialize `local-ai-machine` private repository with the folder structure detailed in Section 2.
+- [x] **Task 1.2: Code Nix Flake Declarations**
   Write `flake.nix` and `configuration.nix` matching the parameters in Section 3.
-- [ ] **Task 1.3: Draft Docker Stack & Gateway Configs**
+- [x] **Task 1.3: Draft Docker Stack & Gateway Configs**
   Create `docker/docker-compose.yml`, `litellm/config.yaml`, and Prometheus configs.
 - [ ] **Task 1.4: Prepare Synology NAS Target**
-  Create shared folder `ai_backups` on Synology DSM and generate a restricted service user `ai_backup_svc` with read/write access.
+  Create shared folder `ai_backups` on Synology DSM and generate a restricted service user `ai_backup_svc` with read/write access. *(Manual DSM step — not scriptable from this repo.)*
 - [ ] **Task 1.5: Populate Local Secrets**
-  Generate `secrets/smb-credentials.env` and `secrets/restic-password.txt`.
+  Copy `secrets/smb-credentials.env.example` → `secrets/smb-credentials.env` and `secrets/restic-password.txt.example` → `secrets/restic-password.txt`, then fill in real values. Both real files are gitignored.
 
 ### Phase 2: Host Provisioning (Day 0 - Hardware Arrival)
 *Objective: Prepare physical hardware and apply the declarative OS configuration.*

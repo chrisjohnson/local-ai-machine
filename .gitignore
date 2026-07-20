@@ -1,0 +1,4 @@
+secrets/*.env
+secrets/*.txt
+!secrets/*.example
+.env

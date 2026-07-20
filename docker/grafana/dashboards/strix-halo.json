@@ -1,0 +1,8 @@
+{
+  "title": "Strix Halo - VRAM, Power, Thermals",
+  "uid": "strix-halo",
+  "schemaVersion": 39,
+  "panels": [],
+  "tags": ["bosgame-ai", "strix-halo"],
+  "time": { "from": "now-6h", "to": "now" }
+}

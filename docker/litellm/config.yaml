@@ -1,0 +1,24 @@
+model_list:
+  - model_name: qwen-72b
+    litellm_params:
+      model: openai/Qwen2.5-72B-Instruct
+      api_base: http://vllm-engine:8000/v1
+      api_key: "none"
+
+  - model_name: llama-70b
+    litellm_params:
+      model: openai/Llama-3-70B-Instruct
+      api_base: http://vllm-engine:8000/v1
+      api_key: "none"
+
+  # Cloud fallback route if local GPU is saturated
+  - model_name: claude-3-5-sonnet
+    litellm_params:
+      model: anthropic/claude-3-5-sonnet-20241022
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+router_settings:
+  routing_strategy: usage-based-routing-v2
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
