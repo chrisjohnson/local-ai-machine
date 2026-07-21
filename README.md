@@ -28,8 +28,7 @@ local-ai-machine/
 ├── configuration.nix          # Declarative OS, kernel params, systemd, SMB mounts
 ├── hardware-configuration.nix # Auto-generated host hardware specs
 ├── secrets/
-│   ├── smb-credentials.env    # Synology SMB user credentials
-│   └── restic-password.txt    # Encryption password for Restic backups
+│   └── smb-credentials.env    # Synology SMB user credentials
 ├── docker/
 │   ├── docker-compose.yml     # Container stack (vLLM, LiteLLM, Turnstone, Hermes, Prometheus, Grafana)
 │   ├── litellm/
@@ -40,8 +39,7 @@ local-ai-machine/
 │       └── dashboards/
 │           └── strix-halo.json# VRAM, power draw, and thermals dashboard
 └── scripts/
-    ├── restic-backup.sh       # Database dump and backup trigger script
-    └── restore-snapshot.sh    # Disaster recovery snapshot restoration script
+    └── sync-backup.sh         # Manual trigger for the rsync backup mirror
 ```
 
 ---
@@ -112,7 +110,7 @@ local-ai-machine/
   };
 
   # 5. Synology NAS SMB/CIFS Mount
-  environment.systemPackages = with pkgs; [ cifs-utils restic docker-compose git ];
+  environment.systemPackages = with pkgs; [ cifs-utils rsync docker-compose git ];
 
   fileSystems."/mnt/synology" = {
     device = "//synology.local/ai_backups";
@@ -127,25 +125,33 @@ local-ai-machine/
     ];
   };
 
-  # 6. Automated Daily Restic Backup Service
-  services.restic.backups.synology = {
-    repository = "/mnt/synology/restic";
-    passwordFile = "/etc/nixos/secrets/restic-password.txt";
-    paths = [
-      "/var/lib/docker/volumes/turnstone_postgres_data"
-      "/var/lib/docker/volumes/hermes_data"
-      "/etc/nixos"
-      "/home/chris/local-ai-machine"
-    ];
+  # 6. Automated Daily Rsync Mirror to Synology
+  # Unencrypted by design (NAS is a trusted walled garden; use whole-disk
+  # encryption on the NAS itself if that's ever needed). Versioning/point-in-time
+  # recovery is handled by DSM's own Btrfs snapshot scheduler on the ai_backups
+  # share, not by this job — this just mirrors current state.
+  systemd.services.synology-backup = {
+    description = "Mirror local AI state to Synology NAS";
+    after = [ "mnt-synology.automount" ];
+    serviceConfig.Type = "oneshot";
+    script = ''
+      set -euo pipefail
+      DEST=/mnt/synology/bosgame-ai
+      mkdir -p "$DEST"
+      ${pkgs.rsync}/bin/rsync -a --delete /var/lib/docker/volumes/turnstone_postgres_data/ "$DEST/turnstone_postgres_data/"
+      ${pkgs.rsync}/bin/rsync -a --delete /var/lib/docker/volumes/hermes_data/ "$DEST/hermes_data/"
+      ${pkgs.rsync}/bin/rsync -a --delete /etc/nixos/ "$DEST/etc-nixos/"
+      ${pkgs.rsync}/bin/rsync -a --delete /home/chris/local-ai-machine/ "$DEST/local-ai-machine/"
+    '';
+  };
+
+  systemd.timers.synology-backup = {
+    description = "Daily Synology backup mirror";
+    wantedBy = [ "timers.target" ];
     timerConfig = {
       OnCalendar = "03:00";
       Persistent = true;
     };
-    pruneOpts = [
-      "--keep-daily 7"
-      "--keep-weekly 4"
-      "--keep-monthly 6"
-    ];
   };
 
   # Firewall Rules
@@ -323,16 +329,22 @@ flowchart TD
 - [ ] **Task 1.4: Prepare Synology NAS Target**
   Create shared folder `ai_backups` on Synology DSM and generate a restricted service user `ai_backup_svc` with read/write access. *(Manual DSM step — not scriptable from this repo.)*
 - [ ] **Task 1.5: Populate Local Secrets**
-  Copy `secrets/smb-credentials.env.example` → `secrets/smb-credentials.env` and `secrets/restic-password.txt.example` → `secrets/restic-password.txt`, then fill in real values. Both real files are gitignored.
+  Copy `secrets/smb-credentials.env.example` → `secrets/smb-credentials.env`, then fill in the real `ai_backup_svc` password from Task 1.4. That's the only secret this repo needs — backups to the NAS are an unencrypted rsync mirror by design (see Section 3), so there's no backup passphrase to manage.
 
 ### Phase 2: Host Provisioning (Day 0 - Hardware Arrival)
 *Objective: Prepare physical hardware and apply the declarative OS configuration.*
 
+**Peripheral setup note:** the M5's video output is HDMI/DP only; the available monitor is DVI-only. Bring-up needs a passive HDMI→DVI adapter cable (HDMI and DVI-D carry the same digital signal, no active converter required). For durable local console access afterward (not just this one install), route both this machine and the currently-DVI-connected server through a small 2-port DVI KVM switch — monitor into the KVM's output, each host into an input (the M5 via the same HDMI→DVI adapter), one shared keyboard via the KVM's USB switching. No mouse needed; the M5 never runs a display manager, so console access is TTY-only.
+
+- [ ] **Task 2.0: Real SSH Key**
+  Replace the placeholder key in `configuration.nix:26` (`ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... chris@macmini`) with your actual Mac Mini public key (`cat ~/.ssh/id_ed25519.pub`, generating one first if it doesn't exist). This is the *only* configured way into `chris`'s account post-install — no password is set, so a wrong/placeholder key here means physical-console-only until corrected.
 - [ ] **Task 2.1: Base NixOS Install**
-  Flash a NixOS Minimal ISO to USB. Boot the Bosgame M5, partition the 2TB NVMe, run `nixos-generate-config`, and copy over the repo files.
-- [ ] **Task 2.2: Apply System Flake**
-  Execute `nixos-rebuild switch --flake .#bosgame-ai` and reboot.
-- [ ] **Task 2.3: Verify iGPU Memory Allocation**
+  Flash a NixOS Minimal ISO to USB. Connect the M5 to the monitor (HDMI→DVI adapter) and keyboard, plug Ethernet in at its final physical location so the DHCP lease you land on is the one you keep, and boot the installer.
+- [ ] **Task 2.2: Go Remote Early**
+  On the live installer console, note the DHCP IP address (shown in the login banner), then authorize your Mac Mini's key for the live session: `mkdir -p ~/.ssh && curl https://github.com/<your-github-username>.keys > ~/.ssh/authorized_keys` (or paste the pubkey manually). From the Mac Mini, `ssh root@<ip>`. Everything from here — partitioning the 2TB NVMe, `nixos-generate-config`, copying over the repo files — can be done over SSH; the physical keyboard/monitor can be disconnected and returned to the other server once this session is confirmed working.
+- [ ] **Task 2.3: Apply System Flake**
+  Execute `nixos-rebuild switch --flake .#bosgame-ai` and reboot. Reconnect over SSH as `chris` using the real key from Task 2.0 to confirm remote access survives the reboot before walking away.
+- [ ] **Task 2.4: Verify iGPU Memory Allocation**
   Run `rocm-smi` and verify that system RAM allocation to the GPU reflects ~124GB available VRAM. Confirm `multi-user.target` is active.
 
 ### Phase 3: AI Stack Deployment (Day 1)
@@ -350,8 +362,8 @@ flowchart TD
 ### Phase 4: Day-N Operations & Resilience
 *Objective: Validate backups, telemetry, and automated maintenance.*
 
-- [ ] **Task 4.1: Execute Restic Backup Test**
-  Trigger `systemctl start restic-backups-synology.service` manually and verify snapshot creation on Synology NAS.
+- [ ] **Task 4.1: Execute Backup Mirror Test**
+  Run `scripts/sync-backup.sh` (or `systemctl start synology-backup.service`) manually and verify the files land under `ai_backups/bosgame-ai/` on the Synology. Confirm DSM's Btrfs snapshot schedule is enabled on the `ai_backups` share — that's what provides point-in-time recovery, since the mirror itself only holds current state.
 - [ ] **Task 4.2: Grafana Dashboard Baseline**
   Open Grafana (`http://<BOSGAME_IP>:3000`) and establish baseline metrics for VRAM utilization, power draw, and thermals under full model load.
 

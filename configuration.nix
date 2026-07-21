@@ -39,7 +39,7 @@
   };
 
   # 5. Synology NAS SMB/CIFS Mount
-  environment.systemPackages = with pkgs; [ cifs-utils restic docker-compose git ];
+  environment.systemPackages = with pkgs; [ cifs-utils rsync docker-compose git ];
 
   fileSystems."/mnt/synology" = {
     device = "//synology.local/ai_backups";
@@ -54,25 +54,33 @@
     ];
   };
 
-  # 6. Automated Daily Restic Backup Service
-  services.restic.backups.synology = {
-    repository = "/mnt/synology/restic";
-    passwordFile = "/etc/nixos/secrets/restic-password.txt";
-    paths = [
-      "/var/lib/docker/volumes/turnstone_postgres_data"
-      "/var/lib/docker/volumes/hermes_data"
-      "/etc/nixos"
-      "/home/chris/local-ai-machine"
-    ];
+  # 6. Automated Daily Rsync Mirror to Synology
+  # Unencrypted by design (NAS is a trusted walled garden; use whole-disk
+  # encryption on the NAS itself if that's ever needed). Versioning/point-in-time
+  # recovery is handled by DSM's own Btrfs snapshot scheduler on the ai_backups
+  # share, not by this job — this just mirrors current state.
+  systemd.services.synology-backup = {
+    description = "Mirror local AI state to Synology NAS";
+    after = [ "mnt-synology.automount" ];
+    serviceConfig.Type = "oneshot";
+    script = ''
+      set -euo pipefail
+      DEST=/mnt/synology/bosgame-ai
+      mkdir -p "$DEST"
+      ${pkgs.rsync}/bin/rsync -a --delete /var/lib/docker/volumes/turnstone_postgres_data/ "$DEST/turnstone_postgres_data/"
+      ${pkgs.rsync}/bin/rsync -a --delete /var/lib/docker/volumes/hermes_data/ "$DEST/hermes_data/"
+      ${pkgs.rsync}/bin/rsync -a --delete /etc/nixos/ "$DEST/etc-nixos/"
+      ${pkgs.rsync}/bin/rsync -a --delete /home/chris/local-ai-machine/ "$DEST/local-ai-machine/"
+    '';
+  };
+
+  systemd.timers.synology-backup = {
+    description = "Daily Synology backup mirror";
+    wantedBy = [ "timers.target" ];
     timerConfig = {
       OnCalendar = "03:00";
       Persistent = true;
     };
-    pruneOpts = [
-      "--keep-daily 7"
-      "--keep-weekly 4"
-      "--keep-monthly 6"
-    ];
   };
 
   # Firewall Rules
