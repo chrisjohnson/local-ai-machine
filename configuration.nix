@@ -56,6 +56,19 @@
     };
   };
 
+  # mDNS hostname discovery (local-ai-machine.local). Restricted to the
+  # wired interface only, so it always resolves to the Ethernet IP rather
+  # than racing with the WiFi fallback address.
+  services.avahi = {
+    enable = true;
+    nssmdns4 = true;
+    publish = {
+      enable = true;
+      addresses = true;
+    };
+    allowInterfaces = [ "eno1" ];
+  };
+
   # 3. User & Hardware Access Groups
   users.users.chris = {
     isNormalUser = true;
