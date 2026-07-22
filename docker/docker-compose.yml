@@ -177,6 +177,29 @@ services:
       - "9090:9090"
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    depends_on:
+      - node-exporter
+
+  # Host-level CPU/memory/disk metrics — the "node" Prometheus scrape target
+  # pointed at this container name for a while with nothing actually behind
+  # it. Standard node_exporter Docker pattern: bind-mount the host's /proc,
+  # /sys, and root filesystem read-only rather than relying on the
+  # container's own limited view. No published port — only reachable from
+  # Prometheus over the internal docker network.
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    restart: unless-stopped
+    pid: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--path.rootfs=/rootfs"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
 
   grafana:
     image: grafana/grafana:latest
@@ -184,8 +207,12 @@ services:
     restart: unless-stopped
     ports:
       - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
     volumes:
+      - grafana_data:/var/lib/grafana
       - ./grafana/dashboards:/var/lib/grafana/dashboards
+      - ./grafana/provisioning:/etc/grafana/provisioning
     depends_on:
       - prometheus
 
@@ -216,3 +243,4 @@ volumes:
   vllm_primary_cache:
   vllm_judge_cache:
   open_webui_data:
+  grafana_data:

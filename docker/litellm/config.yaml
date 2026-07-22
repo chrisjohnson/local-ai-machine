@@ -29,6 +29,14 @@ model_list:
 router_settings:
   routing_strategy: usage-based-routing-v2
 
+# /metrics otherwise demands a Bearer token, which Prometheus's plain
+# static_configs scraper never sends — this endpoint only exposes aggregate
+# request/latency counts (no API keys, no conversation content), and is
+# only reachable via the internal docker network from Prometheus, so
+# leaving it unauthenticated is a reasonable tradeoff for observability.
+litellm_settings:
+  require_auth_for_metrics_endpoint: false
+
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
   database_url: os.environ/DATABASE_URL

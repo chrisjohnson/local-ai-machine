@@ -1,8 +1,121 @@
 {
-  "title": "Strix Halo - VRAM, Power, Thermals",
+  "title": "local-ai-machine — vLLM & Host",
   "uid": "strix-halo",
   "schemaVersion": 39,
-  "panels": [],
   "tags": ["local-ai-machine", "strix-halo"],
-  "time": { "from": "now-6h", "to": "now" }
+  "time": { "from": "now-6h", "to": "now" },
+  "refresh": "15s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Requests Running",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        { "expr": "vllm:num_requests_running", "legendFormat": "{{model_name}} running" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Requests Waiting",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        { "expr": "vllm:num_requests_waiting", "legendFormat": "{{model_name}} waiting" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Token Throughput (tok/s)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        { "expr": "rate(vllm:prompt_tokens_total[1m])", "legendFormat": "{{model_name}} prompt" },
+        { "expr": "rate(vllm:generation_tokens_total[1m])", "legendFormat": "{{model_name}} generation" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "KV Cache Usage",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1, "min": 0 } },
+      "targets": [
+        { "expr": "vllm:kv_cache_usage_perc", "legendFormat": "{{model_name}}" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Time to First Token (p50/p95/p99)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(vllm:time_to_first_token_seconds_bucket[5m])) by (le, model_name))", "legendFormat": "{{model_name}} p50" },
+        { "expr": "histogram_quantile(0.95, sum(rate(vllm:time_to_first_token_seconds_bucket[5m])) by (le, model_name))", "legendFormat": "{{model_name}} p95" },
+        { "expr": "histogram_quantile(0.99, sum(rate(vllm:time_to_first_token_seconds_bucket[5m])) by (le, model_name))", "legendFormat": "{{model_name}} p99" }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Inter-Token Latency (p50/p95/p99)",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(vllm:inter_token_latency_seconds_bucket[5m])) by (le, model_name))", "legendFormat": "{{model_name}} p50" },
+        { "expr": "histogram_quantile(0.95, sum(rate(vllm:inter_token_latency_seconds_bucket[5m])) by (le, model_name))", "legendFormat": "{{model_name}} p95" },
+        { "expr": "histogram_quantile(0.99, sum(rate(vllm:inter_token_latency_seconds_bucket[5m])) by (le, model_name))", "legendFormat": "{{model_name}} p99" }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Prefix Cache Hit Rate",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 24, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1, "min": 0 } },
+      "targets": [
+        { "expr": "rate(vllm:prefix_cache_hits_total[5m]) / rate(vllm:prefix_cache_queries_total[5m])", "legendFormat": "{{model_name}}" }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Host CPU Usage",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 24, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percent", "max": 100, "min": 0 } },
+      "targets": [
+        { "expr": "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\"}[1m])) * 100)", "legendFormat": "CPU busy %" }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Host Memory Usage",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 32, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percent", "max": 100, "min": 0 } },
+      "targets": [
+        { "expr": "100 * (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes))", "legendFormat": "Memory used %" }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "Successful Requests (rate)",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 32, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        { "expr": "rate(vllm:request_success_total[1m])", "legendFormat": "{{model_name}}" }
+      ]
+    }
+  ]
 }

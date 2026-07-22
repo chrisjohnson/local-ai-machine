@@ -7,10 +7,31 @@ scrape_configs:
     static_configs:
       - targets: ["localhost:9090"]
 
+  # Required litellm_settings.require_auth_for_metrics_endpoint: false in
+  # litellm/config.yaml — this endpoint otherwise demands a Bearer token
+  # Prometheus's plain static_configs scraper never sends, and it was
+  # showing as permanently "down" as a result.
   - job_name: "litellm"
     static_configs:
       - targets: ["litellm:4000"]
 
+  # These two didn't exist as scrape targets at all despite both vLLM
+  # servers exposing rich Prometheus metrics (request/token counts, TTFT
+  # and ITL histograms, KV cache usage) the whole time.
+  - job_name: "vllm-primary"
+    static_configs:
+      - targets: ["vllm-primary:8000"]
+
+  - job_name: "vllm-judge"
+    static_configs:
+      - targets: ["vllm-judge:8001"]
+
+  # Was pointed at a node-exporter container that was never actually
+  # defined anywhere in the compose stack — added the real thing below
+  # rather than just deleting this line, since host-level CPU/memory/disk
+  # metrics are genuinely useful here (the hardware audit found real issues
+  # — CPU governor, tight memory headroom — worth having on a dashboard
+  # going forward, not just caught manually once).
   - job_name: "node"
     static_configs:
       - targets: ["node-exporter:9100"]
