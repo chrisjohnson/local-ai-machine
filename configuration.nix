@@ -98,6 +98,27 @@
     "d /var/lib/ai-models 0755 chris users - -"
   ];
 
+  # huggingface_hub tuning: hf-xet (the newer accelerated transfer backend)
+  # hangs repeatedly on this network path — disabling it and falling back to
+  # plain HTTP fixed multi-hour stalls during model downloads. Not secrets,
+  # so these live directly in tracked config.
+  environment.variables = {
+    HF_HUB_DISABLE_XET = "1";
+    HF_HUB_DOWNLOAD_TIMEOUT = "120";
+    HF_HUB_ETAG_TIMEOUT = "900";
+  };
+
+  # HF_TOKEN is a secret, so it's sourced from a gitignored file at shell
+  # login rather than set directly here (environment.variables would land
+  # in the world-readable Nix store).
+  environment.etc."profile.d/hf-token.sh".text = ''
+    if [ -f /etc/nixos/secrets/hf-token.env ]; then
+      set -a
+      . /etc/nixos/secrets/hf-token.env
+      set +a
+    fi
+  '';
+
   # 5. Synology NAS Backup Transport
   # rocm-smi is a CLI monitoring tool, not a driver — belongs on PATH via
   # systemPackages, not hardware.graphics.extraPackages (that's for driver

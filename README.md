@@ -25,6 +25,7 @@ local-ai-machine/
 │   ├── synology_backup_key    # SSH private key for ai_backup_svc (rsync-over-SSH)
 │   ├── wifi.env                # Fallback WiFi SSID/PSK (NetworkManager)
 │   ├── chris-password-hash.txt # Local console password fallback (SSH stays key-only)
+│   ├── hf-token.env            # HuggingFace token, sourced at shell login for faster downloads
 │   └── drew-ssh-key.pub        # Public key for the unprivileged edge/friend account
 ├── docker/
 │   ├── docker-compose.yml     # vLLM x2, Ollama sandbox, LiteLLM, Turnstone, Herdr-adjacent, Prometheus, Grafana
@@ -218,6 +219,27 @@ This is the **full target design**, merging the multi-tenant/dual-vLLM/Herdr arc
   systemd.tmpfiles.rules = [
     "d /var/lib/ai-models 0755 chris users - -"
   ];
+
+  # huggingface_hub tuning: hf-xet (the newer accelerated transfer backend)
+  # hangs repeatedly on this network path — disabling it and falling back to
+  # plain HTTP fixed multi-hour stalls during model downloads. Not secrets,
+  # so these live directly in tracked config.
+  environment.variables = {
+    HF_HUB_DISABLE_XET = "1";
+    HF_HUB_DOWNLOAD_TIMEOUT = "120";
+    HF_HUB_ETAG_TIMEOUT = "900";
+  };
+
+  # HF_TOKEN is a secret, so it's sourced from a gitignored file at shell
+  # login rather than set directly here (environment.variables would land
+  # in the world-readable Nix store).
+  environment.etc."profile.d/hf-token.sh".text = ''
+    if [ -f /etc/nixos/secrets/hf-token.env ]; then
+      set -a
+      . /etc/nixos/secrets/hf-token.env
+      set +a
+    fi
+  '';
 
   # rocm-smi is a CLI monitoring tool, not a driver — belongs on PATH via
   # systemPackages, not hardware.graphics.extraPackages (that's for driver
