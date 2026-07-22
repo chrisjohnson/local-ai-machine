@@ -29,12 +29,17 @@ model_list:
 router_settings:
   routing_strategy: usage-based-routing-v2
 
-# /metrics otherwise demands a Bearer token, which Prometheus's plain
-# static_configs scraper never sends — this endpoint only exposes aggregate
-# request/latency counts (no API keys, no conversation content), and is
-# only reachable via the internal docker network from Prometheus, so
-# leaving it unauthenticated is a reasonable tradeoff for observability.
+# The /metrics route doesn't exist at all without the "prometheus" callback
+# enabled — disabling its auth requirement alone (below) does nothing if
+# the endpoint was never registered in the first place (confirmed: 404, not
+# 401, until this was added). Once registered, it otherwise demands a
+# Bearer token, which Prometheus's plain static_configs scraper never
+# sends — this endpoint only exposes aggregate request/latency counts (no
+# API keys, no conversation content), and is only reachable via the
+# internal docker network from Prometheus, so leaving it unauthenticated is
+# a reasonable tradeoff for observability.
 litellm_settings:
+  callbacks: ["prometheus"]
   require_auth_for_metrics_endpoint: false
 
 general_settings:

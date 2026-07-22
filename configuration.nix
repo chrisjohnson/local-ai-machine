@@ -502,5 +502,36 @@ in
   networking.firewall.filterForward = true;
   networking.firewall.allowedTCPPorts = [ 22 4000 8080 3000 3001 9090 11434 ];
 
+  # filterForward turned out to be too broad on its own — it filtered ALL
+  # forwarded traffic uniformly, including legitimate container-to-container
+  # traffic on Docker's own bridge network, not just genuinely external LAN
+  # traffic being forwarded in. Confirmed directly: even litellm:4000
+  # (already in allowedTCPPorts) started timing out for Prometheus's
+  # internal scrapes after filterForward landed. allowedTCPPorts is meant to
+  # gate what's reachable from the outside, not what containers can say to
+  # each other on a bridge network the host itself controls — so the
+  # bridge interface is fully exempted here instead. Uses the fixed name
+  # set via docker-compose.yml's driver_opts (not Docker's default
+  # auto-generated br-<network-ID-hash>, which differs every time the
+  # network is created and would silently break this on a fresh install).
+  networking.firewall.trustedInterfaces = [ "br-localai" ];
+
+  # trustedInterfaces alone does NOT actually exempt the forward chain when
+  # filterForward is on — confirmed by inspecting the generated ruleset
+  # directly (the accept rule it adds only lands in `chain input`, not
+  # `chain forward`) and by a matching known upstream issue (nixpkgs #437920,
+  # same trustedInterfaces+filterForward combination, same symptom). The
+  # forward chain's only unconditional accept is `ct status dnat accept`,
+  # which doesn't match plain bridge-to-bridge traffic between two
+  # container IPs (no DNAT involved for that, only for genuinely external
+  # traffic hitting a published port) — so it fell through to the default
+  # drop policy. This is the documented workaround: an explicit forward-chain
+  # rule for the trusted bridge, covering both directions (new connections
+  # originating from it, and established/related return traffic to it).
+  networking.firewall.extraForwardRules = ''
+    iifname "br-localai" accept
+    oifname "br-localai" ct state established,related accept
+  '';
+
   system.stateVersion = "24.11";
 }

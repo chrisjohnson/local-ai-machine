@@ -244,3 +244,14 @@ volumes:
   vllm_judge_cache:
   open_webui_data:
   grafana_data:
+
+# Fixed bridge interface name, not docker-compose's default auto-generated
+# one (br-<hash of the network ID>, different every time the network is
+# created). networking.firewall.trustedInterfaces in configuration.nix
+# needs a stable name to reference declaratively — an auto-generated one
+# would silently break on a fresh install once the hash inevitably differs.
+networks:
+  default:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: br-localai
