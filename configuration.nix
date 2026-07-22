@@ -40,7 +40,11 @@
       users = [ "chris" ];
       commands = [
         {
-          command = "/run/current-system/sw/bin/nixos-rebuild switch --flake /etc/nixos#local-ai-machine";
+          # '#' must be escaped in sudoers syntax or everything after it is
+          # silently treated as a comment, dropping the rule entirely (this
+          # bit us: sudo -l showed no trace of the rule despite it being
+          # textually present and unescaped in /etc/sudoers).
+          command = "/run/current-system/sw/bin/nixos-rebuild switch --flake /etc/nixos\\#local-ai-machine";
           options = [ "NOPASSWD" ];
         }
       ];
