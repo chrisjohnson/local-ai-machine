@@ -199,6 +199,13 @@ This is the **full target design**, merging the multi-tenant/dual-vLLM/Herdr arc
 
   hardware.graphics.enable = true;
 
+  # Model weights directory, declared rather than created imperatively so it
+  # survives a reinstall with correct ownership — matches docker-compose's
+  # /var/lib/ai-models:/models mount.
+  systemd.tmpfiles.rules = [
+    "d /var/lib/ai-models 0755 chris users - -"
+  ];
+
   # rocm-smi is a CLI monitoring tool, not a driver — belongs on PATH via
   # systemPackages, not hardware.graphics.extraPackages (that's for driver
   # libraries the graphics stack loads, not user-facing commands).
