@@ -143,6 +143,24 @@ This mirrors the actual deployed file exactly. `herdr`'s package/service and the
   # chris's password never applied across repeated installs on the same disk).
   users.mutableUsers = false;
 
+  # Passwordless sudo scoped to this exact command + flake target only, not
+  # a general wheelNeedsPassword=false. Note this is still effectively
+  # root-equivalent in practice — nixos-rebuild switch runs arbitrary
+  # root-level activation scripts by design — the scoping just prevents it
+  # from being usable for other sudo commands, not from being a real
+  # escalation vector via this one.
+  security.sudo.extraRules = [
+    {
+      users = [ "chris" ];
+      commands = [
+        {
+          command = "/run/current-system/sw/bin/nixos-rebuild switch --flake /etc/nixos#local-ai-machine";
+          options = [ "NOPASSWD" ];
+        }
+      ];
+    }
+  ];
+
   # NetworkManager: prefers wired automatically when a cable is present,
   # falls back to WiFi otherwise (useful during bring-up and for occasional
   # relocation before the final wired connection is in place).
