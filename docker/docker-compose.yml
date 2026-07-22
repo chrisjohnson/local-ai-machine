@@ -189,8 +189,30 @@ services:
     depends_on:
       - prometheus
 
+  # Browser chat UI — points at LiteLLM's unified OpenAI-compatible endpoint
+  # rather than any vLLM server directly, so every model alias (coder/judge/
+  # governed_coder) is reachable from one place without per-model wiring.
+  # Port 3001 (not 8080, which Turnstone already owns) — kept in the 3xxx
+  # range alongside Grafana as the other human-facing web UI, distinct from
+  # the 8xxx/4000 API ports.
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    restart: unless-stopped
+    ports:
+      - "3001:8080"
+    environment:
+      - OPENAI_API_BASE_URL=http://litellm:4000/v1
+      - OPENAI_API_KEY=${LITELLM_MASTER_KEY}
+      - WEBUI_AUTH=true
+    volumes:
+      - open_webui_data:/app/backend/data
+    depends_on:
+      - litellm
+
 volumes:
   turnstone_postgres_data:
   litellm_postgres_data:
   vllm_primary_cache:
   vllm_judge_cache:
+  open_webui_data:

@@ -251,6 +251,20 @@
       # quality win — worth benchmarking head-to-head once both are running,
       # not assumed.
       { name = "qwen3-coder-next-gptq4bit"; repo = "btbtyler09/Qwen3-Coder-Next-GPTQ-4bit"; }
+      # 100B+ tier. NOT DeepSeek-V4-Flash (284B, native FP4/FP8 experts —
+      # same no-FP8-hardware wall as before) or MiniMax-M2 (its AWQ-4bit
+      # quant needs tensor-parallel-size 2 / RDMA 2-node clustering, not
+      # usable single-node). The toolbox's own model table marks this one
+      # "too big for single GPU" too, but that comment turned out to be a
+      # stale copy-paste from a different (8-bit) entry — real evidence it
+      # runs at TP=1 exists (toolbox issue #22, ~9.5-10 tok/s single-stream).
+      # A real ROCm bug did block this hybrid mamba/attention architecture
+      # (bad block_size), fixed upstream and merged into the toolbox image
+      # March 2026. 80GB on disk (bigger than raw param math suggests —
+      # includes a vision encoder). KV cache headroom will be tight at our
+      # usual 0.70 utilization; plan to run this without the judge model
+      # loaded concurrently, budget utilization accordingly at serve time.
+      { name = "qwen3.5-122b-a10b-awq4bit"; repo = "cyankiwi/Qwen3.5-122B-A10B-AWQ-4bit"; }
     ];
     mkModelDownloadService = { name, repo }: {
       description = "Download ${repo} to /var/lib/ai-models/${name}";
@@ -364,10 +378,26 @@
 
   # Firewall Rules — 8080 (Turnstone, plain HTTP for now — no Caddy/TLS
   # sidecar deployed yet, see docker-compose.yml), 11434 (Ollama sandbox,
-  # not yet running but staged) alongside SSH/LiteLLM/Grafana/Prometheus.
+  # not yet running but staged), 3001 (Open WebUI chat interface) alongside
+  # SSH/LiteLLM/Grafana/Prometheus.
   # 8443 dropped: that's Turnstone's upstream Caddy-fronted HTTPS dashboard
   # port, which we don't run — nothing listens there in this first pass.
-  networking.firewall.allowedTCPPorts = [ 22 4000 8080 3000 9090 11434 ];
+  #
+  # Deliberately NOT listing 8000/8001 (raw vLLM, zero auth) — LiteLLM on
+  # 4000 is the intended authenticated gateway to those models; direct
+  # access is host-local only (docker exec / vllm bench serve), never meant
+  # to be reachable on the LAN.
+  #
+  # filterForward is required for allowedTCPPorts to mean anything for
+  # docker-published ports at all: Docker manages its own FORWARD-chain
+  # iptables rules, which by default bypass NixOS's firewall entirely for
+  # NAT'd container traffic. Confirmed directly — port 8000 (never in this
+  # list) was externally reachable regardless, meaning every container port
+  # published via docker-compose has been open on the LAN all session,
+  # irrespective of what's declared here. This makes allowedTCPPorts
+  # actually apply to Docker's forwarded traffic too.
+  networking.firewall.filterForward = true;
+  networking.firewall.allowedTCPPorts = [ 22 4000 8080 3000 3001 9090 11434 ];
 
   system.stateVersion = "24.11";
 }
