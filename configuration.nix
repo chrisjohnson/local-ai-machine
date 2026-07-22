@@ -83,6 +83,15 @@
 
   services.openssh.settings.PasswordAuthentication = false;
 
+  # Unprivileged friend/edge account. No SSH key wired up yet — public keys
+  # aren't secrets, so when drew's key is available it goes straight into
+  # authorizedKeys.keys as a string literal, same as chris's above, not
+  # into secrets/. Until then this account exists but nothing can log into it.
+  users.users.drew = {
+    isNormalUser = true;
+    extraGroups = [ "docker" ];
+  };
+
   # 4. Containers & ROCm Graphics Passthrough
   virtualisation.docker = {
     enable = true;
@@ -123,7 +132,20 @@
   # rocm-smi is a CLI monitoring tool, not a driver — belongs on PATH via
   # systemPackages, not hardware.graphics.extraPackages (that's for driver
   # libraries the graphics stack loads, not user-facing commands).
-  environment.systemPackages = with pkgs; [ rsync docker-compose git rocmPackages.rocm-smi ];
+  environment.systemPackages = with pkgs; [ rsync docker-compose git rocmPackages.rocm-smi herdr ];
+
+  # Herdr agent-multiplexer daemon (per-user, persists across SSH
+  # disconnects). One instance per user — chris's for now, drew's own
+  # instance would come from the same systemd.user mechanism once that
+  # account has SSH access.
+  systemd.user.services.herdr = {
+    description = "Herdr Agent Multiplexer Daemon";
+    wantedBy = [ "default.target" ];
+    serviceConfig = {
+      ExecStart = "${pkgs.herdr}/bin/herdr daemon";
+      Restart = "always";
+    };
+  };
 
   # 6. Automated Daily Rsync Mirror to Synology (native rsync-over-SSH, not
   # CIFS — simpler and more standard for this workload; auth is an SSH key
@@ -144,7 +166,8 @@
     in ''
       set -euo pipefail
       ${pkgs.rsync}/bin/rsync -a --delete -e "${rsh}" /var/lib/docker/volumes/turnstone_postgres_data/ "${remote}/turnstone_postgres_data/"
-      ${pkgs.rsync}/bin/rsync -a --delete -e "${rsh}" /var/lib/docker/volumes/hermes_data/ "${remote}/hermes_data/"
+      ${pkgs.rsync}/bin/rsync -a --delete -e "${rsh}" /home/chris/.hermes/ "${remote}/hermes/"
+      ${pkgs.rsync}/bin/rsync -a --delete -e "${rsh}" /home/chris/.herdr/ "${remote}/herdr/"
       ${pkgs.rsync}/bin/rsync -a --delete -e "${rsh}" /etc/nixos/ "${remote}/etc-nixos/"
       ${pkgs.rsync}/bin/rsync -a --delete -e "${rsh}" /home/chris/local-ai-machine/ "${remote}/repo/"
     '';
@@ -159,8 +182,9 @@
     };
   };
 
-  # Firewall Rules
-  networking.firewall.allowedTCPPorts = [ 22 4000 8080 3000 9090 ];
+  # Firewall Rules — 8443 (Turnstone HTTPS), 11434 (Ollama sandbox, not yet
+  # running but staged) alongside the existing SSH/LiteLLM/Turnstone/Grafana/Prometheus ports.
+  networking.firewall.allowedTCPPorts = [ 22 4000 8080 8443 3000 9090 11434 ];
 
   system.stateVersion = "24.11";
 }

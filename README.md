@@ -25,8 +25,9 @@ local-ai-machine/
 │   ├── synology_backup_key    # SSH private key for ai_backup_svc (rsync-over-SSH)
 │   ├── wifi.env                # Fallback WiFi SSID/PSK (NetworkManager)
 │   ├── chris-password-hash.txt # Local console password fallback (SSH stays key-only)
-│   ├── hf-token.env            # HuggingFace token, sourced at shell login for faster downloads
-│   └── drew-ssh-key.pub        # Public key for the unprivileged edge/friend account
+│   └── hf-token.env            # HuggingFace token, sourced at shell login for faster downloads
+# (public SSH keys, e.g. drew's, aren't secrets — they go inline in
+# configuration.nix as string literals, same as chris's, not in this directory)
 ├── docker/
 │   ├── docker-compose.yml     # vLLM x2, Ollama sandbox, LiteLLM, Turnstone, Herdr-adjacent, Prometheus, Grafana
 │   ├── litellm/
@@ -108,7 +109,7 @@ flowchart TD
 
 ## 3. Declarative System Nix Configuration (`configuration.nix`)
 
-This is the **full target design**, merging the multi-tenant/dual-vLLM/Herdr architecture with the platform-level fixes discovered during actual Phase 2 hardware bring-up (see the roadmap for exactly what's applied on the real box today vs. still planned — `drew`, `herdr`, and the dual-vLLM firewall ports below are not yet applied).
+This mirrors the actual deployed file exactly. `herdr`'s package/service and the `drew` account are applied; `drew` has no SSH key wired up yet (public keys aren't secrets — when available it goes straight into `authorizedKeys.keys` as a string literal, same as chris's).
 
 ```nix
 { config, pkgs, ... }:
@@ -116,13 +117,11 @@ This is the **full target design**, merging the multi-tenant/dual-vLLM/Herdr arc
 {
   imports = [ ./hardware-configuration.nix ];
 
-  # 1. Bootloader & AMD Strix Halo (128GB Unified VRAM) Kernel Tuning
+  # 1. Bootloader & Strix Halo (128GB RAM) Kernel Tuning
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
 
-  # Allocate ~124GB of unified system RAM to the gfx1151 iGPU (requires BIOS
-  # iGPU Configuration = UMA_SPECIFIED with the smallest Frame Buffer Size —
-  # left on Auto, this board silently reserves a fixed 64GB instead).
+  # Reserve ~124GB of unified system RAM for the gfx1151 iGPU
   boot.kernelParams = [
     "amd_iommu=off"
     "amdgpu.gttsize=126976"
@@ -134,7 +133,7 @@ This is the **full target design**, merging the multi-tenant/dual-vLLM/Herdr arc
   # board, so force it explicitly rather than depend on autodetection.
   boot.kernelModules = [ "mt7925e" ];
 
-  # 2. System State & Headless Networking
+  # 2. System State & Headless Mode
   systemd.defaultUnit = "multi-user.target";
   networking.hostName = "local-ai-machine";
   services.openssh.enable = true;
@@ -184,7 +183,7 @@ This is the **full target design**, merging the multi-tenant/dual-vLLM/Herdr arc
     allowInterfaces = [ "eno1" ];
   };
 
-  # 3. System User Accounts & Hardware Access
+  # 3. User & Hardware Access Groups
   users.users.chris = {
     isNormalUser = true;
     openssh.authorizedKeys.keys = [
@@ -195,17 +194,19 @@ This is the **full target design**, merging the multi-tenant/dual-vLLM/Herdr arc
     # password can't be used remotely, only at a physical/KVM login prompt.
     hashedPasswordFile = "/etc/nixos/secrets/chris-password-hash.txt";
   };
+
   services.openssh.settings.PasswordAuthentication = false;
 
-  # Unprivileged Friend Account (Zero sudo, isolated home) — PLANNED, not
-  # yet applied to the real box. Key-only SSH, same as chris.
+  # Unprivileged friend/edge account. No SSH key wired up yet — public keys
+  # aren't secrets, so when drew's key is available it goes straight into
+  # authorizedKeys.keys as a string literal, same as chris's above, not
+  # into secrets/. Until then this account exists but nothing can log into it.
   users.users.drew = {
     isNormalUser = true;
     extraGroups = [ "docker" ];
-    openssh.authorizedKeys.keyFiles = [ ../secrets/drew-ssh-key.pub ];
   };
 
-  # 4. Core System Packages & Herdr Agent Multiplexer
+  # 4. Containers & ROCm Graphics Passthrough
   virtualisation.docker = {
     enable = true;
     autoPrune.enable = true;
@@ -241,18 +242,16 @@ This is the **full target design**, merging the multi-tenant/dual-vLLM/Herdr arc
     fi
   '';
 
+  # 5. Synology NAS Backup Transport
   # rocm-smi is a CLI monitoring tool, not a driver — belongs on PATH via
   # systemPackages, not hardware.graphics.extraPackages (that's for driver
   # libraries the graphics stack loads, not user-facing commands).
-  environment.systemPackages = with pkgs; [
-    rsync
-    docker-compose
-    git
-    rocmPackages.rocm-smi
-    herdr # Agent-aware PTY multiplexer — planned, unverified on this box yet
-  ];
+  environment.systemPackages = with pkgs; [ rsync docker-compose git rocmPackages.rocm-smi herdr ];
 
-  # 5. Herdr User Daemon Service (Persistent across SSH disconnects) — PLANNED
+  # Herdr agent-multiplexer daemon (per-user, persists across SSH
+  # disconnects). One instance per user — chris's for now, drew's own
+  # instance would come from the same systemd.user mechanism once that
+  # account has SSH access.
   systemd.user.services.herdr = {
     description = "Herdr Agent Multiplexer Daemon";
     wantedBy = [ "default.target" ];
@@ -297,8 +296,8 @@ This is the **full target design**, merging the multi-tenant/dual-vLLM/Herdr arc
     };
   };
 
-  # Firewall Rules — 8443 (Turnstone HTTPS), 11434 (Ollama sandbox) planned
-  # alongside the existing LiteLLM/Turnstone/Grafana/Prometheus ports.
+  # Firewall Rules — 8443 (Turnstone HTTPS), 11434 (Ollama sandbox, not yet
+  # running but staged) alongside the existing SSH/LiteLLM/Turnstone/Grafana/Prometheus ports.
   networking.firewall.allowedTCPPorts = [ 22 4000 8080 8443 3000 9090 11434 ];
 
   system.stateVersion = "24.11";
@@ -606,8 +605,8 @@ Real hardware bring-up surfaced several bugs not visible from the config alone �
 
 - [x] **Task 3.1: Model Staging (first pass)**
   Explored 9 model candidates (Qwen3.6-27B/35B-A3B, Gemma4-31B/26B-A4B, MiniMax-M2, DeepSeek-V4-Flash, Qwen2.5-VL-7B for OCR, Qwen3.5-4B for judge) before narrowing the first real pass to **Qwen3-Coder-Next** (primary) + **Qwen3.5-4B** (judge). Originally started downloading GGUF quants for vLLM, then caught the format mismatch — GGUF is llama.cpp's format, not vLLM's; switched to the native `Qwen/Qwen3-Coder-Next-FP8` safetensors checkpoint (~80GB, day-0 vLLM ≥0.15.0 support) and `Qwen/Qwen3.5-4B` BF16 (~9GB) via `hf download`, staged to `/var/lib/ai-models/{qwen3-coder-next-fp8,qwen3.5-4b}` and confirmed complete (40/40 and 2/2 safetensors shards, no `.incomplete` files left). Root cause of repeated multi-hour download stalls (persisted across both WiFi and Ethernet) turned out to be `hf-xet`, huggingface_hub's newer accelerated transfer backend, hanging on this network path — `HF_HUB_DISABLE_XET=1` plus longer `HF_HUB_DOWNLOAD_TIMEOUT`/`HF_HUB_ETAG_TIMEOUT` fixed it. Both now set permanently via `environment.variables`, with `HF_TOKEN` support added too (sourced from a gitignored secrets file at shell login) for better unauthenticated-rate-limit headroom on future downloads.
-- [ ] **Task 3.2: Apply configuration.nix Additions**
-  Add the `drew` user, Herdr systemd user service, and expanded firewall ports (Section 3 above) to the real `configuration.nix` — these are documented as target design but not yet applied to the box.
+- [x] **Task 3.2: Apply configuration.nix Additions**
+  Added the `drew` user (no SSH key yet — public keys aren't secrets, so it'll go inline as a string literal when available, not into `secrets/`), the `herdr` package + systemd user service, and expanded firewall ports (8443, 11434). Also fixed a stale reference caught along the way: the Synology backup script was still targeting `/var/lib/docker/volumes/hermes_data/`, a leftover from when Hermes ran as a docker container — corrected to `/home/chris/.hermes/` and `/home/chris/.herdr/` matching the actual host-level architecture.
 - [ ] **Task 3.3: Container Spin-up**
   `docker compose up -d` from `docker/` — vLLM primary + judge, LiteLLM (+ its own Postgres), Turnstone (+ its Postgres), Prometheus, Grafana. Ollama sandbox not included yet (no models staged for it).
 - [ ] **Task 3.4: Endpoint Validation**
