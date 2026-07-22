@@ -19,6 +19,7 @@
     --bar-primary: #5b9dff;
     --bar-gptq: #c084fc;
     --bar-judge: #4ade80;
+    --bar-122b: #fb923c;
   }
   * { box-sizing: border-box; }
   body {
@@ -116,6 +117,7 @@
   .model-primary { color: var(--bar-primary); font-weight: 600; }
   .model-gptq { color: var(--bar-gptq); font-weight: 600; }
   .model-judge { color: var(--bar-judge); font-weight: 600; }
+  .model-122b { color: var(--bar-122b); font-weight: 600; }
 
   .bars { margin: 18px 0; }
   .bar-row { display: grid; grid-template-columns: 190px 1fr 90px; align-items: center; gap: 12px; margin: 9px 0; font-size: 13px; }
@@ -174,9 +176,9 @@
 
 <header class="page">
   <h1>local-ai-machine — Inference Benchmark Report</h1>
-  <div class="sub">First real end-to-end benchmark pass across the model tiers, plus a hardware/system health audit.</div>
+  <div class="sub">First real end-to-end benchmark pass across the model tiers, plus a hardware/system health audit. Updated same day with a 100B+ tier and deployment-pipeline/networking findings.</div>
   <div class="meta">
-    <span>Generated <code>2026-07-22</code></span>
+    <span>Generated <code>2026-07-22</code>, updated later same day</span>
     <span>AMD Ryzen AI Max+ 395 (Strix Halo / gfx1151)</span>
     <span>128GB unified memory</span>
     <span>vLLM 0.22.1rc1.dev499 (ROCm)</span>
@@ -207,7 +209,7 @@
       <div class="sub">fixed → performance, ~1.7x base clock</div>
     </div>
   </div>
-  <p>No clean winner on speed — it depends on whether the box is serving one interactive session or several concurrent requests. Coding-<em>quality</em> comparison between the two is still untested; this report covers throughput/latency and memory headroom only. See <a href="#next-steps" style="color:var(--accent)">Next Steps</a> for what's still open.</p>
+  <p>No clean winner on speed — it depends on whether the box is serving one interactive session or several concurrent requests. The 122B tier (added later this session) was slowest across the board and degrades badly under concurrency, likely due to <code>--enforce-eager</code> being required for its AWQ kernel path. Coding-<em>quality</em> comparison between any of these is still untested; this report covers throughput/latency and memory headroom only. See <a href="#next-steps" style="color:var(--accent)">Next Steps</a> for what's still open.</p>
 </section>
 
 <section>
@@ -215,26 +217,34 @@
   <table>
     <tr>
       <th>Model</th><th>Role</th><th>Format</th><th>Weights</th><th>GPU util.</th>
-      <th>KV cache</th><th>KV tokens</th><th>Concurrency @131K ctx</th>
+      <th>KV cache</th><th>KV tokens</th><th>Concurrency</th>
     </tr>
     <tr>
       <td class="model-primary">Qwen3.6-35B-A3B</td><td>Primary</td><td>bf16</td>
       <td class="num">66.97 GiB</td><td class="num">0.70</td>
-      <td class="num">18.49 GiB</td><td class="num">918,504</td><td class="num">7.01×</td>
+      <td class="num">18.49 GiB</td><td class="num">918,504</td><td class="num">7.01× @131K</td>
     </tr>
     <tr>
       <td class="model-gptq">Qwen3-Coder-Next-GPTQ-4bit</td><td>Comparison (80B/3B-active)</td><td>GPTQ 4-bit</td>
       <td class="num">46.49 GiB</td><td class="num">0.70</td>
-      <td class="num">40.42 GiB</td><td class="num">1,721,978</td><td class="num">13.14×</td>
+      <td class="num">40.42 GiB</td><td class="num">1,721,978</td><td class="num">13.14× @131K</td>
     </tr>
     <tr>
       <td class="model-judge">Qwen3.5-4B</td><td>Judge / quick-tasks</td><td>bf16</td>
       <td class="num">8.68 GiB</td><td class="num">0.20</td>
-      <td class="num">13.6 GiB</td><td class="num">433,308</td><td class="num">3.31×</td>
+      <td class="num">13.6 GiB</td><td class="num">433,308</td><td class="num">3.31× @131K</td>
+    </tr>
+    <tr>
+      <td class="model-122b">Qwen3.5-122B-A10B-AWQ-4bit</td><td>Comparison (122B/10B-active)</td><td>AWQ 4-bit, enforce-eager</td>
+      <td class="num">74.52 GiB</td><td class="num">0.85</td>
+      <td class="num">29.0 GiB</td><td class="num">899,630</td><td class="num">27.45× @32K</td>
     </tr>
   </table>
   <div class="callout">
     <strong>Unexpected finding:</strong> the 80B GPTQ-4bit model is <em>smaller on disk and leaves more KV cache headroom</em> than the 35B bf16 model (46.49 GiB vs 66.97 GiB weights; 40.42 GiB vs 18.49 GiB KV cache) — 4-bit compression on 2.3× the parameters still nets smaller than bf16 on the smaller model. Model size alone is a poor proxy for memory footprint once quantization enters the picture.
+  </div>
+  <div class="callout warn">
+    <strong>122B methodology note:</strong> run alone (no judge model loaded, full GPU budget available) and capped at <code>--max-model-len 32768</code>, not the 131K used for the other three — its real KV cache headroom at 131K context would be meaningfully worse than the 27.45× figure above suggests. Also required <code>--enforce-eager</code> (disables CUDA graph/torch.compile), which appears to explain its poor concurrency scaling below.
   </div>
 </section>
 
@@ -249,6 +259,8 @@
     <div class="bar-row"><span class="name">80B GPTQ · c8</span><div class="bar-track"><div class="bar-fill" style="width:24.4%;background:var(--bar-gptq)"></div></div><span class="val">26.13</span></div>
     <div class="bar-row"><span class="name">4B judge · c1</span><div class="bar-track"><div class="bar-fill" style="width:21.9%;background:var(--bar-judge)"></div></div><span class="val">23.50</span></div>
     <div class="bar-row"><span class="name">4B judge · c8</span><div class="bar-track"><div class="bar-fill" style="width:100%;background:var(--bar-judge)"></div></div><span class="val">107.17</span></div>
+    <div class="bar-row"><span class="name">122B AWQ · c1</span><div class="bar-track"><div class="bar-fill" style="width:7.3%;background:var(--bar-122b)"></div></div><span class="val">7.87</span></div>
+    <div class="bar-row"><span class="name">122B AWQ · c8</span><div class="bar-track"><div class="bar-fill" style="width:15.0%;background:var(--bar-122b)"></div></div><span class="val">16.05</span></div>
   </div>
 
   <h3>Full results</h3>
@@ -288,11 +300,24 @@
       <td class="num">107.17</td><td class="num">540.23</td>
       <td class="num">2060 / 2133 / 3496</td><td class="num">66.82 / 66.29 / 73.33</td>
     </tr>
+    <tr>
+      <td class="model-122b">Qwen3.5-122B-AWQ</td><td class="num">1</td><td class="num">2048/512</td>
+      <td class="num">7.87</td><td class="num">39.50</td>
+      <td class="num">3808 / 3799 / 4012</td><td class="num">119.88 / 119.88 / 120.02</td>
+    </tr>
+    <tr>
+      <td class="model-122b">Qwen3.5-122B-AWQ</td><td class="num">8</td><td class="num">2048/256</td>
+      <td class="num">16.05</td><td class="num">145.14</td>
+      <td class="num">20383 / 24833 / 28927</td><td class="num">420.08 / 405.88 / 488.59</td>
+    </tr>
   </table>
-  <p>All runs: <code>vllm bench serve</code>, random dataset, <code>--ignore-eos</code> (fixed output length for clean throughput comparison), 20-40 prompts per run. Zero failed requests across all six runs.</p>
+  <p>All runs: <code>vllm bench serve</code>, random dataset, <code>--ignore-eos</code> (fixed output length for clean throughput comparison), 20-32 prompts per run. Zero failed requests across all eight runs (the benchmark <em>client</em> segfaulted on exit immediately after the 122B c8 run completed — a crash in its own cleanup path, not the server; results had already been written to disk and the server kept serving normally throughout, confirmed by its own request logs).</p>
 
   <div class="callout">
-    <strong>Reading the tradeoff:</strong> at concurrency 1, GPTQ's 4-bit weights need less memory bandwidth per token than the 35B model's bf16 weights, so it's faster single-stream (14.34 vs 11.91 tok/s) and dramatically more consistent (p99 TTFT 2.2s vs a 36.5s outlier on the 35B run). Under concurrency 8, that flips — the 35B model's aggregate throughput pulls ahead (33.19 vs 26.13 tok/s) and its per-token latency degrades less (TPOT +183% vs GPTQ's +325% going from c1→c8), suggesting GPTQ's dequantization overhead scales worse with batch size on this ROCm backend than native bf16 does.
+    <strong>Reading the 35B/GPTQ tradeoff:</strong> at concurrency 1, GPTQ's 4-bit weights need less memory bandwidth per token than the 35B model's bf16 weights, so it's faster single-stream (14.34 vs 11.91 tok/s) and dramatically more consistent (p99 TTFT 2.2s vs a 36.5s outlier on the 35B run). Under concurrency 8, that flips — the 35B model's aggregate throughput pulls ahead (33.19 vs 26.13 tok/s) and its per-token latency degrades less (TPOT +183% vs GPTQ's +325% going from c1→c8), suggesting GPTQ's dequantization overhead scales worse with batch size on this ROCm backend than native bf16 does.
+  </div>
+  <div class="callout warn">
+    <strong>122B is the slowest tier at both concurrency levels</strong> — 7.87 tok/s at c1 (vs 11.91 and 14.34 for the other two) and only 16.05 tok/s at c8. The standout problem is absolute latency under load, not just the throughput gap: TPOT more than triples (119.88ms → 420.08ms) and mean TTFT balloons past 20 seconds — a request could sit for half a minute at p99 before its first token arrives with 8 concurrent requests in flight. <code>--enforce-eager</code> (required for this model's AWQ kernel path — disables CUDA graph capture and torch.compile) is the most likely explanation: eager-mode per-step overhead compounds badly once multiple requests are batched together. Whether a non-eager AWQ path becomes viable on this hardware is unverified — worth revisiting if this model's capability turns out to justify the speed cost.
   </div>
 </section>
 
@@ -323,21 +348,29 @@
   <p>This tracks almost exactly with the configured <code>0.70 + 0.20 = 0.90</code> GPU-memory-utilization split (87GB target vs. 85.46GB actually used by the two vLLM engines). <strong>There is no room to run a third model concurrently</strong> at these settings — the 80B GPTQ comparison above required temporarily stopping the primary model rather than running alongside it. Any future third permanent tier needs either a smaller judge allocation or a full re-budget of the 0.70/0.20 split.</p>
 </section>
 
+<section>
+  <h2>Resolved Since First Publish</h2>
+  <ul class="findings">
+    <li class="good"><strong>Monitoring fully wired.</strong> Prometheus now scrapes all 5 targets successfully (added missing vLLM scrape configs, a real <code>node-exporter</code> container, and LiteLLM's <code>prometheus</code> callback — its <code>/metrics</code> route didn't exist at all without it). Grafana has a provisioned datasource and a real 10-panel dashboard, and its admin password was changed from the confirmed-still-active default.</li>
+    <li class="good"><strong>Deployment pipeline redesigned and verified under real conditions</strong>, not just synthetically: <code>nixos-rebuild switch</code> was blocking 15-40 minutes on any push that touched a long-running download unit. Fixed with <code>restartIfChanged = false</code> plus converting downloads and <code>docker-compose-app</code> to timer-triggered units. Verified for real — not just a synthetic test — when the 122B download was killed mid-transfer to test resume behavior: a config push during its retry cycle completed in ~3.4s without disturbing it, and it resumed rather than restarting from scratch.</li>
+    <li class="warn"><strong>Real firewall bug found and fixed</strong>, in two stages: Docker's own FORWARD-chain rules were found to bypass NixOS's firewall entirely for published container ports (port 8000, raw vLLM/zero auth, was externally reachable despite never being allowlisted); the first fix (<code>filterForward</code> + <code>trustedInterfaces</code>) turned out to be incomplete — <code>trustedInterfaces</code> only exempts the <code>input</code> chain, not <code>forward</code> (matches a known upstream nixpkgs issue, #437920), which silently broke legitimate container-to-container traffic, including to already-allowlisted ports. Fixed with an explicit <code>extraForwardRules</code> rule plus a fixed docker bridge interface name (Docker's default auto-generated name changes every time the network is created, which would've silently broken this again on a fresh install).</li>
+  </ul>
+</section>
+
 <section id="next-steps">
   <h2>Known Gaps &amp; Next Steps</h2>
   <ul class="findings">
-    <li class="warn"><strong>Grafana is running but non-functional</strong> — no Prometheus datasource provisioned, dashboard file is an empty placeholder (<code>"panels": []</code>), and Prometheus itself has no scrape target for either vLLM server despite both exposing rich <code>/metrics</code> endpoints. <code>litellm</code> and <code>node</code> scrape targets are both currently down (the latter points at a <code>node-exporter</code> container that doesn't exist).</li>
-    <li class="warn"><strong>Grafana still on default <code>admin:admin</code></strong> credentials, confirmed still active — needs a real password before this is exposed any further.</li>
     <li class="warn"><strong>Turnstone has an empty model registry</strong> — judge/reranker role assignment (wiring the 4B model in as Turnstone's safety judge) has no env-var shortcut, needs TOML config or console UI work.</li>
     <li class="good">MTP (multi-token-prediction speculative decoding) deliberately <strong>not attempted</strong> — Qwen3-Next architecture supports it in vLLM (<code>qwen3_next_mtp</code>), but ROCm support is unconfirmed and tracked by an open upstream issue. Worth a dedicated feasibility check before investing engineering time, given the FP8 precedent on this same architecture family.</li>
-    <li class="good">AITER fused MoE kernels untested — both models here are MoE-heavy; this is a plausible low-risk throughput win worth an A/B test against this report's baseline.</li>
-    <li class="good">Coding-<em>capability</em> comparison between 35B and 80B GPTQ still needed — this report is speed/memory only.</li>
-    <li class="good">Next model downloads queued: <code>Qwen/Qwen3.6-27B</code> (55.6GB), <code>google/gemma-4-31B-it</code> (62.6GB), <code>google/gemma-4-26B-A4B-it</code> (51.6GB), <code>Qwen/Qwen2.5-VL-7B-Instruct</code> (16.6GB, vision/OCR). A 100B+ candidate (<code>cyankiwi/Qwen3.5-122B-A10B-AWQ-4bit</code>, 80GB, real single-GPU evidence found) is under consideration but not yet queued.</li>
+    <li class="good">AITER fused MoE kernels untested — all three larger models here are MoE; this is a plausible low-risk throughput win worth an A/B test against this report's baseline.</li>
+    <li class="good">Coding-<em>capability</em> comparison across all four models still needed — this report is speed/memory only. Given the 122B tier's poor speed, capability would need to be a decisive win to justify it.</li>
+    <li class="good">Whether a non-<code>enforce-eager</code> AWQ path exists for the 122B model on this hardware is unverified — its bad concurrency scaling looks explainable by that flag, worth a follow-up if this model stays in consideration.</li>
+    <li class="good">Four more models downloading (not yet benchmarked): <code>Qwen/Qwen3.6-27B</code> (55.6GB), <code>google/gemma-4-31B-it</code> (62.6GB), <code>google/gemma-4-26B-A4B-it</code> (51.6GB), <code>Qwen/Qwen2.5-VL-7B-Instruct</code> (16.6GB, vision/OCR).</li>
   </ul>
 </section>
 
 <footer>
-  Generated from live benchmark runs and direct system inspection on <code>local-ai-machine</code>, 2026-07-22. Raw <code>vllm bench serve</code> JSON output for the judge-model runs preserved; primary/GPTQ run JSON was lost to container recreation between runs (aggregate stats above transcribed directly from benchmark tool output at run time).
+  Generated from live benchmark runs and direct system inspection on <code>local-ai-machine</code>, 2026-07-22. Raw <code>vllm bench serve</code> JSON output for the judge-model and 122B runs preserved; primary/GPTQ run JSON was lost to container recreation between runs (aggregate stats above transcribed directly from benchmark tool output at run time).
 </footer>
 
 </div>
