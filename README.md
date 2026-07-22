@@ -30,11 +30,13 @@ local-ai-machine/
 # configuration.nix as string literals, same as chris's, not in this directory)
 ├── docker/
 │   ├── docker-compose.yml     # vLLM x2, Ollama sandbox, LiteLLM, Turnstone, Herdr-adjacent, Prometheus, Grafana
-│   ├── .env.example           # Template for LITELLM_MASTER_KEY, LITELLM_DB_PASSWORD, DB_PASSWORD, ANTHROPIC_API_KEY
+│   ├── .env.example           # Template for LITELLM_MASTER_KEY, LITELLM_DB_PASSWORD, DB_PASSWORD, TURNSTONE_JWT_SECRET, ANTHROPIC_API_KEY
 │   ├── litellm/
 │   │   └── config.yaml        # Model routes, virtual keys per tenant, rate limits
-│   ├── turnstone/
-│   │   └── config.yaml        # Safety judge routing, MCP tool gateway config
+│   # No docker/turnstone/ directory — Turnstone's own config is TOML at
+│   # ~/.config/turnstone/config.toml (0600) inside the container, not a
+│   # bind-mounted YAML file; that judge/reranker wiring is still deferred
+│   # (Task 3.5).
 │   ├── prometheus/
 │   │   └── prometheus.yml     # Metric scraping targets
 │   └── grafana/
@@ -57,7 +59,7 @@ flowchart TD
     end
 
     subgraph Inference & Gateway Layer [Containerized Compute]
-        E[vLLM Primary Slot - Port 8000\nQwen3-Coder-Next-FP8 80B-A3B\n--tool-call-parser qwen3_coder]
+        E[vLLM Primary Slot - Port 8000\nQwen3.6-35B-A3B bf16\n--tool-call-parser qwen3_coder]
         F[vLLM Judge Slot - Port 8001\nQwen3.5-4B\n--tool-call-parser qwen3_coder]
         G[Optional Ollama Sandbox - Port 11434\nDynamic Lazy-Loading & Offloading]
 
@@ -69,7 +71,7 @@ flowchart TD
     end
 
     subgraph Governance & Tool Services [Turnstone Platform]
-        I[Turnstone Server - Port 8080/8443\n- 14B Safety Judge on Port 8001\n- Deferred BM25 MCP Tool Gateway\n- turnstone-eval & turnstone-doctor]
+        I[Turnstone Server - Port 8080\n- Safety Judge on Port 8001\n- Deferred BM25 MCP Tool Gateway\n- turnstone-eval & turnstone-doctor]
         I <--> H
     end
 
@@ -113,7 +115,7 @@ flowchart TD
 This mirrors the actual deployed file exactly. `herdr`'s package/service and the `drew` account are applied; `drew` has no SSH key wired up yet (public keys aren't secrets — when available it goes straight into `authorizedKeys.keys` as a string literal, same as chris's).
 
 ```nix
-{ config, pkgs, ... }:
+{ config, pkgs, lib, ... }:
 
 {
   imports = [ ./hardware-configuration.nix ];
@@ -292,22 +294,70 @@ This mirrors the actual deployed file exactly. `herdr`'s package/service and the
   # recovery is handled by DSM's own Btrfs snapshot scheduler on the backups
   # share, not by this job — this just mirrors current state.
   # NAS-side path: /volume1/tank/backups/local-ai-machine
-  systemd.services.synology-backup = {
-    description = "Mirror local AI state to Synology NAS";
-    after = [ "network-online.target" ];
-    wants = [ "network-online.target" ];
-    serviceConfig.Type = "oneshot";
-    script = let
-      rsh = "${pkgs.openssh}/bin/ssh -i /etc/nixos/secrets/synology_backup_key -o StrictHostKeyChecking=accept-new";
-      remote = "ai_backup_svc@synology.local:/volume1/tank/backups/local-ai-machine";
-    in ''
-      set -euo pipefail
-      ${pkgs.rsync}/bin/rsync -a --delete -e "${rsh}" /var/lib/docker/volumes/turnstone_postgres_data/ "${remote}/turnstone_postgres_data/"
-      ${pkgs.rsync}/bin/rsync -a --delete -e "${rsh}" /home/chris/.hermes/ "${remote}/hermes/"
-      ${pkgs.rsync}/bin/rsync -a --delete -e "${rsh}" /home/chris/.herdr/ "${remote}/herdr/"
-      ${pkgs.rsync}/bin/rsync -a --delete -e "${rsh}" /etc/nixos/ "${remote}/etc-nixos/"
-      ${pkgs.rsync}/bin/rsync -a --delete -e "${rsh}" /home/chris/local-ai-machine/ "${remote}/repo/"
-    '';
+  #
+  # Model Downloads — declared here (not run manually over SSH) so a freshly
+  # flashed machine reaches a fully working state from `nixos-rebuild switch`
+  # alone. Each service is idempotent via a completion marker file, not just
+  # "does the directory exist" — a partial/interrupted download would
+  # otherwise look done on the next boot and never retry. Reuses the exact
+  # HF_HUB_DISABLE_XET / timeout env vars and `nix shell ... hf download`
+  # invocation already proven to work reliably on this network path.
+  systemd.services = let
+    models = [
+      # Qwen3.6-35B-A3B (bf16), not Qwen3-Coder-Next-FP8: gfx1151 (RDNA3.5)
+      # has no FP8 matrix-core hardware at all (FP8 WMMA support starts at
+      # RDNA4), and every real-world report of Qwen3-Next-family FP8 on this
+      # exact toolbox/hardware fails to load or stalls at Triton autotune —
+      # not just slow, broken. BF16 Qwen3-Coder-Next is ~160GB, too large for
+      # our 124GB GPU allocation regardless. Qwen3.6-35B-A3B is proven
+      # working at bf16 on this exact hardware via this exact toolbox, and
+      # independently benchmarks ahead of gpt-oss-120b on coding despite
+      # being a third the size — best real "local Sonnet" fit available.
+      { name = "qwen3.6-35b-a3b"; repo = "Qwen/Qwen3.6-35B-A3B"; }
+      { name = "qwen3.5-4b"; repo = "Qwen/Qwen3.5-4B"; }
+    ];
+    mkModelDownloadService = { name, repo }: {
+      description = "Download ${repo} to /var/lib/ai-models/${name}";
+      after = [ "network-online.target" ];
+      wants = [ "network-online.target" ];
+      wantedBy = [ "multi-user.target" ];
+      unitConfig.ConditionPathExists = "!/var/lib/ai-models/${name}/.download-complete";
+      serviceConfig = {
+        Type = "oneshot";
+        User = "chris";
+        EnvironmentFile = "-/etc/nixos/secrets/hf-token.env";
+      };
+      script = ''
+        set -euo pipefail
+        export HF_HUB_DISABLE_XET=1
+        export HF_HUB_DOWNLOAD_TIMEOUT=120
+        export HF_HUB_ETAG_TIMEOUT=900
+        ${pkgs.nix}/bin/nix --extra-experimental-features "nix-command flakes" shell nixpkgs#python3Packages.huggingface-hub \
+          --command hf download ${repo} --local-dir /var/lib/ai-models/${name}
+        touch /var/lib/ai-models/${name}/.download-complete
+      '';
+    };
+  in (lib.listToAttrs (map (m: {
+    name = "download-model-${m.name}";
+    value = mkModelDownloadService m;
+  }) models)) // {
+    synology-backup = {
+      description = "Mirror local AI state to Synology NAS";
+      after = [ "network-online.target" ];
+      wants = [ "network-online.target" ];
+      serviceConfig.Type = "oneshot";
+      script = let
+        rsh = "${pkgs.openssh}/bin/ssh -i /etc/nixos/secrets/synology_backup_key -o StrictHostKeyChecking=accept-new";
+        remote = "ai_backup_svc@synology.local:/volume1/tank/backups/local-ai-machine";
+      in ''
+        set -euo pipefail
+        ${pkgs.rsync}/bin/rsync -a --delete -e "${rsh}" /var/lib/docker/volumes/turnstone_postgres_data/ "${remote}/turnstone_postgres_data/"
+        ${pkgs.rsync}/bin/rsync -a --delete -e "${rsh}" /home/chris/.hermes/ "${remote}/hermes/"
+        ${pkgs.rsync}/bin/rsync -a --delete -e "${rsh}" /home/chris/.herdr/ "${remote}/herdr/"
+        ${pkgs.rsync}/bin/rsync -a --delete -e "${rsh}" /etc/nixos/ "${remote}/etc-nixos/"
+        ${pkgs.rsync}/bin/rsync -a --delete -e "${rsh}" /home/chris/local-ai-machine/ "${remote}/repo/"
+      '';
+    };
   };
 
   systemd.timers.synology-backup = {
@@ -319,34 +369,63 @@ This mirrors the actual deployed file exactly. `herdr`'s package/service and the
     };
   };
 
-  # Firewall Rules — 8443 (Turnstone HTTPS), 11434 (Ollama sandbox, not yet
-  # running but staged) alongside the existing SSH/LiteLLM/Turnstone/Grafana/Prometheus ports.
-  networking.firewall.allowedTCPPorts = [ 22 4000 8080 8443 3000 9090 11434 ];
+  # Firewall Rules — 8080 (Turnstone, plain HTTP for now — no Caddy/TLS
+  # sidecar deployed yet, see docker-compose.yml), 11434 (Ollama sandbox,
+  # not yet running but staged) alongside SSH/LiteLLM/Grafana/Prometheus.
+  # 8443 dropped: that's Turnstone's upstream Caddy-fronted HTTPS dashboard
+  # port, which we don't run — nothing listens there in this first pass.
+  networking.firewall.allowedTCPPorts = [ 22 4000 8080 3000 9090 11434 ];
 
   system.stateVersion = "24.11";
 }
 ```
 
+**New in this update: declarative model downloads.** Previously, getting model weights onto the machine required a manual `hf download` session over SSH after every fresh install. Now `systemd.services` generates one `download-model-<name>` oneshot unit per entry in the `models` list above (currently `qwen3.6-35b-a3b` and `qwen3.5-4b`), each `wantedBy = [ "multi-user.target" ]` so it runs automatically on every boot, gated by a `.download-complete` marker file (not just directory existence, so a partial download retries rather than silently passing as done), and reusing the exact `HF_HUB_DISABLE_XET`/timeout env vars and `hf download` invocation already proven reliable on this network path (see Task 3.1). This means a freshly flashed machine reaches full model availability from `nixos-rebuild switch` alone — no manual download step required — directly fulfilling the goal of driving model downloads from the flake so the box can be reflashed and rebuilt easily.
+
 ---
 
 ## 4. Containerized Runtime Stack (`docker/docker-compose.yml`)
 
-First-pass model set: **Qwen3-Coder-Next-FP8** (primary) + **Qwen3.5-4B** (judge/quick tasks). This is a deliberate narrowing from a broader 9-model exploration (Qwen3.6-27B/35B-A3B, Gemma4-31B/26B-A4B, MiniMax-M2, DeepSeek-V4-Flash as other primary-candidate options; Qwen2.5-VL-7B for OCR/screenshots) — those alternatives, plus vision and the Ollama sandbox, aren't wired into compose yet since only the two first-pass models are actually staged on disk.
+First-pass model set: **Qwen3.6-35B-A3B** (bf16, primary) + **Qwen3.5-4B** (judge/quick tasks). This is a deliberate narrowing from a broader 9-model exploration (Qwen3-Coder-Next, Qwen3.6-27B/35B-A3B, Gemma4-31B/26B-A4B, MiniMax-M2, DeepSeek-V4-Flash as other primary-candidate options; Qwen2.5-VL-7B for OCR/screenshots) — those alternatives, plus vision and the Ollama sandbox, aren't wired into compose yet since only the two first-pass models are actually staged/staging on disk.
 
-**Two corrections made versus the original design draft, both load-bearing:**
-1. **vLLM needs native format, not GGUF.** GGUF is llama.cpp's format; vLLM's GGUF support is limited/experimental and unlikely to handle a brand-new hybrid-MoE architecture well. Qwen3-Coder-Next has an official native FP8 checkpoint (`Qwen/Qwen3-Coder-Next-FP8`, ~80GB, vLLM ≥0.15.0 has day-0 support) — smaller than the GGUF Q8 we'd have downloaded, and it's vLLM's actual format.
+**The primary model changed mid-stream, same day, from Qwen3-Coder-Next-FP8 to Qwen3.6-35B-A3B — a real finding, not a whim.** gfx1151 (Strix Halo, RDNA3.5) has **no FP8 matrix-core hardware at all** — AMD's own GPUOpen docs show FP8 WMMA support starting at RDNA4, and gfx1151 predates that generation. Real-world reports confirm Qwen3-Next-family FP8 checkpoints fail to load or stall on this exact toolbox+hardware combination (not just run slow): `kyuz0/amd-strix-halo-vllm-toolboxes` GitHub issue #1 (maintainer: "I think FP8 won't work unfortunately, the other FP8 models didn't"), `vllm-project/vllm` issue #40934 (fp8 + qwen3_next hybrid architecture failing even on NVIDIA), and the independent `hec-ovi/vllm-awq4-qwen` project explicitly choosing AWQ-INT4 over FP8 for this exact hardware family. A plain BF16 release of Qwen3-Coder-Next is ~160GB — too large for the 124GB GPU memory allocation regardless of the FP8 issue.
+
+**Qwen3.6-35B-A3B was chosen instead:** it's proven working (both bf16 and a community AWQ-4bit quant) on this exact toolbox/hardware per the toolbox's own `models.py` MODEL_TABLE, and independently benchmarks *ahead* of gpt-oss-120b on coding (leads by 11.5 points on artificialanalysis.ai's coding index) despite being a third the size — the best available "local Sonnet" fit for this hardware, not just the safe fallback. Note: Qwen3-Next's architecture (which both models share) has a native MTP (multi-token-prediction) speculative-decoding head, and vLLM has a `qwen3_next_mtp` method for it — but it is NOT confirmed working on ROCm yet (open, unresolved toolbox issue #53 as of this investigation), so it's not enabled. The old `qwen3-coder-next-fp8` download (~75GB) is still sitting on disk at `/var/lib/ai-models/qwen3-coder-next-fp8` on the target machine, orphaned (no longer referenced by any config) — worth a one-line cleanup item, not deleted yet.
+
+**Other corrections made versus the original design draft, all load-bearing:**
+1. **vLLM needs native format, not GGUF.** GGUF is llama.cpp's format; vLLM's GGUF support is limited/experimental and unlikely to handle a brand-new hybrid-MoE architecture well.
 2. **LiteLLM virtual keys aren't declared in `config.yaml`.** They're persisted in Postgres and generated at runtime via the `/key/generate` API against the master key (Task 3.6) — a static `keys:` YAML block (present in the original draft) isn't valid LiteLLM schema and would have silently done nothing.
+3. **Two Docker image references were hallucinated and got caught only by actually running `docker compose up -d`** (it failed with a real pull-access-denied error — not caught in review):
+   - `kyuz0/amd-strix-halo-vllm:latest` doesn't exist on Docker Hub → real image is `docker.io/kyuz0/vllm-therock-gfx1151:latest` (from `kyuz0/amd-strix-halo-vllm-toolboxes`). It has no ENTRYPOINT and puts `vllm` on PATH via `/opt/venv`, so `docker run <image> vllm serve ...` works headless directly — no need for the project's interactive toolbox/distrobox wizard flow.
+   - `turnstonelabs/turnstone:latest` doesn't exist on Docker Hub → real image is `ghcr.io/turnstonelabs/turnstone:latest` (GitHub Container Registry).
+4. **vllm-primary/vllm-judge:** removed `ROCM_PATH`/`HSA_OVERRIDE_GFX_VERSION` env vars (not needed — baked into the image at build time for gfx1151); added `ipc: host`; added named cache volumes (`vllm_primary_cache`, `vllm_judge_cache` → `/root/.cache/vllm`); split `--gpu-memory-utilization` 0.70 (primary) / 0.20 (judge) since both vLLM processes share one physical GPU and vLLM's percentage is computed against *total* device memory, not what's already free (two processes at the old 0.90 each would OOM the second on startup); added `--tensor-parallel-size 1`, `--dtype auto`, `--trust-remote-code`, `--max-num-seqs 64` (mirroring the toolbox's own proven flag set for this exact model, not reinvented).
+5. **turnstone/turnstone-db:** postgres image changed from generic `postgres:16-alpine` to `pgautoupgrade/pgautoupgrade:18-alpine` (Turnstone's own upstream compose choice — handles major-version PG upgrades without manual dump/restore). Env vars corrected to real names verified against Turnstone's actual docs (`docs/docker.md` at `github.com/turnstonelabs/turnstone`): `TURNSTONE_JWT_SECRET` (new secret, generated via `openssl rand -hex 32`, added to `docker/.env` and `docker/.env.example`), `TURNSTONE_DB_BACKEND=postgresql`, `TURNSTONE_DB_URL` (not `DATABASE_URL`), `LLM_BASE_URL=http://litellm:4000/v1`, `OPENAI_API_KEY=${LITELLM_MASTER_KEY}` (not the docs' example "dummy" value — LiteLLM requires real bearer auth). Removed the `./turnstone/config.yaml:/etc/turnstone/config.yaml` bind mount entirely — wrong format (Turnstone uses TOML at `~/.config/turnstone/config.toml`, chmod 0600, not YAML at `/etc/turnstone/`) and that file never actually existed on disk anyway (`docker/turnstone/` doesn't exist in the repo). There is no env-var way to wire in a separate judge/reranker model in Turnstone — that's TOML-config/console-UI only, genuinely deferred remaining work for Task 3.5, not just plumbing that got skipped. Dropped port 8443 entirely for now (Turnstone's Caddy-fronted HTTPS dashboard port upstream; no Caddy sidecar is deployed in this stack) — Turnstone runs plain HTTP on 8080 only, acceptable on the trusted home LAN for this first pass.
 
 ```yaml
 version: '3.8'
 
 services:
-  # Primary: Qwen3-Coder-Next-FP8 (80B total / 3B active MoE, coding-agent
-  # specialized). Native FP8 checkpoint — matches vLLM's format directly,
-  # no GGUF/llama.cpp involved. Single unified-memory GPU, so no tensor
-  # parallelism needed (the official example assumes multi-GPU; we don't).
+  # Primary: Qwen3.6-35B-A3B (bf16, MoE). NOT Qwen3-Coder-Next-FP8 — gfx1151
+  # (RDNA3.5) has no FP8 matrix-core hardware at all, and every real-world
+  # report of Qwen3-Next-family FP8 checkpoints on this exact toolbox/hardware
+  # fails to load or stalls (see git history for the full investigation).
+  # Qwen3.6-35B-A3B is proven working at bf16 here via this exact toolbox's
+  # own model table, and benchmarks ahead of gpt-oss-120b on coding despite
+  # being a third the size. Flags below mirror that proven table entry
+  # (max_num_seqs 64, qwen3_coder tool parser, qwen3 reasoning parser),
+  # not reinvented from scratch.
+  #
+  # Image: docker.io/kyuz0/vllm-therock-gfx1151 (NOT kyuz0/amd-strix-halo-vllm,
+  # which doesn't exist — that was a bad reference caught when `docker compose
+  # up` failed with a pull error). This image has no ENTRYPOINT and puts vllm
+  # on PATH via /opt/venv, so `vllm serve ...` runs headless exactly like this
+  # without needing the project's interactive toolbox/distrobox flow.
+  # gpu-memory-utilization is split between primary/judge (0.70/0.20) since
+  # both share one physical GPU and vLLM's percentage is computed against
+  # total device memory, not what's already free — two processes at 0.90 each
+  # would have the second OOM on startup.
   vllm-primary:
-    image: kyuz0/amd-strix-halo-vllm:latest
+    image: docker.io/kyuz0/vllm-therock-gfx1151:latest
     container_name: vllm-primary
     restart: unless-stopped
     devices:
@@ -357,20 +436,25 @@ services:
       - render
     security_opt:
       - seccomp:unconfined
-    environment:
-      - ROCM_PATH=/opt/rocm
-      - HSA_OVERRIDE_GFX_VERSION=11.5.1
+    ipc: host
     volumes:
       - /var/lib/ai-models:/models
+      - vllm_primary_cache:/root/.cache/vllm
     command: >
-      --model /models/qwen3-coder-next-fp8
-      --served-model-name qwen3-coder-next
+      vllm serve /models/qwen3.6-35b-a3b
+      --served-model-name qwen3.6-35b-a3b
       --host 0.0.0.0
       --port 8000
+      --tensor-parallel-size 1
+      --gpu-memory-utilization 0.70
+      --dtype auto
+      --trust-remote-code
+      --max-num-seqs 64
       --enable-prefix-caching
       --max-model-len 131072
       --enable-auto-tool-choice
       --tool-call-parser qwen3_coder
+      --reasoning-parser qwen3
     ports:
       - "8000:8000"
 
@@ -378,7 +462,7 @@ services:
   # tokenizer/tool-call format as the primary slot for consistent behavior
   # when Turnstone routes governed calls through it.
   vllm-judge:
-    image: kyuz0/amd-strix-halo-vllm:latest
+    image: docker.io/kyuz0/vllm-therock-gfx1151:latest
     container_name: vllm-judge
     restart: unless-stopped
     devices:
@@ -389,20 +473,25 @@ services:
       - render
     security_opt:
       - seccomp:unconfined
-    environment:
-      - ROCM_PATH=/opt/rocm
-      - HSA_OVERRIDE_GFX_VERSION=11.5.1
+    ipc: host
     volumes:
       - /var/lib/ai-models:/models
+      - vllm_judge_cache:/root/.cache/vllm
     command: >
-      --model /models/qwen3.5-4b
+      vllm serve /models/qwen3.5-4b
       --served-model-name qwen3.5-4b-judge
       --host 0.0.0.0
       --port 8001
+      --tensor-parallel-size 1
+      --gpu-memory-utilization 0.20
+      --dtype auto
+      --trust-remote-code
+      --max-num-seqs 64
       --enable-prefix-caching
       --max-model-len 131072
       --enable-auto-tool-choice
       --tool-call-parser qwen3_coder
+      --reasoning-parser qwen3
     ports:
       - "8001:8001"
 
@@ -439,37 +528,49 @@ services:
       - vllm-primary
       - vllm-judge
 
-  # Turnstone Database & Governance Server. config.yaml is a placeholder —
-  # needs to be filled in against Turnstone's actual docs before Task 3.5.
+  # Turnstone Database & Governance Server.
+  # Image/env corrected against turnstonelabs/turnstone's actual docs —
+  # turnstonelabs/turnstone:latest doesn't exist on Docker Hub; the real
+  # image is ghcr.io/turnstonelabs/turnstone. Config is TOML at
+  # ~/.config/turnstone/config.toml (0600), not a mounted config.yaml — no
+  # such file existed on disk anyway, so the old bind mount would have
+  # silently created an empty directory rather than erroring.
+  # turnstone-db uses pgautoupgrade (Turnstone's own upstream compose choice,
+  # not plain postgres) so future major-version Postgres upgrades don't
+  # require a manual dump/restore.
   turnstone-db:
-    image: postgres:16-alpine
+    image: pgautoupgrade/pgautoupgrade:18-alpine
     container_name: turnstone-db
     restart: unless-stopped
     environment:
       POSTGRES_DB: turnstone
-      POSTGRES_USER: turnstone_user
+      POSTGRES_USER: turnstone
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - turnstone_postgres_data:/var/lib/postgresql/data
 
+  # No TLS/Caddy sidecar yet — this is plain HTTP on 8080 for now (fine on
+  # the trusted home LAN), not the HTTPS-only 8443 dashboard the upstream
+  # prod stack normally fronts with Caddy. Judge/reranker role assignment
+  # (wiring vllm-judge in as Turnstone's safety judge) has no env-var
+  # equivalent — it's TOML/console-UI only, so that's real remaining work
+  # for Task 3.5, not just plumbing.
   turnstone:
-    image: turnstonelabs/turnstone:latest
+    image: ghcr.io/turnstonelabs/turnstone:latest
     container_name: turnstone-server
     restart: unless-stopped
+    command: ["turnstone-server", "--host", "0.0.0.0", "--port", "8080"]
     ports:
       - "8080:8080"
-      - "8443:8443"
     environment:
-      DATABASE_URL: postgres://turnstone_user:${DB_PASSWORD}@turnstone-db:5432/turnstone
-      PRIMARY_INFERENCE_URL: http://litellm:4000/v1
-      SAFETY_JUDGE_URL: http://vllm-judge:8001/v1
-      JUDGE_MODEL_NAME: qwen3.5-4b-judge
-    volumes:
-      - ./turnstone/config.yaml:/etc/turnstone/config.yaml
+      TURNSTONE_JWT_SECRET: ${TURNSTONE_JWT_SECRET}
+      TURNSTONE_DB_BACKEND: postgresql
+      TURNSTONE_DB_URL: postgresql+psycopg://turnstone:${DB_PASSWORD}@turnstone-db:5432/turnstone
+      LLM_BASE_URL: http://litellm:4000/v1
+      OPENAI_API_KEY: ${LITELLM_MASTER_KEY}
     depends_on:
       - turnstone-db
       - litellm
-      - vllm-judge
 
   # Telemetry & Observability Stack
   prometheus:
@@ -495,6 +596,8 @@ services:
 volumes:
   turnstone_postgres_data:
   litellm_postgres_data:
+  vllm_primary_cache:
+  vllm_judge_cache:
 ```
 
 ---
@@ -506,7 +609,7 @@ model_list:
   # Primary coder
   - model_name: coder
     litellm_params:
-      model: openai/qwen3-coder-next
+      model: openai/qwen3.6-35b-a3b
       api_base: http://vllm-primary:8000/v1
       api_key: "none"
 
@@ -569,7 +672,7 @@ When prompted for multi-file software engineering, build executions, or shell mo
 
 | Tier | Component | Role / Function | Connectivity / Endpoint |
 | :--- | :--- | :--- | :--- |
-| **Compute** | **vLLM Primary** | Qwen3-Coder-Next-FP8 80B-A3B coder slot (`--tool-call-parser qwen3_coder`) | `http://localhost:8000/v1` |
+| **Compute** | **vLLM Primary** | Qwen3.6-35B-A3B (bf16) coder slot (`--tool-call-parser qwen3_coder`) | `http://localhost:8000/v1` |
 | **Compute** | **vLLM Judge** | Qwen3.5-4B — quick tasks and Turnstone safety judge | `http://localhost:8001/v1` |
 | **Compute** | **Ollama Sandbox** | Lazy-load testing for new model compositions — not yet wired into compose | `http://localhost:11434` |
 | **Gateway** | **LiteLLM** | Virtual keys (`sk-chris`, `sk-drew`, generated via `/key/generate`, not static config), parallel tool passing | `http://localhost:4000/v1` |
@@ -627,17 +730,21 @@ Real hardware bring-up surfaced several bugs not visible from the config alone �
 *Objective: Deploy the dual-vLLM slots, gateway, governance, and control-plane services.*
 
 - [x] **Task 3.1: Model Staging (first pass)**
-  Explored 9 model candidates (Qwen3.6-27B/35B-A3B, Gemma4-31B/26B-A4B, MiniMax-M2, DeepSeek-V4-Flash, Qwen2.5-VL-7B for OCR, Qwen3.5-4B for judge) before narrowing the first real pass to **Qwen3-Coder-Next** (primary) + **Qwen3.5-4B** (judge). Originally started downloading GGUF quants for vLLM, then caught the format mismatch — GGUF is llama.cpp's format, not vLLM's; switched to the native `Qwen/Qwen3-Coder-Next-FP8` safetensors checkpoint (~80GB, day-0 vLLM ≥0.15.0 support) and `Qwen/Qwen3.5-4B` BF16 (~9GB) via `hf download`, staged to `/var/lib/ai-models/{qwen3-coder-next-fp8,qwen3.5-4b}` and confirmed complete (40/40 and 2/2 safetensors shards, no `.incomplete` files left). Root cause of repeated multi-hour download stalls (persisted across both WiFi and Ethernet) turned out to be `hf-xet`, huggingface_hub's newer accelerated transfer backend, hanging on this network path — `HF_HUB_DISABLE_XET=1` plus longer `HF_HUB_DOWNLOAD_TIMEOUT`/`HF_HUB_ETAG_TIMEOUT` fixed it. Both now set permanently via `environment.variables`, with `HF_TOKEN` support added too (sourced from a gitignored secrets file at shell login) for better unauthenticated-rate-limit headroom on future downloads.
+  Explored 9 model candidates (Qwen3-Coder-Next, Qwen3.6-27B/35B-A3B, Gemma4-31B/26B-A4B, MiniMax-M2, DeepSeek-V4-Flash, Qwen2.5-VL-7B for OCR, Qwen3.5-4B for judge) before narrowing the first real pass to **Qwen3-Coder-Next-FP8** (primary) + **Qwen3.5-4B** (judge). Originally started downloading GGUF quants for vLLM, then caught the format mismatch — GGUF is llama.cpp's format, not vLLM's; switched to the native `Qwen/Qwen3-Coder-Next-FP8` safetensors checkpoint (~80GB, day-0 vLLM ≥0.15.0 support) and `Qwen/Qwen3.5-4B` BF16 (~9GB) via `hf download`, staged to `/var/lib/ai-models/{qwen3-coder-next-fp8,qwen3.5-4b}` and confirmed complete (40/40 and 2/2 safetensors shards, no `.incomplete` files left). Root cause of repeated multi-hour download stalls (persisted across both WiFi and Ethernet) turned out to be `hf-xet`, huggingface_hub's newer accelerated transfer backend, hanging on this network path — `HF_HUB_DISABLE_XET=1` plus longer `HF_HUB_DOWNLOAD_TIMEOUT`/`HF_HUB_ETAG_TIMEOUT` fixed it. Both now set permanently via `environment.variables`, with `HF_TOKEN` support added too (sourced from a gitignored secrets file at shell login) for better unauthenticated-rate-limit headroom on future downloads.
+  **Same-day pivot:** the FP8 primary checkpoint was then dropped in favor of **Qwen3.6-35B-A3B (bf16)** — see the full reasoning in Section 4 (gfx1151 has no FP8 matrix-core hardware at all; real-world reports confirm Qwen3-Next-family FP8 fails to load on this exact toolbox/hardware, not just runs slow). The old `qwen3-coder-next-fp8` download (~75GB) is still sitting on disk at `/var/lib/ai-models/qwen3-coder-next-fp8`, orphaned and no longer referenced by any config — a future cleanup item. Model staging is now also declarative going forward (see Task 3.2/Section 3) — `download-model-qwen3.6-35b-a3b` and `download-model-qwen3.5-4b` systemd services replace manual `hf download` sessions for future rebuilds.
 - [x] **Task 3.2: Apply configuration.nix Additions**
-  Added the `drew` user (no SSH key yet — public keys aren't secrets, so it'll go inline as a string literal when available, not into `secrets/`), the `herdr` package + systemd user service, and expanded firewall ports (8443, 11434). Also fixed a stale reference caught along the way: the Synology backup script was still targeting `/var/lib/docker/volumes/hermes_data/`, a leftover from when Hermes ran as a docker container — corrected to `/home/chris/.hermes/` and `/home/chris/.herdr/` matching the actual host-level architecture.
-- [ ] **Task 3.3: Container Spin-up — IN PROGRESS**
+  Added the `drew` user (no SSH key yet — public keys aren't secrets, so it'll go inline as a string literal when available, not into `secrets/`), the `herdr` package + systemd user service, and expanded firewall ports (11434; 8443 later dropped — see below). Also fixed a stale reference caught along the way: the Synology backup script was still targeting `/var/lib/docker/volumes/hermes_data/`, a leftover from when Hermes ran as a docker container — corrected to `/home/chris/.hermes/` and `/home/chris/.herdr/` matching the actual host-level architecture.
+  **Same-day follow-up:** dropped port 8443 from the firewall (nothing listens there — no Caddy/TLS sidecar deployed in front of Turnstone) and added the declarative `download-model-*` systemd services described in Section 3, so model weights are fetched automatically on boot instead of requiring a manual SSH session.
+- [ ] **Task 3.3: Container Spin-up — IN PROGRESS, model swap mid-flight**
   `docker compose up -d` from `docker/` — vLLM primary + judge, LiteLLM (+ its own Postgres), Turnstone (+ its Postgres), Prometheus, Grafana. Ollama sandbox not included yet (no models staged for it).
-  **Status:** Discovered the target machine's `/home/chris/local-ai-machine/docker/` files (`docker-compose.yml`, `litellm/config.yaml`) were still the original Phase 1 scaffolding — old model names (Qwen2.5-72B) and old container names (`vllm-engine`/`hermes-agent`) — despite multiple config commits over the course of Phase 3. Only `configuration.nix` had actually been kept in sync via targeted rsync calls; the rest of the repo never was. Fixed with a full repo rsync (excluding `.git`, `.claude`, `hardware-configuration.nix`, `flake.lock`) from the Mac worktree to `/home/chris/local-ai-machine/` on the target; confirmed `docker-compose.yml` now matches exactly via `diff`. Generated `docker/.env` credentials locally (`LITELLM_MASTER_KEY`, `LITELLM_DB_PASSWORD`, `DB_PASSWORD` via `openssl rand`; `ANTHROPIC_API_KEY` left blank — optional, only needed for the `claude-sonnet` cloud-fallback route) — not yet pushed to the target. Added `docker/.env.example` documenting these four vars, consistent with the `secrets/*.env.example` pattern; `docker/.env` itself is already covered by the bare `.env` entry in `.gitignore`.
-  **Next:** push `docker/.env` to the target, run `docker compose up -d` from `docker/`, verify all containers (vllm-primary, vllm-judge, litellm-db, litellm, turnstone-db, turnstone, prometheus, grafana) come up healthy.
+  **Status:** Discovered the target machine's `/home/chris/local-ai-machine/docker/` files (`docker-compose.yml`, `litellm/config.yaml`) were still the original Phase 1 scaffolding — old model names (Qwen2.5-72B) and old container names (`vllm-engine`/`hermes-agent`) — despite multiple config commits over the course of Phase 3. Only `configuration.nix` had actually been kept in sync via targeted rsync calls; the rest of the repo never was. Fixed with a full repo rsync (excluding `.git`, `.claude`, `hardware-configuration.nix`, `flake.lock`) from the Mac worktree to `/home/chris/local-ai-machine/` on the target; confirmed `docker-compose.yml` now matches exactly via `diff`. Generated `docker/.env` credentials locally (`LITELLM_MASTER_KEY`, `LITELLM_DB_PASSWORD`, `DB_PASSWORD` via `openssl rand`; `ANTHROPIC_API_KEY` left blank — optional, only needed for the `claude-sonnet` cloud-fallback route) — pushed to the target. Added `docker/.env.example` documenting these vars, consistent with the `secrets/*.env.example` pattern; `docker/.env` itself is already covered by the bare `.env` entry in `.gitignore`.
+  First `docker compose up -d` attempt **failed** with a real pull-access-denied error: `kyuz0/amd-strix-halo-vllm:latest` and `turnstonelabs/turnstone:latest` are both hallucinated image references that don't exist on Docker Hub (corrected to `docker.io/kyuz0/vllm-therock-gfx1151:latest` and `ghcr.io/turnstonelabs/turnstone:latest` — see Section 4). While fixing that, the primary model itself was swapped from Qwen3-Coder-Next-FP8 to Qwen3.6-35B-A3B (bf16) for the hardware-support reasons detailed in Section 4, and Turnstone's env vars/config mount were corrected against its actual docs (also Section 4).
+  **Current state:** the corrected `docker-compose.yml`, `configuration.nix`, and `litellm/config.yaml` have been pushed to the target and a `nixos-rebuild switch` was just triggered, which kicks off the Qwen3.6-35B-A3B download automatically via the new declarative systemd service (Section 3) — this is a large download, likely still in progress. `docker compose up -d` has **not** been run yet with the corrected model/images — the earlier attempt failed on the bad image reference and was never successfully retried, and now depends on the model download finishing first.
+  **Next:** wait for the `download-model-qwen3.6-35b-a3b` systemd service to complete, then run `docker compose up -d` from `docker/`, verify all containers (vllm-primary, vllm-judge, litellm-db, litellm, turnstone-db, turnstone, prometheus, grafana) come up healthy end-to-end.
 - [ ] **Task 3.4: Endpoint Validation**
-  Confirm both vLLM slots respond directly (`qwen3-coder-next`, `qwen3.5-4b-judge`), LiteLLM routes `coder`/`judge`/`governed_coder` correctly, and verify inference speed / prefix caching behavior under load.
+  Confirm both vLLM slots respond directly (`qwen3.6-35b-a3b`, `qwen3.5-4b-judge`), LiteLLM routes `coder`/`judge`/`governed_coder` correctly, and verify inference speed / prefix caching behavior under load.
 - [ ] **Task 3.5: Turnstone Judge & Governed Route Verification**
-  Confirm Turnstone's safety judge (Qwen3.5-4B judge slot) actually intercepts and evaluates `governed_coder` requests as intended, and that `turnstone-eval`/`turnstone-doctor` run cleanly. `docker/turnstone/config.yaml` is still a placeholder — needs to be written against Turnstone's actual docs first.
+  Confirm Turnstone's safety judge (Qwen3.5-4B judge slot) actually intercepts and evaluates `governed_coder` requests as intended, and that `turnstone-eval`/`turnstone-doctor` run cleanly. Wiring `vllm-judge` in as Turnstone's judge/reranker model has no env-var equivalent — it's TOML-config (`~/.config/turnstone/config.toml`) or console-UI only, so writing that config is real remaining work here, not just plumbing that got skipped.
 - [ ] **Task 3.6: Multi-Tenant Key Verification**
   Generate `sk-chris-master` and `sk-drew-edge` via LiteLLM's `/key/generate` API (not static config — see Section 5). Confirm chris has full access and drew is correctly rate-limited and blocked from cloud/governed-admin routes.
 - [ ] **Task 3.7: Herdr & Hermes Control Plane Verification**
