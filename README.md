@@ -1,26 +1,20 @@
-# Architecture, Planning, & Handoff Specification: Bosgame M5 AI Node
+# Comprehensive Master Architecture Specification: Bosgame M5 AI Node
 
 **Target Device:** Bosgame M5 AI (AMD Ryzen AI Max+ 395 "Strix Halo", 128GB LPDDR5X Unified RAM, 2TB NVMe)
 **Host Architecture:** NixOS (Flakes) Declarative OS + Docker Compose Container Stack
-**Primary Purpose:** Dedicated, repeatable ("cattle, not pets") local AI server executing high-throughput inference (70B/72B models), agent control planes (Turnstone & Hermes Agent), LiteLLM API proxy, and automated Synology NAS state backups.
 
----
+This specification reflects all clarified design decisions, incorporating NixOS declarative host management, dual-vLLM static slots with parallel tool parsing, Herdr PTY multiplexing with real-time agent status tracking, Hermes multi-topic orchestration, Turnstone governance and deferred MCP tool discovery, and multi-tenant edge isolation.
 
-## 1. Executive Summary & Design Principles
-
-1. **Cattle, Not Pets:** The physical host OS is completely declared via a single Git-backed Nix Flake (`flake.nix` & `configuration.nix`). If the host drive fails or needs to be redeployed, a fresh install converts into an identical state in minutes via `nixos-rebuild switch`.
-2. **Unified Memory Allocation:** The Ryzen AI Max+ 395 APU (`gfx1151`) shares 128GB of LPDDR5X RAM between CPU and iGPU. Kernel parameters (`amdgpu.gttsize=126976`, `ttm.pages_limit=32505856`, `amd_iommu=off`) allocate ~124GB as high-speed VRAM to support 70B/72B models (e.g., Qwen 2.5/3, Llama 3) loaded permanently in VRAM with zero cold-start delay.
+**Design Principles carried forward from Phase 1/2:**
+1. **Cattle, Not Pets:** The physical host OS is completely declared via a single Git-backed Nix Flake (`flake.nix` & `configuration.nix`). A fresh install converts into an identical state in minutes via `nixos-rebuild switch`.
+2. **Unified Memory Allocation:** The Ryzen AI Max+ 395 APU (`gfx1151`) shares 128GB of LPDDR5X RAM between CPU and iGPU. BIOS `iGPU Configuration` must be `UMA_SPECIFIED` with the smallest `UMA Frame Buffer Size` (1GB) — leaving it on `Auto` silently reserves a fixed 64GB, defeating the point. Kernel params (`amdgpu.gttsize=126976`, `ttm.pages_limit=32505856`, `amd_iommu=off`) then let the GPU draw dynamically on nearly the full ~124GB via GTT.
 3. **Headless Execution:** Desktop display managers are disabled (`multi-user.target`) to eliminate GUI VRAM overhead.
-4. **Client-Server Boundary:** External clients (Mac Mini, OpenCode, remote VPN peers) interact *only* through API endpoints exposed by the LiteLLM Proxy (Port 4000) or web UI consoles (Turnstone Port 8080).
-5. **Dual Agent Control Plane:**
-   - **Turnstone:** Provides structured multi-node orchestration, MCP server integration, and LLM-based safety intent validation for risky tool executions.
-   - **Hermes Agent:** Acts as an autonomous background daemon featuring a 3-tier memory system (`USER.md`, `MEMORY.md`), auto-skill generation (`SKILL.md`), and multi-platform messaging gateways (Telegram/CLI).
+4. **Strict Declarative State:** Do NOT issue manual `apt`, `pip`, or `systemctl` commands on the host outside `configuration.nix`/`docker-compose.yml`. Ordinary judgment calls made while bringing the box up are recorded in the roadmap below, not applied invisibly.
+5. **Secrets Hygiene:** All passwords, tokens, and keys live in `secrets/` (gitignored, `.example` templates tracked) or `.env` files — never in tracked config.
 
 ---
 
-## 2. Target Repository Structure
-
-The GitOps repository (`local-ai-machine`) contains all code, declarations, and configurations required to construct and run the system.
+## 1. Target Repository Structure
 
 ```text
 local-ai-machine/
@@ -29,57 +23,105 @@ local-ai-machine/
 ├── hardware-configuration.nix # Auto-generated host hardware specs
 ├── secrets/
 │   ├── synology_backup_key    # SSH private key for ai_backup_svc (rsync-over-SSH)
-│   └── wifi.env               # Fallback WiFi SSID/PSK (NetworkManager)
+│   ├── wifi.env                # Fallback WiFi SSID/PSK (NetworkManager)
+│   ├── chris-password-hash.txt # Local console password fallback (SSH stays key-only)
+│   └── alex-ssh-key.pub        # Public key for the unprivileged edge/friend account
 ├── docker/
-│   ├── docker-compose.yml     # Container stack (vLLM, LiteLLM, Turnstone, Hermes, Prometheus, Grafana)
+│   ├── docker-compose.yml     # vLLM x2, Ollama sandbox, LiteLLM, Turnstone, Herdr-adjacent, Prometheus, Grafana
 │   ├── litellm/
-│   │   └── config.yaml        # Model routes, virtual keys, usage tracking, fallbacks
+│   │   └── config.yaml        # Model routes, virtual keys per tenant, rate limits
+│   ├── turnstone/
+│   │   └── config.yaml        # Safety judge routing, MCP tool gateway config
 │   ├── prometheus/
 │   │   └── prometheus.yml     # Metric scraping targets
 │   └── grafana/
 │       └── dashboards/
-│           └── strix-halo.json# VRAM, power draw, and thermals dashboard
+│           └── strix-halo.json # VRAM, power draw, and thermals dashboard
 └── scripts/
     └── sync-backup.sh         # Manual trigger for the rsync backup mirror
 ```
 
 ---
 
-## 3. NixOS System Configuration (`flake.nix` & `configuration.nix`)
+## 2. End-to-End System Topology
 
-### `flake.nix`
-```nix
-{
-  description = "Bosgame M5 AI Node - Declarative System Flake";
+```mermaid
+flowchart TD
+    subgraph Host OS & Hardware [Bosgame M5 - Strix Halo 128GB Unified VRAM - NixOS Flake]
+        A[NixOS Flake Configuration] --> B[Kernel Params: gfx1151 ~124GB iGPU VRAM]
+        A --> C[Systemd rsync-over-SSH Backup Timer -> Synology NAS]
+        A --> D[Herdr Systemd User Daemon: /run/user/1000/herdr.sock]
+    end
 
-  inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-  };
+    subgraph Inference & Gateway Layer [Containerized Compute]
+        E[vLLM Primary Slot - Port 8000\nQwen 2.5 72B / Llama 3.3 70B\n--tool-call-parser hermes]
+        F[vLLM Helper Slot - Port 8001\nQwen 2.5 14B / Qwen2-VL 7B\n--tool-call-parser hermes]
+        G[Optional Ollama Sandbox - Port 11434\nDynamic Lazy-Loading & Offloading]
 
-  outputs = { self, nixpkgs, ... }@inputs: {
-    nixosConfigurations.local-ai-machine = nixpkgs.lib.nixosSystem {
-      system = "x86_64-linux";
-      modules = [
-        ./hardware-configuration.nix
-        ./configuration.nix
-      ];
-    };
-  };
-}
+        H[LiteLLM Proxy - Port 4000\nVirtual Keys, Concurrency, Token Telemetry]
+
+        E --> H
+        F --> H
+        G --> H
+    end
+
+    subgraph Governance & Tool Services [Turnstone Platform]
+        I[Turnstone Server - Port 8080/8443\n- 14B Safety Judge on Port 8001\n- Deferred BM25 MCP Tool Gateway\n- turnstone-eval & turnstone-doctor]
+        I <--> H
+    end
+
+    subgraph User Workspace & Control Plane [Server User: chris]
+        J[Hermes Agent Orchestrator\n- Telegram Topics: #app-alpha, #app-beta\n- Profiles, USER.md, MEMORY.md\n- Direct & Governed Sub-Agent Routing]
+
+        K[Herdr PTY Workspaces & Panes]
+        K1[Pane 1: OpenCode / Pi Agent]
+        K2[Pane 2: Headless Claude Code]
+        K3[Pane 3: System / Build Shells]
+
+        K --> K1
+        K --> K2
+        K --> K3
+
+        J -- Socket API Control --> D
+        J -- Spawns & Monitors --> K
+    end
+
+    subgraph Telemetry [Observability]
+        P[Prometheus - Port 9090]
+        Q[Grafana - Port 3000\nVRAM, power draw, thermals]
+        P --> Q
+    end
+
+    subgraph External Clients & Multi-Tenancy [Hybrid Access]
+        L[Local Laptop: OpenCode / Pi\nDirect Local Shell Execution]
+        M[Edge Friend: Alex's Laptop\nLocal Hermes/OpenCode -> WireGuard VPN]
+        N[Phone: Telegram App\nMulti-Topic Supergroup]
+
+        L -- sk-chris-master --> H
+        M -- sk-alex-edge Rate Limited --> H
+        N <--> J
+    end
 ```
 
-### `configuration.nix`
+---
+
+## 3. Declarative System Nix Configuration (`configuration.nix`)
+
+This is the **full target design**, merging the multi-tenant/dual-vLLM/Herdr architecture with the platform-level fixes discovered during actual Phase 2 hardware bring-up (see the roadmap for exactly what's applied on the real box today vs. still planned — `alex`, `herdr`, and the dual-vLLM firewall ports below are not yet applied).
+
 ```nix
 { config, pkgs, ... }:
 
 {
   imports = [ ./hardware-configuration.nix ];
 
-  # 1. Bootloader & Strix Halo (128GB RAM) Kernel Tuning
+  # 1. Bootloader & AMD Strix Halo (128GB Unified VRAM) Kernel Tuning
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
 
-  # Reserve ~124GB of unified system RAM for the gfx1151 iGPU
+  # Allocate ~124GB of unified system RAM to the gfx1151 iGPU (requires BIOS
+  # iGPU Configuration = UMA_SPECIFIED with the smallest Frame Buffer Size —
+  # left on Auto, this board silently reserves a fixed 64GB instead).
   boot.kernelParams = [
     "amd_iommu=off"
     "amdgpu.gttsize=126976"
@@ -91,7 +133,7 @@ local-ai-machine/
   # board, so force it explicitly rather than depend on autodetection.
   boot.kernelModules = [ "mt7925e" ];
 
-  # 2. System State & Headless Mode
+  # 2. System State & Headless Networking
   systemd.defaultUnit = "multi-user.target";
   networking.hostName = "local-ai-machine";
   services.openssh.enable = true;
@@ -128,7 +170,7 @@ local-ai-machine/
     };
   };
 
-  # 3. User & Hardware Access Groups
+  # 3. System User Accounts & Hardware Access
   users.users.chris = {
     isNormalUser = true;
     openssh.authorizedKeys.keys = [
@@ -139,10 +181,17 @@ local-ai-machine/
     # password can't be used remotely, only at a physical/KVM login prompt.
     hashedPasswordFile = "/etc/nixos/secrets/chris-password-hash.txt";
   };
-
   services.openssh.settings.PasswordAuthentication = false;
 
-  # 4. Containers & ROCm Graphics Passthrough
+  # Unprivileged Friend Account (Zero sudo, isolated home) — PLANNED, not
+  # yet applied to the real box. Key-only SSH, same as chris.
+  users.users.alex = {
+    isNormalUser = true;
+    extraGroups = [ "docker" ];
+    openssh.authorizedKeys.keyFiles = [ ../secrets/alex-ssh-key.pub ];
+  };
+
+  # 4. Core System Packages & Herdr Agent Multiplexer
   virtualisation.docker = {
     enable = true;
     autoPrune.enable = true;
@@ -150,11 +199,26 @@ local-ai-machine/
 
   hardware.graphics.enable = true;
 
-  # 5. Synology NAS Backup Transport
   # rocm-smi is a CLI monitoring tool, not a driver — belongs on PATH via
   # systemPackages, not hardware.graphics.extraPackages (that's for driver
   # libraries the graphics stack loads, not user-facing commands).
-  environment.systemPackages = with pkgs; [ rsync docker-compose git rocmPackages.rocm-smi ];
+  environment.systemPackages = with pkgs; [
+    rsync
+    docker-compose
+    git
+    rocmPackages.rocm-smi
+    herdr # Agent-aware PTY multiplexer — planned, unverified on this box yet
+  ];
+
+  # 5. Herdr User Daemon Service (Persistent across SSH disconnects) — PLANNED
+  systemd.user.services.herdr = {
+    description = "Herdr Agent Multiplexer Daemon";
+    wantedBy = [ "default.target" ];
+    serviceConfig = {
+      ExecStart = "${pkgs.herdr}/bin/herdr daemon";
+      Restart = "always";
+    };
+  };
 
   # 6. Automated Daily Rsync Mirror to Synology (native rsync-over-SSH, not
   # CIFS — simpler and more standard for this workload; auth is an SSH key
@@ -175,7 +239,8 @@ local-ai-machine/
     in ''
       set -euo pipefail
       ${pkgs.rsync}/bin/rsync -a --delete -e "${rsh}" /var/lib/docker/volumes/turnstone_postgres_data/ "${remote}/turnstone_postgres_data/"
-      ${pkgs.rsync}/bin/rsync -a --delete -e "${rsh}" /var/lib/docker/volumes/hermes_data/ "${remote}/hermes_data/"
+      ${pkgs.rsync}/bin/rsync -a --delete -e "${rsh}" /home/chris/.hermes/ "${remote}/hermes/"
+      ${pkgs.rsync}/bin/rsync -a --delete -e "${rsh}" /home/chris/.herdr/ "${remote}/herdr/"
       ${pkgs.rsync}/bin/rsync -a --delete -e "${rsh}" /etc/nixos/ "${remote}/etc-nixos/"
       ${pkgs.rsync}/bin/rsync -a --delete -e "${rsh}" /home/chris/local-ai-machine/ "${remote}/repo/"
     '';
@@ -190,8 +255,9 @@ local-ai-machine/
     };
   };
 
-  # Firewall Rules
-  networking.firewall.allowedTCPPorts = [ 22 4000 8080 3000 9090 ];
+  # Firewall Rules — 8443 (Turnstone HTTPS), 11434 (Ollama sandbox) planned
+  # alongside the existing LiteLLM/Turnstone/Grafana/Prometheus ports.
+  networking.firewall.allowedTCPPorts = [ 22 4000 8080 8443 3000 9090 11434 ];
 
   system.stateVersion = "24.11";
 }
@@ -199,16 +265,16 @@ local-ai-machine/
 
 ---
 
-## 4. Docker Compose Runtime Stack (`docker/docker-compose.yml`)
+## 4. Containerized Runtime Stack (`docker/docker-compose.yml`)
 
 ```yaml
 version: '3.8'
 
 services:
-  # 1. Inference Engine (Donato Capitella Strix Halo Toolboxes)
-  vllm-engine:
+  # Slot 1: Heavy Primary Coder (vLLM)
+  vllm-primary:
     image: kyuz0/amd-strix-halo-vllm:latest
-    container_name: vllm-engine
+    container_name: vllm-primary
     restart: unless-stopped
     devices:
       - /dev/kfd:/dev/kfd
@@ -224,15 +290,67 @@ services:
     volumes:
       - /var/lib/ai-models:/models
     command: >
-      --model /models/Qwen2.5-72B-Instruct-GGUF
+      --model ${PRIMARY_MODEL:-/models/Qwen2.5-72B-Instruct-GGUF}
       --host 0.0.0.0
       --port 8000
+      --gpu-memory-utilization 0.55
       --enable-prefix-caching
+      --enable-chunked-prefill
+      --kv-cache-dtype fp8
       --max-model-len 32768
+      --enable-auto-tool-choice
+      --tool-call-parser hermes
     ports:
       - "8000:8000"
 
-  # 2. Unified API Gateway
+  # Slot 2: Helper & Vision Engine (vLLM) — also serves as the Turnstone
+  # safety judge model
+  vllm-helper:
+    image: kyuz0/amd-strix-halo-vllm:latest
+    container_name: vllm-helper
+    restart: unless-stopped
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - video
+      - render
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      - ROCM_PATH=/opt/rocm
+      - HSA_OVERRIDE_GFX_VERSION=11.5.1
+    volumes:
+      - /var/lib/ai-models:/models
+    command: >
+      --model ${HELPER_MODEL:-/models/Qwen2.5-14B-Instruct-GGUF}
+      --host 0.0.0.0
+      --port 8001
+      --gpu-memory-utilization 0.35
+      --enable-prefix-caching
+      --max-model-len 16384
+      --enable-auto-tool-choice
+      --tool-call-parser hermes
+    ports:
+      - "8001:8001"
+
+  # Experimentation Sandbox (Ollama Lazy-Loading)
+  ollama:
+    image: ollama/ollama:rocm
+    container_name: ollama-sandbox
+    restart: unless-stopped
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    ports:
+      - "11434:11434"
+    volumes:
+      - /var/lib/ollama:/root/.ollama
+    environment:
+      - HSA_OVERRIDE_GFX_VERSION=11.5.1
+      - OLLAMA_KEEP_ALIVE=5m
+
+  # Unified API Gateway
   litellm:
     image: ghcr.io/berriai/litellm:main-latest
     container_name: litellm-proxy
@@ -241,11 +359,15 @@ services:
       - "4000:4000"
     volumes:
       - ./litellm/config.yaml:/app/config.yaml
+    environment:
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
     command: ["--config", "/app/config.yaml", "--port", "4000"]
     depends_on:
-      - vllm-engine
+      - vllm-primary
+      - vllm-helper
 
-  # 3. Turnstone Database & Server
+  # Turnstone Database & Governance / Deferred MCP Gateway
   turnstone-db:
     image: postgres:16-alpine
     container_name: turnstone-db
@@ -257,35 +379,26 @@ services:
     volumes:
       - turnstone_postgres_data:/var/lib/postgresql/data
 
-  turnstone-server:
+  turnstone:
     image: turnstonelabs/turnstone:latest
     container_name: turnstone-server
     restart: unless-stopped
     ports:
       - "8080:8080"
+      - "8443:8443"
     environment:
       DATABASE_URL: postgres://turnstone_user:${DB_PASSWORD}@turnstone-db:5432/turnstone
-      OPENAI_API_BASE: http://litellm:4000/v1
-      OPENAI_API_KEY: ${LITELLM_MASTER_KEY}
+      PRIMARY_INFERENCE_URL: http://litellm:4000/v1
+      SAFETY_JUDGE_URL: http://vllm-helper:8001/v1
+      JUDGE_MODEL_NAME: Qwen2.5-14B-Instruct
+    volumes:
+      - ./turnstone/config.yaml:/etc/turnstone/config.yaml
     depends_on:
       - turnstone-db
       - litellm
+      - vllm-helper
 
-  # 4. Hermes Autonomous Background Agent
-  hermes-agent:
-    image: nousresearch/hermes-agent:latest
-    container_name: hermes-agent
-    restart: unless-stopped
-    environment:
-      OPENAI_API_BASE: http://litellm:4000/v1
-      OPENAI_API_KEY: ${LITELLM_MASTER_KEY}
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
-    volumes:
-      - hermes_data:/root/.hermes
-    depends_on:
-      - litellm
-
-  # 5. Telemetry & Observability Stack
+  # Telemetry & Observability Stack
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
@@ -308,29 +421,44 @@ services:
 
 volumes:
   turnstone_postgres_data:
-  hermes_data:
 ```
 
 ---
 
-## 5. LiteLLM Proxy Configuration (`docker/litellm/config.yaml`)
+## 5. Gateway Configuration (`docker/litellm/config.yaml`)
 
 ```yaml
 model_list:
-  - model_name: qwen-72b
+  # Primary Coder
+  - model_name: coder
     litellm_params:
       model: openai/Qwen2.5-72B-Instruct
-      api_base: http://vllm-engine:8000/v1
+      api_base: http://vllm-primary:8000/v1
       api_key: "none"
 
-  - model_name: llama-70b
+  # Fast Helper & Turnstone Judge
+  - model_name: gpt-4o-mini
     litellm_params:
-      model: openai/Llama-3-70B-Instruct
-      api_base: http://vllm-engine:8000/v1
+      model: openai/Qwen2.5-14B-Instruct
+      api_base: http://vllm-helper:8001/v1
       api_key: "none"
 
-  # Cloud fallback route if local GPU is saturated
-  - model_name: claude-3-5-sonnet
+  # Vision Model
+  - model_name: vision
+    litellm_params:
+      model: openai/Qwen2-VL-7B-Instruct
+      api_base: http://vllm-helper:8001/v1
+      api_key: "none"
+
+  # Governed Route (Passes through Turnstone Safety Judge)
+  - model_name: governed_coder
+    litellm_params:
+      model: openai/coder
+      api_base: http://turnstone:8080/v1
+      api_key: "none"
+
+  # Cloud Fallback Route
+  - model_name: claude-sonnet
     litellm_params:
       model: anthropic/claude-3-5-sonnet-20241022
       api_key: os.environ/ANTHROPIC_API_KEY
@@ -340,11 +468,60 @@ router_settings:
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
+
+keys:
+  - key: sk-chris-master
+    user_id: chris
+    models: ["coder", "gpt-4o-mini", "vision", "governed_coder", "claude-sonnet"]
+
+  - key: sk-alex-edge
+    user_id: alex
+    max_budget: 0
+    rate_limit_rpm: 60
+    models: ["coder", "gpt-4o-mini", "vision"] # Cloud keys & Turnstone admin blocked
 ```
 
 ---
 
-## 6. Phased Implementation Roadmap
+## 6. Hermes Config & Sub-Agent Delegation Rules (`~/.hermes/USER.md`)
+
+```markdown
+# Hermes Delegation & Governance Policy
+
+### Provider Routes
+- Default Provider: `bosgame_direct` (http://litellm:4000/v1) for chat, session memory search, and read-only queries.
+- Governed Provider: `bosgame_governed` (http://turnstone:8080/v1) for autonomous background sub-agents.
+
+### Automatic Sub-Agent Rules
+When prompted for multi-file software engineering, build executions, or shell modifications:
+1. Do NOT execute destructive commands directly in the parent context.
+2. Invoke `delegate_task` with `model="governed_coder"` and target directory set to active project workspace.
+3. Spawn a dedicated Herdr pane via socket API (`/run/user/1000/herdr.sock`) if live human visibility is required.
+4. Report back completion summary and git diff to the active Telegram Topic thread.
+```
+
+---
+
+## 7. Comprehensive Component Matrix
+
+| Tier | Component | Role / Function | Connectivity / Endpoint |
+| :--- | :--- | :--- | :--- |
+| **Compute** | **vLLM Primary** | High-throughput 72B coder slot (`--tool-call-parser hermes`) | `http://localhost:8000/v1` |
+| **Compute** | **vLLM Helper** | Fast 14B helper, vision, and Turnstone safety judge | `http://localhost:8001/v1` |
+| **Compute** | **Ollama Sandbox** | Lazy-load testing for new model compositions | `http://localhost:11434` |
+| **Gateway** | **LiteLLM** | Virtual keys (`sk-chris`, `sk-alex`), parallel tool passing | `http://localhost:4000/v1` |
+| **Governance**| **Turnstone** | 14B LLM Judge, deferred BM25 MCP gateway, evals/doctor | `http://localhost:8080` |
+| **Control** | **Herdr Daemon** | PTY multiplexer, state tracking (`🔴 Blocked`, `🟡 Working`) | `/run/user/1000/herdr.sock` |
+| **Control** | **Hermes Agent** | 24/7 Telegram topic router, profiles, memory, skills | Phone Telegram / Socket |
+| **Execution** | **OpenCode** | LSP diagnostics, AST parsing, multi-file editing | Local Shell / Server Attach |
+| **Execution** | **Claude Code** | Headless Auto Mode under Anthropic ML Classifier | Server Subshell / Herdr |
+| **Execution** | **Pi Agent** | Ultra-minimal 4-tool primitive harness & TS extensions | Local Terminal / Herdr |
+| **Telemetry** | **Prometheus** | Metric scraping | `http://localhost:9090` |
+| **Telemetry** | **Grafana** | VRAM, power draw, thermals dashboards | `http://localhost:3000` |
+
+---
+
+## 8. Phased Implementation Roadmap
 
 ```mermaid
 flowchart TD
@@ -353,59 +530,60 @@ flowchart TD
     P3 --> P4[Phase 4: Day-N Resilience & Operations]
 ```
 
-### Phase 1: Pre-Arrival Preparation (START TODAY)
-*Objective: Build and validate the entire software stack repository before physical hardware arrives.*
+### Phase 1: Pre-Arrival Preparation — COMPLETE
 
 - [x] **Task 1.1: Git Repository Initialization**
-  Initialize `local-ai-machine` private repository with the folder structure detailed in Section 2.
 - [x] **Task 1.2: Code Nix Flake Declarations**
-  Write `flake.nix` and `configuration.nix` matching the parameters in Section 3.
 - [x] **Task 1.3: Draft Docker Stack & Gateway Configs**
-  Create `docker/docker-compose.yml`, `litellm/config.yaml`, and Prometheus configs.
 - [x] **Task 1.4: Prepare Synology NAS Target**
-  Restricted service user `ai_backup_svc` created on Synology DSM with read/write access to the `tank` shared folder. Backups land under `tank/backups/local-ai-machine/` (nested by type — Postgres volume, Hermes data, `/etc/nixos`, repo). SSH enabled on the DSM (Control Panel → Terminal & SNMP), and `secrets/synology_backup_key.pub` added as that user's authorized SSH key (DSM 7+: User & Group → select user → Edit → SSH Public Key). Backup transport is rsync-over-SSH, not SMB — no password to manage. *(Manual DSM steps — not scriptable from this repo.)*
+  Restricted service user `ai_backup_svc` created on Synology DSM with read/write access to the `tank` shared folder. Backups land under `tank/backups/local-ai-machine/` (nested by type). SSH enabled on the DSM, `secrets/synology_backup_key.pub` added as that user's authorized SSH key. Backup transport is rsync-over-SSH, not SMB.
 - [x] **Task 1.5: Populate Local Secrets**
-  `secrets/synology_backup_key`/`.pub` generated locally (gitignored; the `.pub` half was pasted into DSM per Task 1.4). Copy `secrets/wifi.env.example` → `secrets/wifi.env` and fill in a fallback WiFi SSID/password — NetworkManager uses this only when no wired connection is present.
+  `secrets/synology_backup_key`/`.pub` generated locally (gitignored). `secrets/wifi.env` populated with fallback SSID/password.
 
-### Phase 2: Host Provisioning (Day 0 - Hardware Arrival)
-*Objective: Prepare physical hardware and apply the declarative OS configuration.*
+### Phase 2: Host Provisioning — COMPLETE
 
-**Peripheral setup note:** the M5's video output is HDMI/DP only; the available monitor is DVI-only. Bring-up needs a passive HDMI→DVI adapter cable (HDMI and DVI-D carry the same digital signal, no active converter required). For durable local console access afterward (not just this one install), route both this machine and the currently-DVI-connected server through a small 2-port DVI KVM switch — monitor into the KVM's output, each host into an input (the M5 via the same HDMI→DVI adapter), one shared keyboard via the KVM's USB switching. No mouse needed; the M5 never runs a display manager, so console access is TTY-only.
+Real hardware bring-up surfaced several bugs not visible from the config alone — recorded here since they're exactly the kind of thing that bites again on a redeploy otherwise.
 
-- [x] **Task 2.0: Real SSH Key**
-  Replace the placeholder key in `configuration.nix:26` (`ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... chris@macmini`) with your actual Mac Mini public key (`cat ~/.ssh/id_ed25519.pub`, generating one first if it doesn't exist). This is the *only* configured way into `chris`'s account post-install — no password is set, so a wrong/placeholder key here means physical-console-only until corrected.
+- [x] **Task 2.0: Real SSH Key** — placeholder replaced with the real Mac Mini key.
 - [x] **Task 2.1: Base NixOS Install**
-  Flashed a NixOS unstable Minimal ISO to USB (the 24.11 default kernel didn't support the M5's MediaTek MT7925 WiFi chip; unstable's newer kernel does). Booted via WiFi at a staging location without Ethernet access — NetworkManager (`nmcli`) handled the connection. Partitioned the 2TB NVMe (1GB FAT32 ESP + ext4 root, wiping the factory Windows install), ran `nixos-generate-config`, and copied the repo over.
+  Flashed a NixOS **unstable** Minimal ISO (24.11's default kernel didn't support the M5's MediaTek MT7925 WiFi chip; unstable's newer kernel does). Booted via WiFi at a staging location without Ethernet — NetworkManager (`nmcli`) handled the connection. Partitioned the 2TB NVMe (1GB FAT32 ESP + ext4 root, wiping the factory Windows install).
 - [x] **Task 2.2: Go Remote Early**
-  Authorized the Mac's key via `curl https://github.com/chrisjohnson.keys > ~/.ssh/authorized_keys` on the live session, then SSH'd in as the `nixos` user (not `root` — live ISO default). From there the Mac drove partitioning, config copy, and `nixos-install` directly over SSH.
+  Authorized the Mac's key via `curl https://github.com/<user>.keys > ~/.ssh/authorized_keys` on the live session, then drove the rest of the install (partitioning, `nixos-install`) over SSH from the Mac.
 - [x] **Task 2.3: Apply System Flake & Reboot**
-  Installed and rebooted successfully over several iterations while chasing real bugs found along the way: `services.openssh.enable` was never actually set (nothing was reachable post-reboot until fixed), `users.mutableUsers` defaults to `true` so a password set on an already-existing account silently never applies (had to set it `false` for `hashedPasswordFile` to actually take effect), and the MediaTek MT7925 WiFi driver needed to be forced via `boot.kernelModules` since udev's automatic loading proved unreliable on this board. SSH (key auth) and local console (password, SSH-inaccessible) both confirmed working across reboots.
+  Took several iterations to get right. Real bugs found and fixed: `services.openssh.enable` was never set at all (nothing was reachable post-reboot until fixed); `users.mutableUsers` defaults to `true`, so a password set on an already-existing account silently never applies — needed `false` for `hashedPasswordFile` to actually take effect; the MT7925 WiFi driver needed forcing via `boot.kernelModules` since udev's automatic loading proved unreliable on this board. SSH (key auth) and local console (password, SSH-inaccessible) both confirmed working across reboots.
 - [x] **Task 2.4: Verify iGPU Memory Allocation**
-  BIOS defaulted `iGPU Configuration` to `Auto`, which silently carved out a fixed 64GB as static VRAM — invisible in `free -h` and not what the Strix Halo unified-memory design intends. Fixed via `Advanced → GFX Configuration → iGPU Configuration → UMA_SPECIFIED`, then set `UMA Frame Buffer Size` to its smallest option (1GB). Confirmed: `free -h` now shows 124GiB system RAM, `rocm-smi` shows 1GiB static VRAM — the GPU can draw on nearly the full 124GB via GTT (`amdgpu.gttsize`/`ttm.pages_limit`), matching the original design intent.
+  BIOS defaulted `iGPU Configuration` to `Auto`, silently carving out a fixed 64GB as static VRAM. Fixed via `Advanced → GFX Configuration → iGPU Configuration → UMA_SPECIFIED` + smallest `UMA Frame Buffer Size` (1GB). Confirmed: `free -h` shows 124GiB system RAM, `rocm-smi` shows 1GiB static VRAM, GTT makes nearly the full pool available to the GPU.
 
 ### Phase 3: AI Stack Deployment (Day 1)
-*Objective: Deploy models, runtime containers, API proxy, and agent gateways.*
+*Objective: Deploy the dual-vLLM slots, gateway, governance, and control-plane services.*
 
 - [ ] **Task 3.1: Model Staging**
-  Download target GGUF/Safetensor model weights to `/var/lib/ai-models`.
-- [ ] **Task 3.2: Container Spin-up**
-  Navigate to `docker/` and execute `docker compose up -d`.
-- [ ] **Task 3.3: Endpoint Validation**
-  Query LiteLLM at `http://<BOSGAME_IP>:4000/v1/chat/completions` from Mac Mini / OpenCode to verify inference speed and context caching.
-- [ ] **Task 3.4: Agent Control Plane Verification**
-  Access Turnstone Console (`http://<BOSGAME_IP>:8080`) and verify Hermes Agent responsiveness over CLI/Telegram.
+  Download primary (Qwen2.5-72B-Instruct GGUF) and helper (Qwen2.5-14B-Instruct GGUF, doubles as Turnstone judge) weights to `/var/lib/ai-models`. Do this over wired Ethernet if at all possible — the box is still WiFi-connected at a staging location as of Phase 2; consider relocating first.
+- [ ] **Task 3.2: Apply configuration.nix Additions**
+  Add the `alex` user, Herdr systemd user service, and expanded firewall ports (Section 3 above) to the real `configuration.nix` — these are documented as target design but not yet applied to the box.
+- [ ] **Task 3.3: Container Spin-up**
+  `docker compose up -d` from `docker/` — vLLM x2, Ollama sandbox, LiteLLM, Turnstone (+ its Postgres), Prometheus, Grafana.
+- [ ] **Task 3.4: Endpoint Validation**
+  Confirm both vLLM slots respond directly, LiteLLM routes `coder`/`gpt-4o-mini`/`vision`/`governed_coder` correctly, and verify inference speed / prefix caching behavior under load.
+- [ ] **Task 3.5: Turnstone Judge & Governed Route Verification**
+  Confirm Turnstone's safety judge (helper slot) actually intercepts and evaluates `governed_coder` requests as intended, and that `turnstone-eval`/`turnstone-doctor` run cleanly.
+- [ ] **Task 3.6: Multi-Tenant Key Verification**
+  Confirm `sk-chris-master` has full access and `sk-alex-edge` is correctly rate-limited and blocked from cloud/governed-admin routes.
+- [ ] **Task 3.7: Herdr & Hermes Control Plane Verification**
+  Verify the Herdr daemon socket is reachable, panes spawn correctly, and Hermes' Telegram topic routing + sub-agent delegation rules (Section 6) behave as documented.
 
 ### Phase 4: Day-N Operations & Resilience
-*Objective: Validate backups, telemetry, and automated maintenance.*
 
 - [ ] **Task 4.1: Execute Backup Mirror Test**
-  Run `scripts/sync-backup.sh` (or `systemctl start synology-backup.service`) manually and verify the files land under `tank/backups/local-ai-machine/` on the Synology. Confirm DSM's Btrfs snapshot schedule is enabled on the `tank` share — that's what provides point-in-time recovery, since the mirror itself only holds current state.
+  Run `scripts/sync-backup.sh` (or `systemctl start synology-backup.service`) and verify files land under `tank/backups/local-ai-machine/` on the Synology, including the new `hermes/` and `herdr/` paths. Confirm DSM's Btrfs snapshot schedule is enabled on the `tank` share for point-in-time recovery.
 - [ ] **Task 4.2: Grafana Dashboard Baseline**
-  Open Grafana (`http://<BOSGAME_IP>:3000`) and establish baseline metrics for VRAM utilization, power draw, and thermals under full model load.
+  Open Grafana (`http://<host>:3000`) and establish baseline metrics for VRAM utilization, power draw, and thermals under full dual-vLLM load.
+- [ ] **Task 4.3: Edge Access Verification**
+  Confirm Alex's WireGuard VPN path to the LiteLLM/Hermes endpoints works end-to-end with `sk-alex-edge`, respecting rate limits.
 
 ---
 
-## 7. Implementation Directives for Coding Agent
+## 9. Implementation Directives for Coding Agent
 
 1. **Strict Declarative State:** Do NOT issue manual `apt`, `pip`, or `systemctl` commands directly on the host that are not defined in `configuration.nix` or `docker-compose.yml`.
 2. **Secrets Hygiene:** Store all passwords, tokens, and credentials in the `secrets/` directory or `.env` files. Ensure `.gitignore` excludes sensitive files.
