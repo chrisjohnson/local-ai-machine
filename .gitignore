@@ -1,4 +1,6 @@
 secrets/*.env
 secrets/*.txt
+secrets/synology_backup_key
+secrets/synology_backup_key.pub
 !secrets/*.example
 .env

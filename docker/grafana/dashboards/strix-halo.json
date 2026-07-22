@@ -3,6 +3,6 @@
   "uid": "strix-halo",
   "schemaVersion": 39,
   "panels": [],
-  "tags": ["bosgame-ai", "strix-halo"],
+  "tags": ["local-ai-machine", "strix-halo"],
   "time": { "from": "now-6h", "to": "now" }
 }
