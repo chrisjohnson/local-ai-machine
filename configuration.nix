@@ -326,6 +326,20 @@ in
       };
       script = ''
         set -euo pipefail
+
+        # Each model download has its own independent timer, so with no
+        # coordination between them, all of them firing around the same
+        # boot-time window means all of them download simultaneously and
+        # saturate the connection (confirmed directly: four downloads at
+        # once brought everything else to a crawl). A shared exclusive lock
+        # serializes them regardless of trigger order or timing — whichever
+        # acquires the lock first runs to completion (or its own retry
+        # cycle) while the others block here, not consuming bandwidth, then
+        # take their turn. Held for the whole script; released automatically
+        # when it exits.
+        exec 200>/var/lib/ai-models/.download.lock
+        ${pkgs.util-linux}/bin/flock -x 200
+
         export HF_HUB_DISABLE_XET=1
         export HF_HUB_DOWNLOAD_TIMEOUT=120
         export HF_HUB_ETAG_TIMEOUT=900
