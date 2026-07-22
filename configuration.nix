@@ -1,5 +1,51 @@
 { config, pkgs, lib, ... }:
 
+let
+  # Declarative model downloads — hoisted here (not scoped inside
+  # systemd.services) so both the download services and their triggering
+  # timers, plus docker-compose-app's marker-poll loop, can all reference
+  # the same list without duplicating it three times.
+  models = [
+    # Qwen3.6-35B-A3B (bf16), not Qwen3-Coder-Next-FP8: gfx1151 (RDNA3.5)
+    # has no FP8 matrix-core hardware at all (FP8 WMMA support starts at
+    # RDNA4), and every real-world report of Qwen3-Next-family FP8 on this
+    # exact toolbox/hardware fails to load or stalls at Triton autotune —
+    # not just slow, broken. BF16 Qwen3-Coder-Next is ~160GB, too large for
+    # our 124GB GPU allocation regardless. Qwen3.6-35B-A3B is proven
+    # working at bf16 on this exact hardware via this exact toolbox, and
+    # independently benchmarks ahead of gpt-oss-120b on coding despite
+    # being a third the size — best real "local Sonnet" fit available.
+    { name = "qwen3.6-35b-a3b"; repo = "Qwen/Qwen3.6-35B-A3B"; }
+    { name = "qwen3.5-4b"; repo = "Qwen/Qwen3.5-4B"; }
+    # Larger "does this actually compete with Sonnet" tier, ~50GB GPTQ
+    # 4-bit (not the ~160GB bf16 original, not the broken FP8 checkpoint —
+    # see above). No gfx1151 report exists for this exact checkpoint, but
+    # the identical Qwen3NextForCausalLM architecture (the non-coder
+    # predecessor, dazipe/Qwen3-Next-80B-A3B-Instruct-GPTQ-Int4A16) has a
+    # real ROCm tp1 benchmark in the toolbox's own repo: 177.9 tok/s
+    # aggregate — never promoted to their official tested-models list, so
+    # treat this as moderate-confidence, not proven. Only ~3B active params
+    # per token like the 35B model above, so there's a real chance the
+    # larger total-parameter capacity doesn't translate into a coding
+    # quality win — worth benchmarking head-to-head once both are running,
+    # not assumed.
+    { name = "qwen3-coder-next-gptq4bit"; repo = "btbtyler09/Qwen3-Coder-Next-GPTQ-4bit"; }
+    # 100B+ tier. NOT DeepSeek-V4-Flash (284B, native FP4/FP8 experts —
+    # same no-FP8-hardware wall as before) or MiniMax-M2 (its AWQ-4bit
+    # quant needs tensor-parallel-size 2 / RDMA 2-node clustering, not
+    # usable single-node). The toolbox's own model table marks this one
+    # "too big for single GPU" too, but that comment turned out to be a
+    # stale copy-paste from a different (8-bit) entry — real evidence it
+    # runs at TP=1 exists (toolbox issue #22, ~9.5-10 tok/s single-stream).
+    # A real ROCm bug did block this hybrid mamba/attention architecture
+    # (bad block_size), fixed upstream and merged into the toolbox image
+    # March 2026. 80GB on disk (bigger than raw param math suggests —
+    # includes a vision encoder). KV cache headroom will be tight at our
+    # usual 0.70 utilization; plan to run this without the judge model
+    # loaded concurrently, budget utilization accordingly at serve time.
+    { name = "qwen3.5-122b-a10b-awq4bit"; repo = "cyankiwi/Qwen3.5-122B-A10B-AWQ-4bit"; }
+  ];
+in
 {
   imports = [ ./hardware-configuration.nix ];
 
@@ -226,51 +272,18 @@
   # HF_HUB_DISABLE_XET / timeout env vars and `nix shell ... hf download`
   # invocation already proven to work reliably on this network path.
   systemd.services = let
-    models = [
-      # Qwen3.6-35B-A3B (bf16), not Qwen3-Coder-Next-FP8: gfx1151 (RDNA3.5)
-      # has no FP8 matrix-core hardware at all (FP8 WMMA support starts at
-      # RDNA4), and every real-world report of Qwen3-Next-family FP8 on this
-      # exact toolbox/hardware fails to load or stalls at Triton autotune —
-      # not just slow, broken. BF16 Qwen3-Coder-Next is ~160GB, too large for
-      # our 124GB GPU allocation regardless. Qwen3.6-35B-A3B is proven
-      # working at bf16 on this exact hardware via this exact toolbox, and
-      # independently benchmarks ahead of gpt-oss-120b on coding despite
-      # being a third the size — best real "local Sonnet" fit available.
-      { name = "qwen3.6-35b-a3b"; repo = "Qwen/Qwen3.6-35B-A3B"; }
-      { name = "qwen3.5-4b"; repo = "Qwen/Qwen3.5-4B"; }
-      # Larger "does this actually compete with Sonnet" tier, ~50GB GPTQ
-      # 4-bit (not the ~160GB bf16 original, not the broken FP8 checkpoint —
-      # see above). No gfx1151 report exists for this exact checkpoint, but
-      # the identical Qwen3NextForCausalLM architecture (the non-coder
-      # predecessor, dazipe/Qwen3-Next-80B-A3B-Instruct-GPTQ-Int4A16) has a
-      # real ROCm tp1 benchmark in the toolbox's own repo: 177.9 tok/s
-      # aggregate — never promoted to their official tested-models list, so
-      # treat this as moderate-confidence, not proven. Only ~3B active params
-      # per token like the 35B model above, so there's a real chance the
-      # larger total-parameter capacity doesn't translate into a coding
-      # quality win — worth benchmarking head-to-head once both are running,
-      # not assumed.
-      { name = "qwen3-coder-next-gptq4bit"; repo = "btbtyler09/Qwen3-Coder-Next-GPTQ-4bit"; }
-      # 100B+ tier. NOT DeepSeek-V4-Flash (284B, native FP4/FP8 experts —
-      # same no-FP8-hardware wall as before) or MiniMax-M2 (its AWQ-4bit
-      # quant needs tensor-parallel-size 2 / RDMA 2-node clustering, not
-      # usable single-node). The toolbox's own model table marks this one
-      # "too big for single GPU" too, but that comment turned out to be a
-      # stale copy-paste from a different (8-bit) entry — real evidence it
-      # runs at TP=1 exists (toolbox issue #22, ~9.5-10 tok/s single-stream).
-      # A real ROCm bug did block this hybrid mamba/attention architecture
-      # (bad block_size), fixed upstream and merged into the toolbox image
-      # March 2026. 80GB on disk (bigger than raw param math suggests —
-      # includes a vision encoder). KV cache headroom will be tight at our
-      # usual 0.70 utilization; plan to run this without the judge model
-      # loaded concurrently, budget utilization accordingly at serve time.
-      { name = "qwen3.5-122b-a10b-awq4bit"; repo = "cyankiwi/Qwen3.5-122B-A10B-AWQ-4bit"; }
-    ];
     mkModelDownloadService = { name, repo }: {
       description = "Download ${repo} to /var/lib/ai-models/${name}";
       after = [ "network-online.target" ];
       wants = [ "network-online.target" ];
-      wantedBy = [ "multi-user.target" ];
+      # Deliberately NOT wantedBy multi-user.target — that target is already
+      # active on a running system, so nixos-rebuild switch would try to
+      # START this directly as part of activation and block until a
+      # multi-hour download finishes. Triggered by its own .timer instead
+      # (below), which arms near-instantly regardless of how long the
+      # actual download takes — decouples this from every future rebuild's
+      # critical path, not just from restarts of an already-running one
+      # (that's what restartIfChanged handles).
       unitConfig.ConditionPathExists = "!/var/lib/ai-models/${name}/.download-complete";
       # Multi-hour, multi-GB downloads over this network path have already
       # shown one transient mid-stream socket error (httpx.ReadError after
@@ -280,6 +293,17 @@
       # restart`, and the sudo rule below is deliberately scoped to just
       # `nixos-rebuild switch`, not systemctl.
       startLimitIntervalSec = 0;
+      # Without this, `nixos-rebuild switch` restarts ANY unit whose
+      # definition changed — including this one, every time the shared
+      # download-script logic changes, even for edits unrelated to whichever
+      # download happens to be mid-transfer. For a oneshot this restart
+      # blocks the whole switch-to-configuration run until the (re-started,
+      # from-scratch-looking-but-actually-resuming) download finishes —
+      # this is exactly what turned several unrelated pushes today into
+      # 15-40 minute stalls. false means: update the unit file on disk, but
+      # don't touch an already-running instance — the new definition takes
+      # effect next time it starts (next boot, or its own next retry).
+      restartIfChanged = false;
       serviceConfig = {
         Type = "oneshot";
         User = "chris";
@@ -348,6 +372,58 @@
     name = "download-model-${m.name}";
     value = mkModelDownloadService m;
   }) models)) // {
+    # Closes the last "100% bootstrap from a wipe" gap: everything else
+    # (NixOS itself, model downloads) is declarative and self-triggering,
+    # but nothing previously ran `docker compose up -d` on a genuinely fresh
+    # install — the containers had never been created, so there was nothing
+    # for docker's own `restart: unless-stopped` policies to reattach to.
+    # docker/.env is gitignored (real secrets, never auto-generated) — this
+    # fails loudly with a clear message rather than silently no-op'ing if
+    # it's missing, so the one remaining manual step is obvious, not hidden.
+    #
+    # Waits for every model's completion marker directly in-script, rather
+    # than expressing that as systemd after=/wants= on the download units.
+    # Those units retry indefinitely on failure (Restart=on-failure,
+    # startLimitIntervalSec=0), and ordering against a unit like that only
+    # guarantees "its most recent attempt exited" — not "eventually
+    # succeeded". A failed attempt between retries would satisfy After=
+    # ordering prematurely and let this start with weights still missing.
+    # Polling the same marker files the downloads already produce for their
+    # own idempotency sidesteps that entirely.
+    docker-compose-app = {
+      description = "Start local-ai-machine docker-compose application stack";
+      after = [ "docker.service" "network-online.target" ];
+      wants = [ "docker.service" "network-online.target" ];
+      # Timer-triggered, not wantedBy multi-user.target — same reasoning as
+      # the download services above: this can block for a long time waiting
+      # on the marker-poll loop below, and multi-user.target is already
+      # active on a running system, so a direct wantedBy would make
+      # nixos-rebuild switch block starting it synchronously.
+      restartIfChanged = false;
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        User = "chris";
+        WorkingDirectory = "/home/chris/local-ai-machine/docker";
+        Restart = "on-failure";
+        RestartSec = 60;
+      };
+      script = ''
+        set -euo pipefail
+        ${lib.concatMapStringsSep "\n" (m: ''
+          until [ -f /var/lib/ai-models/${m.name}/.download-complete ]; do
+            echo "Waiting on ${m.name} download to complete..."
+            sleep 30
+          done
+        '') models}
+        if [ ! -f .env ]; then
+          echo "docker/.env is missing. Secrets are gitignored and never auto-generated — copy .env.example to .env, populate real values, then run: systemctl start docker-compose-app" >&2
+          exit 1
+        fi
+        ${pkgs.docker}/bin/docker compose up -d
+      '';
+    };
+
     synology-backup = {
       description = "Mirror local AI state to Synology NAS";
       after = [ "network-online.target" ];
@@ -367,12 +443,34 @@
     };
   };
 
-  systemd.timers.synology-backup = {
-    description = "Daily Synology backup mirror";
-    wantedBy = [ "timers.target" ];
-    timerConfig = {
-      OnCalendar = "03:00";
-      Persistent = true;
+  # Triggers for the model downloads and docker-compose-app (see
+  # systemd.services above for why these are timer-triggered rather than
+  # wantedBy multi-user.target: arming a timer is near-instant regardless of
+  # how long the thing it triggers takes, so `nixos-rebuild switch` never
+  # blocks on it — only the first START of a brand-new long-running unit
+  # was ever a problem, and this sidesteps that class of problem entirely,
+  # not just the "restarting an already-running one" class that
+  # restartIfChanged handles.
+  systemd.timers = (lib.listToAttrs (map (m: {
+    name = "download-model-${m.name}";
+    value = {
+      description = "Trigger for download-model-${m.name}.service";
+      wantedBy = [ "timers.target" ];
+      timerConfig.OnBootSec = "30s";
+    };
+  }) models)) // {
+    docker-compose-app = {
+      description = "Trigger for docker-compose-app.service";
+      wantedBy = [ "timers.target" ];
+      timerConfig.OnBootSec = "45s";
+    };
+    synology-backup = {
+      description = "Daily Synology backup mirror";
+      wantedBy = [ "timers.target" ];
+      timerConfig = {
+        OnCalendar = "03:00";
+        Persistent = true;
+      };
     };
   };
 
@@ -396,6 +494,11 @@
   # published via docker-compose has been open on the LAN all session,
   # irrespective of what's declared here. This makes allowedTCPPorts
   # actually apply to Docker's forwarded traffic too.
+  # filterForward only exists on the nftables-based firewall backend (the
+  # classic iptables one doesn't support it at all — confirmed by a hard
+  # eval failure) — no custom iptables rules/extraCommands anywhere in this
+  # config, so switching backends is low-risk.
+  networking.nftables.enable = true;
   networking.firewall.filterForward = true;
   networking.firewall.allowedTCPPorts = [ 22 4000 8080 3000 3001 9090 11434 ];
 
