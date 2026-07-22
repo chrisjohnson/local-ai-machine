@@ -2,7 +2,7 @@ model_list:
   # Primary coder
   - model_name: coder
     litellm_params:
-      model: openai/qwen3-coder-next
+      model: openai/qwen3.6-35b-a3b
       api_base: http://vllm-primary:8000/v1
       api_key: "none"
 
