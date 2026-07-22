@@ -29,19 +29,23 @@ local-ai-machine/
 # (public SSH keys, e.g. drew's, aren't secrets — they go inline in
 # configuration.nix as string literals, same as chris's, not in this directory)
 ├── docker/
-│   ├── docker-compose.yml     # vLLM x2, Ollama sandbox, LiteLLM, Turnstone, Herdr-adjacent, Prometheus, Grafana
+│   ├── docker-compose.yml     # vLLM x2, Ollama sandbox, LiteLLM, Turnstone, Open WebUI, Prometheus, Grafana
 │   ├── .env.example           # Template for LITELLM_MASTER_KEY, LITELLM_DB_PASSWORD, DB_PASSWORD, TURNSTONE_JWT_SECRET, ANTHROPIC_API_KEY
 │   ├── litellm/
 │   │   └── config.yaml        # Model routes, virtual keys per tenant, rate limits
 │   # No docker/turnstone/ directory — Turnstone's own config is TOML at
 │   # ~/.config/turnstone/config.toml (0600) inside the container, not a
 │   # bind-mounted YAML file; that judge/reranker wiring is still deferred
-│   # (Task 3.5).
+│   # (Task 3.5). Open WebUI is likewise config-free here — it's entirely
+│   # driven by env vars pointed at LiteLLM, with its own state (auth, chat
+│   # history) in a named Docker volume, not a bind-mounted directory.
 │   ├── prometheus/
-│   │   └── prometheus.yml     # Metric scraping targets
+│   │   └── prometheus.yml     # Metric scraping targets (currently incomplete — see Section 8 open work)
 │   └── grafana/
 │       └── dashboards/
-│           └── strix-halo.json # VRAM, power draw, and thermals dashboard
+│           └── strix-halo.json # Placeholder only — no datasource provisioned, no real panels yet
+├── docs/
+│   └── benchmark-report-2026-07-22.html # vllm bench serve results across 35B/80B-GPTQ/4B models + hardware audit
 └── scripts/
     └── sync-backup.sh         # Manual trigger for the rsync backup mirror
 ```
@@ -64,14 +68,16 @@ flowchart TD
         G[Optional Ollama Sandbox - Port 11434\nDynamic Lazy-Loading & Offloading]
 
         H[LiteLLM Proxy - Port 4000\nVirtual Keys, Concurrency, Token Telemetry]
+        R[Open WebUI - Port 3001\nBrowser Chat UI over LiteLLM's\nOpenAI-compatible endpoint]
 
         E --> H
         F --> H
         G --> H
+        H --> R
     end
 
     subgraph Governance & Tool Services [Turnstone Platform]
-        I[Turnstone Server - Port 8080\n- Safety Judge on Port 8001\n- Deferred BM25 MCP Tool Gateway\n- turnstone-eval & turnstone-doctor]
+        I[Turnstone Server - Port 8080\n- Safety Judge wiring to Port 8001 DEFERRED (empty model registry)\n- Deferred BM25 MCP Tool Gateway\n- turnstone-eval & turnstone-doctor]
         I <--> H
     end
 
@@ -91,20 +97,22 @@ flowchart TD
         J -- Spawns & Monitors --> K
     end
 
-    subgraph Telemetry [Observability]
-        P[Prometheus - Port 9090]
-        Q[Grafana - Port 3000\nVRAM, power draw, thermals]
-        P --> Q
+    subgraph Telemetry [Observability - running but not yet wired up, see Section 8]
+        P[Prometheus - Port 9090\nNo vLLM scrape targets;\nlitellm/node targets both down]
+        Q[Grafana - Port 3000\nNo datasource, empty dashboard,\nstill on admin:admin]
+        P -.-> Q
     end
 
     subgraph External Clients & Multi-Tenancy [Hybrid Access]
         L[Local Laptop: OpenCode / Pi\nDirect Local Shell Execution]
         M[Edge Friend: Drew's Laptop\nLocal Hermes/OpenCode -> WireGuard VPN]
         N[Phone: Telegram App\nMulti-Topic Supergroup]
+        O[Browser: Open WebUI\nhttp://host:3001]
 
         L -- sk-chris-master --> H
         M -- sk-drew-edge Rate Limited --> H
         N <--> J
+        O --> R
     end
 ```
 
@@ -114,9 +122,81 @@ flowchart TD
 
 This mirrors the actual deployed file exactly. `herdr`'s package/service and the `drew` account are applied; `drew` has no SSH key wired up yet (public keys aren't secrets — when available it goes straight into `authorizedKeys.keys` as a string literal, same as chris's).
 
+The `models` list is now hoisted into a top-level `let` binding (rather than scoped inside `systemd.services`) so the download services, their triggering timers, and `docker-compose-app`'s marker-poll loop can all share it without duplicating the list three times. Current entries, in the order they were added, with the reasoning that got each one there:
+
+1. **`qwen3.6-35b-a3b`** (`Qwen/Qwen3.6-35B-A3B`, bf16) — primary. gfx1151 (RDNA3.5) has no FP8 matrix-core hardware at all (FP8 WMMA support starts at RDNA4), and every real-world report of Qwen3-Next-family FP8 checkpoints on this exact toolbox/hardware fails to load or stalls at Triton autotune, not just runs slow. A plain bf16 release of Qwen3-Coder-Next is ~160GB, too large for the 124GB GPU allocation regardless. Qwen3.6-35B-A3B is proven working at bf16 on this exact hardware via this exact toolbox, and independently benchmarks ahead of gpt-oss-120b on coding despite being a third the size.
+2. **`qwen3.5-4b`** (`Qwen/Qwen3.5-4B`, bf16) — judge / quick tasks.
+3. **`qwen3-coder-next-gptq4bit`** (`btbtyler09/Qwen3-Coder-Next-GPTQ-4bit`, ~50GB GPTQ 4-bit, 80B total/3B active) — a larger "does this actually compete" comparison tier. No gfx1151 report exists for this exact checkpoint, but the identical `Qwen3NextForCausalLM` architecture (the non-coder predecessor) has a real ROCm TP=1 benchmark in the toolbox's own repo (177.9 tok/s aggregate) — never promoted to their official tested-models list, so treated as moderate-, not high-, confidence. Downloaded and benchmarked (Section 4 / `docs/benchmark-report-2026-07-22.html`); **not run concurrently with the primary model** — swapped in temporarily for the benchmark pass and currently stopped.
+4. **`qwen3.5-122b-a10b-awq4bit`** (`cyankiwi/Qwen3.5-122B-A10B-AWQ-4bit`, ~80GB on disk) — the 100B+ tier candidate. Explicitly **not** DeepSeek-V4-Flash (284B, FP4/FP8-native experts — same no-FP8-hardware wall as above) or MiniMax-M2 (its AWQ-4bit quant requires `tensor-parallel-size 2` / RDMA 2-node clustering, not usable single-node). The toolbox's own model table marks this entry "too big for single GPU," but that comment turned out to be a stale copy-paste from a different (8-bit) table entry — real evidence it runs at TP=1 exists (toolbox issue #22, ~9.5-10 tok/s single-stream), and a real ROCm bug that did block this hybrid mamba/attention architecture (bad `block_size`) was fixed upstream and merged into the toolbox image in March 2026. 80GB on disk is bigger than raw parameter math suggests because it bundles a vision encoder. **Currently downloading**; KV cache headroom will be tight at the usual 0.70 utilization, so it's planned to run without the judge model loaded concurrently once it lands (see Section 8 open work).
+
+Four more models are confirmed as good next candidates but not yet queued for download: `Qwen/Qwen3.6-27B` (55.6GB), `google/gemma-4-31B-it` (62.6GB), `google/gemma-4-26B-A4B-it` (51.6GB), and `Qwen/Qwen2.5-VL-7B-Instruct` (16.6GB, vision/OCR — will need `--limit-mm-per-prompt` flags not yet used anywhere in this stack). DeepSeek-V4-Flash and MiniMax-M2 are formally ruled out per the reasoning above, not just deferred.
+
+A full benchmark pass (`vllm bench serve` across the 35B, judge, and GPTQ-80B models at concurrency 1 and 8) plus a hardware/system audit is written up in **[`docs/benchmark-report-2026-07-22.html`](docs/benchmark-report-2026-07-22.html)**. Headline finding: there's no clean speed winner — the GPTQ 80B model wins single-stream (14.34 vs 11.91 tok/s) while the 35B bf16 model wins at concurrency 8 (33.19 vs 26.13 tok/s) with better latency scaling under load. Also notable: the 80B GPTQ model is *smaller on disk and leaves more KV cache headroom* than the 35B bf16 model (46.49GiB weights / 40.42GiB KV vs 66.97GiB weights / 18.49GiB KV) — quantization beats raw parameter count for memory footprint once it's actually measured rather than assumed.
+
+That same audit found and fixed three real system issues, now live below:
+- **CPU governor** was `powersave` on all 32 threads (~1.6-1.8GHz on a 5GHz-capable CPU) — forced to `performance` via `powerManagement.cpuFreqGovernor`.
+- **Router DNS resolver** was intermittently timing out — root cause of a cascade of downloads that looked like "network flakiness." Fixed with `networking.nameservers` listing the router first and public resolvers (1.1.1.1, 8.8.8.8) as fallback, plus `networking.networkmanager.dns = "none"` — NetworkManager manages `/etc/resolv.conf` itself by default and was silently ignoring `networking.nameservers` without it (confirmed: the first attempt at this fix had zero effect on the live file).
+- **`rocm-smi`'s VRAM metric is misleading on this unified-memory APU** — it only reports the 1GB static BIOS carve-out, not real GTT/unified-memory usage (showed 208MB used while tens of GB were genuinely allocated). Added `amdgpu_top` and `nvtopPackages.amd` as GTT-aware alternatives, plus a batch of common shell tools (`jq`, `ripgrep`, `yq`, `zsh`, `vim`, `asdf-vm`, `fzf`, `fd`, `netcat-gnu`, `dnsutils`, `curl`, `lsof`, `net-tools`) to `environment.systemPackages`.
+
+A fourth, more serious finding came out of the same audit: **Docker manages its own FORWARD-chain iptables rules, which bypass NixOS's firewall entirely for published container ports.** Confirmed directly — port 8000 (raw vLLM, zero auth, never in `allowedTCPPorts`) was externally reachable on the LAN the whole time regardless of what was declared here. Fixed with `networking.firewall.filterForward = true`, which required switching to the nftables backend (`networking.nftables.enable = true` — `filterForward` doesn't exist on the classic iptables backend at all). Ports 8000/8001 (raw vLLM) are now deliberately excluded from the allowlist going forward; LiteLLM on 4000 is the intended authenticated gateway, and direct vLLM access is meant to stay host-local only (`docker exec`, `vllm bench serve`), never LAN-reachable.
+
+**Deployment pipeline redesign.** The root problem: `nixos-rebuild switch` blocks synchronously on starting or restarting any systemd unit that takes a long time — like a multi-GB model download — turning repeated, unrelated config pushes into 15-40 minute stalls. Two fixes, both live below:
+- `restartIfChanged = false` on the model-download and `docker-compose-app` services — an unrelated config change no longer force-restarts (and blocks on) an in-flight download; the new unit definition just takes effect the next time the unit naturally starts.
+- Model downloads and `docker-compose-app` moved from a direct `wantedBy = [ "multi-user.target" ]` to timer-triggered (`systemd.timers`, `OnBootSec`). Arming a timer is near-instant regardless of how long the triggered work takes, unlike a direct `wantedBy` on an already-active target, which `nixos-rebuild switch` tries to start synchronously as part of activation.
+- `docker-compose-app` deliberately does **not** use `after=`/`wants=` against the download services to express "wait for downloads." Those retry indefinitely on failure, so ordering against them only proves "the most recent attempt exited," not "eventually succeeded." Instead it polls the same `.download-complete` marker files the downloads already produce.
+- Verified end-to-end: killed an in-flight download mid-transfer, pushed a config change, confirmed the switch completed in ~3.4 seconds (not 15-40 minutes), the download resumed from where it was killed rather than restarting from scratch, and downstream services correctly waited without blocking anything else.
+
+The same effort also found a genuine data-integrity bug: `hf download`'s own exit code is **not** reliable evidence of completeness — it can exit 0 while leaving an incomplete directory when the network is unreachable (observed directly: a "complete" 35B model download was actually missing 6 of 26 shards). Fixed by checking for leftover `.incomplete` marker files under the download cache and cross-checking sharded models' `model.safetensors.index.json` manifests before trusting a download, rather than trusting `hf download`'s exit code alone — both checks are in the download script below.
+
 ```nix
 { config, pkgs, lib, ... }:
 
+let
+  # Declarative model downloads — hoisted here (not scoped inside
+  # systemd.services) so both the download services and their triggering
+  # timers, plus docker-compose-app's marker-poll loop, can all reference
+  # the same list without duplicating it three times.
+  models = [
+    # Qwen3.6-35B-A3B (bf16), not Qwen3-Coder-Next-FP8: gfx1151 (RDNA3.5)
+    # has no FP8 matrix-core hardware at all (FP8 WMMA support starts at
+    # RDNA4), and every real-world report of Qwen3-Next-family FP8 on this
+    # exact toolbox/hardware fails to load or stalls at Triton autotune —
+    # not just slow, broken. BF16 Qwen3-Coder-Next is ~160GB, too large for
+    # our 124GB GPU allocation regardless. Qwen3.6-35B-A3B is proven
+    # working at bf16 on this exact hardware via this exact toolbox, and
+    # independently benchmarks ahead of gpt-oss-120b on coding despite
+    # being a third the size — best real "local Sonnet" fit available.
+    { name = "qwen3.6-35b-a3b"; repo = "Qwen/Qwen3.6-35B-A3B"; }
+    { name = "qwen3.5-4b"; repo = "Qwen/Qwen3.5-4B"; }
+    # Larger "does this actually compete with Sonnet" tier, ~50GB GPTQ
+    # 4-bit (not the ~160GB bf16 original, not the broken FP8 checkpoint —
+    # see above). No gfx1151 report exists for this exact checkpoint, but
+    # the identical Qwen3NextForCausalLM architecture (the non-coder
+    # predecessor, dazipe/Qwen3-Next-80B-A3B-Instruct-GPTQ-Int4A16) has a
+    # real ROCm tp1 benchmark in the toolbox's own repo: 177.9 tok/s
+    # aggregate — never promoted to their official tested-models list, so
+    # treat this as moderate-confidence, not proven. Only ~3B active params
+    # per token like the 35B model above, so there's a real chance the
+    # larger total-parameter capacity doesn't translate into a coding
+    # quality win — worth benchmarking head-to-head once both are running,
+    # not assumed.
+    { name = "qwen3-coder-next-gptq4bit"; repo = "btbtyler09/Qwen3-Coder-Next-GPTQ-4bit"; }
+    # 100B+ tier. NOT DeepSeek-V4-Flash (284B, native FP4/FP8 experts —
+    # same no-FP8-hardware wall as before) or MiniMax-M2 (its AWQ-4bit
+    # quant needs tensor-parallel-size 2 / RDMA 2-node clustering, not
+    # usable single-node). The toolbox's own model table marks this one
+    # "too big for single GPU" too, but that comment turned out to be a
+    # stale copy-paste from a different (8-bit) entry — real evidence it
+    # runs at TP=1 exists (toolbox issue #22, ~9.5-10 tok/s single-stream).
+    # A real ROCm bug did block this hybrid mamba/attention architecture
+    # (bad block_size), fixed upstream and merged into the toolbox image
+    # March 2026. 80GB on disk (bigger than raw param math suggests —
+    # includes a vision encoder). KV cache headroom will be tight at our
+    # usual 0.70 utilization; plan to run this without the judge model
+    # loaded concurrently, budget utilization accordingly at serve time.
+    { name = "qwen3.5-122b-a10b-awq4bit"; repo = "cyankiwi/Qwen3.5-122B-A10B-AWQ-4bit"; }
+  ];
+in
 {
   imports = [ ./hardware-configuration.nix ];
 
@@ -135,6 +215,14 @@ This mirrors the actual deployed file exactly. `herdr`'s package/service and the
   # automatic module loading has been unreliable for this device on this
   # board, so force it explicitly rather than depend on autodetection.
   boot.kernelModules = [ "mt7925e" ];
+
+  # This box defaulted to the "powersave" cpufreq governor on all 32 threads
+  # (confirmed via /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor —
+  # running at ~1.6-1.8GHz against a CPU that boosts past 5GHz). For a
+  # dedicated inference server this directly hurts the CPU-bound parts of the
+  # request path (tokenization, scheduling, Python overhead) — force
+  # "performance" instead. Driver is amd-pstate-epp, which supports this.
+  powerManagement.cpuFreqGovernor = "performance";
 
   # 2. System State & Headless Mode
   systemd.defaultUnit = "multi-user.target";
@@ -167,6 +255,24 @@ This mirrors the actual deployed file exactly. `herdr`'s package/service and the
       ];
     }
   ];
+
+  # The router's own DNS resolver (192.168.1.1, picked up via DHCP) has been
+  # intermittently timing out — root cause of a whole cascade of "transient"
+  # download failures blamed on hf-xet/network flakiness. Confirmed via
+  # direct testing: raw connectivity and DNS against 1.1.1.1 both work fine,
+  # only the router's resolver hangs. Router stays primary (keeps local/mDNS
+  # resolution working); public resolvers are listed after it as fallback —
+  # glibc's stub resolver tries each nameserver in order per query, so a
+  # timeout on the first one still falls through to the next within the same
+  # lookup, not just after some longer-term health check.
+  #
+  # `networking.networkmanager.dns = "none"` is required for the above to
+  # actually take effect: NetworkManager manages /etc/resolv.conf itself by
+  # default and silently ignores networking.nameservers otherwise (confirmed
+  # — the first attempt at this fix had zero effect on the live resolv.conf).
+  # "none" hands resolv.conf back to resolvconf, which does honor it.
+  networking.nameservers = [ "192.168.1.1" "1.1.1.1" "8.8.8.8" ];
+  networking.networkmanager.dns = "none";
 
   # NetworkManager: prefers wired automatically when a cable is present,
   # falls back to WiFi otherwise (useful during bring-up and for occasional
@@ -271,7 +377,21 @@ This mirrors the actual deployed file exactly. `herdr`'s package/service and the
   # rocm-smi is a CLI monitoring tool, not a driver — belongs on PATH via
   # systemPackages, not hardware.graphics.extraPackages (that's for driver
   # libraries the graphics stack loads, not user-facing commands).
-  environment.systemPackages = with pkgs; [ rsync docker-compose git rocmPackages.rocm-smi herdr ];
+  #
+  # amdgpu_top over rocm-smi for anything memory-related: rocm-smi's VRAM
+  # metric only reports the tiny 1GB static BIOS carve-out on this APU, not
+  # the ~124GB GTT/unified-memory pool actually in use (confirmed directly —
+  # rocm-smi showed 208MB used while docker/vLLM's own logs showed tens of
+  # GB actually allocated). amdgpu_top reads GTT correctly. nvtopPackages.amd
+  # included too as a more familiar UI for the same underlying data.
+  environment.systemPackages = with pkgs; [
+    rsync docker-compose git rocmPackages.rocm-smi herdr htop amdgpu_top nvtopPackages.amd
+    # Common shell tools. Note: "yq" here is nixpkgs' classic Python/jq-wrapper
+    # variant, not the more commonly-used Go rewrite (that's yq-go) — swap if
+    # that's actually what's wanted. "nc" comes from netcat-gnu; "dig" from
+    # dnsutils; "netstat" from net-tools.
+    jq ripgrep yq zsh vim asdf-vm fzf fd netcat-gnu dnsutils curl lsof net-tools
+  ];
 
   # Herdr agent-multiplexer daemon (per-user, persists across SSH
   # disconnects). One instance per user — chris's for now, drew's own
@@ -303,44 +423,158 @@ This mirrors the actual deployed file exactly. `herdr`'s package/service and the
   # HF_HUB_DISABLE_XET / timeout env vars and `nix shell ... hf download`
   # invocation already proven to work reliably on this network path.
   systemd.services = let
-    models = [
-      # Qwen3.6-35B-A3B (bf16), not Qwen3-Coder-Next-FP8: gfx1151 (RDNA3.5)
-      # has no FP8 matrix-core hardware at all (FP8 WMMA support starts at
-      # RDNA4), and every real-world report of Qwen3-Next-family FP8 on this
-      # exact toolbox/hardware fails to load or stalls at Triton autotune —
-      # not just slow, broken. BF16 Qwen3-Coder-Next is ~160GB, too large for
-      # our 124GB GPU allocation regardless. Qwen3.6-35B-A3B is proven
-      # working at bf16 on this exact hardware via this exact toolbox, and
-      # independently benchmarks ahead of gpt-oss-120b on coding despite
-      # being a third the size — best real "local Sonnet" fit available.
-      { name = "qwen3.6-35b-a3b"; repo = "Qwen/Qwen3.6-35B-A3B"; }
-      { name = "qwen3.5-4b"; repo = "Qwen/Qwen3.5-4B"; }
-    ];
     mkModelDownloadService = { name, repo }: {
       description = "Download ${repo} to /var/lib/ai-models/${name}";
       after = [ "network-online.target" ];
       wants = [ "network-online.target" ];
-      wantedBy = [ "multi-user.target" ];
+      # Deliberately NOT wantedBy multi-user.target — that target is already
+      # active on a running system, so nixos-rebuild switch would try to
+      # START this directly as part of activation and block until a
+      # multi-hour download finishes. Triggered by its own .timer instead
+      # (below), which arms near-instantly regardless of how long the
+      # actual download takes — decouples this from every future rebuild's
+      # critical path, not just from restarts of an already-running one
+      # (that's what restartIfChanged handles).
       unitConfig.ConditionPathExists = "!/var/lib/ai-models/${name}/.download-complete";
+      # Multi-hour, multi-GB downloads over this network path have already
+      # shown one transient mid-stream socket error (httpx.ReadError after
+      # 39min/36GB) — `hf download --local-dir` resumes from its own cache on
+      # retry, so auto-restarting is both safe and necessary: without it, a
+      # blip anywhere in a multi-hour transfer needs a manual `sudo systemctl
+      # restart`, and the sudo rule below is deliberately scoped to just
+      # `nixos-rebuild switch`, not systemctl.
+      startLimitIntervalSec = 0;
+      # Without this, `nixos-rebuild switch` restarts ANY unit whose
+      # definition changed — including this one, every time the shared
+      # download-script logic changes, even for edits unrelated to whichever
+      # download happens to be mid-transfer. For a oneshot this restart
+      # blocks the whole switch-to-configuration run until the (re-started,
+      # from-scratch-looking-but-actually-resuming) download finishes —
+      # this is exactly what turned several unrelated pushes today into
+      # 15-40 minute stalls. false means: update the unit file on disk, but
+      # don't touch an already-running instance — the new definition takes
+      # effect next time it starts (next boot, or its own next retry).
+      restartIfChanged = false;
       serviceConfig = {
         Type = "oneshot";
         User = "chris";
         EnvironmentFile = "-/etc/nixos/secrets/hf-token.env";
+        Restart = "on-failure";
+        RestartSec = 30;
       };
       script = ''
         set -euo pipefail
         export HF_HUB_DISABLE_XET=1
         export HF_HUB_DOWNLOAD_TIMEOUT=120
         export HF_HUB_ETAG_TIMEOUT=900
+        DEST=/var/lib/ai-models/${name}
+        set +e
         ${pkgs.nix}/bin/nix --extra-experimental-features "nix-command flakes" shell nixpkgs#python3Packages.huggingface-hub \
-          --command hf download ${repo} --local-dir /var/lib/ai-models/${name}
-        touch /var/lib/ai-models/${name}/.download-complete
+          --command hf download ${repo} --local-dir "$DEST"
+        HF_EXIT=$?
+        set -e
+
+        # hf download's own exit code is NOT reliable evidence of completeness.
+        # Two real failure modes observed on this exact box in one afternoon:
+        # (1) it can exit 0 with shards still missing after a resume-state race
+        #     from an auto-restart killing a prior attempt mid-transfer;
+        # (2) when the network is unreachable (this box's router DNS resolver
+        #     has intermittently timed out — see networking.nameservers above),
+        #     it prints "Returning existing local_dir ... as remote repo cannot
+        #     be accessed" and exits 0 anyway, treating "couldn't check" as
+        #     success. So: don't trust $HF_EXIT alone, and don't skip
+        #     verification just because it was 0.
+        #
+        # Most robust, format-agnostic signal: hf's own per-file .incomplete
+        # markers under the download cache. A file only loses its .incomplete
+        # suffix once fully fetched and etag-verified, so this catches
+        # truncated/partial files too, not just missing ones — and works for
+        # single-file models that have no shard manifest to diff against.
+        incomplete=$(find "$DEST/.cache/huggingface/download" -name '*.incomplete' 2>/dev/null || true)
+        if [ -n "$incomplete" ]; then
+          echo "Incomplete download, unfinished file(s):" >&2
+          echo "$incomplete" >&2
+          exit 1
+        fi
+
+        # Belt-and-suspenders for sharded models: cross-check the model's own
+        # manifest, in case a shard is fully absent (no .incomplete residue at
+        # all — e.g. hf never attempted it this run because it thought the
+        # existing local_dir was already fine per failure mode (2) above).
+        INDEX="$DEST/model.safetensors.index.json"
+        if [ -f "$INDEX" ]; then
+          missing=""
+          for f in $(grep -o 'model-[0-9]*-of-[0-9]*\.safetensors' "$INDEX" | sort -u); do
+            [ -f "$DEST/$f" ] || missing="$missing $f"
+          done
+          if [ -n "$missing" ]; then
+            echo "Incomplete download, missing shards:$missing" >&2
+            exit 1
+          fi
+        fi
+
+        if [ "$HF_EXIT" -ne 0 ]; then
+          echo "hf download exited $HF_EXIT but file-level checks found nothing missing; treating as success" >&2
+        fi
+        touch "$DEST/.download-complete"
       '';
     };
   in (lib.listToAttrs (map (m: {
     name = "download-model-${m.name}";
     value = mkModelDownloadService m;
   }) models)) // {
+    # Closes the last "100% bootstrap from a wipe" gap: everything else
+    # (NixOS itself, model downloads) is declarative and self-triggering,
+    # but nothing previously ran `docker compose up -d` on a genuinely fresh
+    # install — the containers had never been created, so there was nothing
+    # for docker's own `restart: unless-stopped` policies to reattach to.
+    # docker/.env is gitignored (real secrets, never auto-generated) — this
+    # fails loudly with a clear message rather than silently no-op'ing if
+    # it's missing, so the one remaining manual step is obvious, not hidden.
+    #
+    # Waits for every model's completion marker directly in-script, rather
+    # than expressing that as systemd after=/wants= on the download units.
+    # Those units retry indefinitely on failure (Restart=on-failure,
+    # startLimitIntervalSec=0), and ordering against a unit like that only
+    # guarantees "its most recent attempt exited" — not "eventually
+    # succeeded". A failed attempt between retries would satisfy After=
+    # ordering prematurely and let this start with weights still missing.
+    # Polling the same marker files the downloads already produce for their
+    # own idempotency sidesteps that entirely.
+    docker-compose-app = {
+      description = "Start local-ai-machine docker-compose application stack";
+      after = [ "docker.service" "network-online.target" ];
+      wants = [ "docker.service" "network-online.target" ];
+      # Timer-triggered, not wantedBy multi-user.target — same reasoning as
+      # the download services above: this can block for a long time waiting
+      # on the marker-poll loop below, and multi-user.target is already
+      # active on a running system, so a direct wantedBy would make
+      # nixos-rebuild switch block starting it synchronously.
+      restartIfChanged = false;
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        User = "chris";
+        WorkingDirectory = "/home/chris/local-ai-machine/docker";
+        Restart = "on-failure";
+        RestartSec = 60;
+      };
+      script = ''
+        set -euo pipefail
+        ${lib.concatMapStringsSep "\n" (m: ''
+          until [ -f /var/lib/ai-models/${m.name}/.download-complete ]; do
+            echo "Waiting on ${m.name} download to complete..."
+            sleep 30
+          done
+        '') models}
+        if [ ! -f .env ]; then
+          echo "docker/.env is missing. Secrets are gitignored and never auto-generated — copy .env.example to .env, populate real values, then run: systemctl start docker-compose-app" >&2
+          exit 1
+        fi
+        ${pkgs.docker}/bin/docker compose up -d
+      '';
+    };
+
     synology-backup = {
       description = "Mirror local AI state to Synology NAS";
       after = [ "network-online.target" ];
@@ -360,33 +594,76 @@ This mirrors the actual deployed file exactly. `herdr`'s package/service and the
     };
   };
 
-  systemd.timers.synology-backup = {
-    description = "Daily Synology backup mirror";
-    wantedBy = [ "timers.target" ];
-    timerConfig = {
-      OnCalendar = "03:00";
-      Persistent = true;
+  # Triggers for the model downloads and docker-compose-app (see
+  # systemd.services above for why these are timer-triggered rather than
+  # wantedBy multi-user.target: arming a timer is near-instant regardless of
+  # how long the thing it triggers takes, so `nixos-rebuild switch` never
+  # blocks on it — only the first START of a brand-new long-running unit
+  # was ever a problem, and this sidesteps that class of problem entirely,
+  # not just the "restarting an already-running one" class that
+  # restartIfChanged handles.
+  systemd.timers = (lib.listToAttrs (map (m: {
+    name = "download-model-${m.name}";
+    value = {
+      description = "Trigger for download-model-${m.name}.service";
+      wantedBy = [ "timers.target" ];
+      timerConfig.OnBootSec = "30s";
+    };
+  }) models)) // {
+    docker-compose-app = {
+      description = "Trigger for docker-compose-app.service";
+      wantedBy = [ "timers.target" ];
+      timerConfig.OnBootSec = "45s";
+    };
+    synology-backup = {
+      description = "Daily Synology backup mirror";
+      wantedBy = [ "timers.target" ];
+      timerConfig = {
+        OnCalendar = "03:00";
+        Persistent = true;
+      };
     };
   };
 
   # Firewall Rules — 8080 (Turnstone, plain HTTP for now — no Caddy/TLS
   # sidecar deployed yet, see docker-compose.yml), 11434 (Ollama sandbox,
-  # not yet running but staged) alongside SSH/LiteLLM/Grafana/Prometheus.
+  # not yet running but staged), 3001 (Open WebUI chat interface) alongside
+  # SSH/LiteLLM/Grafana/Prometheus.
   # 8443 dropped: that's Turnstone's upstream Caddy-fronted HTTPS dashboard
   # port, which we don't run — nothing listens there in this first pass.
-  networking.firewall.allowedTCPPorts = [ 22 4000 8080 3000 9090 11434 ];
+  #
+  # Deliberately NOT listing 8000/8001 (raw vLLM, zero auth) — LiteLLM on
+  # 4000 is the intended authenticated gateway to those models; direct
+  # access is host-local only (docker exec / vllm bench serve), never meant
+  # to be reachable on the LAN.
+  #
+  # filterForward is required for allowedTCPPorts to mean anything for
+  # docker-published ports at all: Docker manages its own FORWARD-chain
+  # iptables rules, which by default bypass NixOS's firewall entirely for
+  # NAT'd container traffic. Confirmed directly — port 8000 (never in this
+  # list) was externally reachable regardless, meaning every container port
+  # published via docker-compose has been open on the LAN all session,
+  # irrespective of what's declared here. This makes allowedTCPPorts
+  # actually apply to Docker's forwarded traffic too.
+  # filterForward only exists on the nftables-based firewall backend (the
+  # classic iptables one doesn't support it at all — confirmed by a hard
+  # eval failure) — no custom iptables rules/extraCommands anywhere in this
+  # config, so switching backends is low-risk.
+  networking.nftables.enable = true;
+  networking.firewall.filterForward = true;
+  networking.firewall.allowedTCPPorts = [ 22 4000 8080 3000 3001 9090 11434 ];
 
   system.stateVersion = "24.11";
 }
 ```
 
-**New in this update: declarative model downloads.** Previously, getting model weights onto the machine required a manual `hf download` session over SSH after every fresh install. Now `systemd.services` generates one `download-model-<name>` oneshot unit per entry in the `models` list above (currently `qwen3.6-35b-a3b` and `qwen3.5-4b`), each `wantedBy = [ "multi-user.target" ]` so it runs automatically on every boot, gated by a `.download-complete` marker file (not just directory existence, so a partial download retries rather than silently passing as done), and reusing the exact `HF_HUB_DISABLE_XET`/timeout env vars and `hf download` invocation already proven reliable on this network path (see Task 3.1). This means a freshly flashed machine reaches full model availability from `nixos-rebuild switch` alone — no manual download step required — directly fulfilling the goal of driving model downloads from the flake so the box can be reflashed and rebuilt easily.
+**New service: `docker-compose-app`.** Closes the last "100% bootstrap from a wipe" gap — previously nothing ran `docker compose up -d` on a fresh install; the model-download automation existed, but nothing then brought the application stack itself up. Now declarative and timer-triggered, it waits for every model's `.download-complete` marker (see reasoning above), and fails loudly with a clear message if `docker/.env` is missing rather than silently no-op'ing — secrets stay gitignored and are never auto-generated, so this remains the one genuinely irreducible manual step for a fresh bootstrap.
 
 ---
 
 ## 4. Containerized Runtime Stack (`docker/docker-compose.yml`)
 
-First-pass model set: **Qwen3.6-35B-A3B** (bf16, primary) + **Qwen3.5-4B** (judge/quick tasks). This is a deliberate narrowing from a broader 9-model exploration (Qwen3-Coder-Next, Qwen3.6-27B/35B-A3B, Gemma4-31B/26B-A4B, MiniMax-M2, DeepSeek-V4-Flash as other primary-candidate options; Qwen2.5-VL-7B for OCR/screenshots) — those alternatives, plus vision and the Ollama sandbox, aren't wired into compose yet since only the two first-pass models are actually staged/staging on disk.
+Deployed model set: **Qwen3.6-35B-A3B** (bf16, primary) + **Qwen3.5-4B** (judge/quick tasks), served by the two vLLM containers below. **Qwen3-Coder-Next-GPTQ-4bit** (80B total/3B active) is downloaded and was benchmarked against the primary tier (`docs/benchmark-report-2026-07-22.html`) but is not wired into compose as a standing service — it was swapped in temporarily in place of the primary container for the benchmark run and is not currently running. **`cyankiwi/Qwen3.5-122B-A10B-AWQ-4bit`** (100B+ tier) is currently downloading and has no compose entry yet either. This is a deliberate narrowing from a broader model exploration — see Section 3 for the full list of downloaded, downloading, and confirmed-but-not-yet-queued candidates, and the reasoning for each. Vision (Qwen2.5-VL-7B) and the Ollama sandbox still aren't wired into compose since neither is staged on disk yet.
 
 **The primary model changed mid-stream, same day, from Qwen3-Coder-Next-FP8 to Qwen3.6-35B-A3B — a real finding, not a whim.** gfx1151 (Strix Halo, RDNA3.5) has **no FP8 matrix-core hardware at all** — AMD's own GPUOpen docs show FP8 WMMA support starting at RDNA4, and gfx1151 predates that generation. Real-world reports confirm Qwen3-Next-family FP8 checkpoints fail to load or stall on this exact toolbox+hardware combination (not just run slow): `kyuz0/amd-strix-halo-vllm-toolboxes` GitHub issue #1 (maintainer: "I think FP8 won't work unfortunately, the other FP8 models didn't"), `vllm-project/vllm` issue #40934 (fp8 + qwen3_next hybrid architecture failing even on NVIDIA), and the independent `hec-ovi/vllm-awq4-qwen` project explicitly choosing AWQ-INT4 over FP8 for this exact hardware family. A plain BF16 release of Qwen3-Coder-Next is ~160GB — too large for the 124GB GPU memory allocation regardless of the FP8 issue.
 
@@ -593,12 +870,36 @@ services:
     depends_on:
       - prometheus
 
+  # Browser chat UI — points at LiteLLM's unified OpenAI-compatible endpoint
+  # rather than any vLLM server directly, so every model alias (coder/judge/
+  # governed_coder) is reachable from one place without per-model wiring.
+  # Port 3001 (not 8080, which Turnstone already owns) — kept in the 3xxx
+  # range alongside Grafana as the other human-facing web UI, distinct from
+  # the 8xxx/4000 API ports.
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    restart: unless-stopped
+    ports:
+      - "3001:8080"
+    environment:
+      - OPENAI_API_BASE_URL=http://litellm:4000/v1
+      - OPENAI_API_KEY=${LITELLM_MASTER_KEY}
+      - WEBUI_AUTH=true
+    volumes:
+      - open_webui_data:/app/backend/data
+    depends_on:
+      - litellm
+
 volumes:
   turnstone_postgres_data:
   litellm_postgres_data:
   vllm_primary_cache:
   vllm_judge_cache:
+  open_webui_data:
 ```
+
+**New service: `open-webui`.** The first browser-based chat interface in the whole stack — previously only raw API endpoints existed. `ghcr.io/open-webui/open-webui:main`, port `3001` (not `8080`, which Turnstone already owns), pointed at LiteLLM's unified OpenAI-compatible endpoint (`http://litellm:4000/v1`) rather than any vLLM server directly, so every model alias (`coder`/`judge`/`governed_coder`) is reachable from one UI without per-model wiring. No bind-mounted config — it's entirely env-var driven, with its own state (auth, chat history) in the `open_webui_data` named volume.
 
 ---
 
@@ -672,18 +973,21 @@ When prompted for multi-file software engineering, build executions, or shell mo
 
 | Tier | Component | Role / Function | Connectivity / Endpoint |
 | :--- | :--- | :--- | :--- |
-| **Compute** | **vLLM Primary** | Qwen3.6-35B-A3B (bf16) coder slot (`--tool-call-parser qwen3_coder`) | `http://localhost:8000/v1` |
-| **Compute** | **vLLM Judge** | Qwen3.5-4B — quick tasks and Turnstone safety judge | `http://localhost:8001/v1` |
+| **Compute** | **vLLM Primary** | Qwen3.6-35B-A3B (bf16) coder slot (`--tool-call-parser qwen3_coder`) | `http://localhost:8000/v1` (not LAN-exposed — see Section 3 firewall notes) |
+| **Compute** | **vLLM Judge** | Qwen3.5-4B — quick tasks and Turnstone safety judge | `http://localhost:8001/v1` (not LAN-exposed) |
+| **Compute** | **vLLM (benchmarked, not standing)** | Qwen3-Coder-Next-GPTQ-4bit (80B total/3B active) — downloaded, benchmarked against primary (`docs/benchmark-report-2026-07-22.html`), currently stopped, no compose entry | n/a |
+| **Compute** | **100B+ candidate (downloading)** | `cyankiwi/Qwen3.5-122B-A10B-AWQ-4bit` — real single-GPU (TP=1) evidence found despite the toolbox's own stale "too big for single GPU" table comment; see Section 3 | n/a |
 | **Compute** | **Ollama Sandbox** | Lazy-load testing for new model compositions — not yet wired into compose | `http://localhost:11434` |
 | **Gateway** | **LiteLLM** | Virtual keys (`sk-chris`, `sk-drew`, generated via `/key/generate`, not static config), parallel tool passing | `http://localhost:4000/v1` |
-| **Governance**| **Turnstone** | Qwen3.5-4B safety judge, deferred BM25 MCP gateway, evals/doctor | `http://localhost:8080` |
+| **Interface** | **Open WebUI** | Browser chat UI over LiteLLM's unified endpoint — first browser-based chat interface in the stack | `http://localhost:3001` |
+| **Governance**| **Turnstone** | Empty model registry — judge/reranker role wiring still deferred (no env-var shortcut, needs TOML config or console UI work) | `http://localhost:8080` |
 | **Control** | **Herdr Daemon** | PTY multiplexer, state tracking (`🔴 Blocked`, `🟡 Working`) | `/run/user/1000/herdr.sock` |
 | **Control** | **Hermes Agent** | 24/7 Telegram topic router, profiles, memory, skills | Phone Telegram / Socket |
 | **Execution** | **OpenCode** | LSP diagnostics, AST parsing, multi-file editing | Local Shell / Server Attach |
 | **Execution** | **Claude Code** | Headless Auto Mode under Anthropic ML Classifier | Server Subshell / Herdr |
 | **Execution** | **Pi Agent** | Ultra-minimal 4-tool primitive harness & TS extensions | Local Terminal / Herdr |
-| **Telemetry** | **Prometheus** | Metric scraping | `http://localhost:9090` |
-| **Telemetry** | **Grafana** | VRAM, power draw, thermals dashboards | `http://localhost:3000` |
+| **Telemetry** | **Prometheus** | Running, but no scrape target for either vLLM server; `litellm` target down; `node` target points at a nonexistent `node-exporter` container | `http://localhost:9090` |
+| **Telemetry** | **Grafana** | Running, but no datasource provisioned, dashboard is an empty placeholder, still on default `admin:admin` | `http://localhost:3000` |
 
 ---
 
@@ -735,16 +1039,15 @@ Real hardware bring-up surfaced several bugs not visible from the config alone �
 - [x] **Task 3.2: Apply configuration.nix Additions**
   Added the `drew` user (no SSH key yet — public keys aren't secrets, so it'll go inline as a string literal when available, not into `secrets/`), the `herdr` package + systemd user service, and expanded firewall ports (11434; 8443 later dropped — see below). Also fixed a stale reference caught along the way: the Synology backup script was still targeting `/var/lib/docker/volumes/hermes_data/`, a leftover from when Hermes ran as a docker container — corrected to `/home/chris/.hermes/` and `/home/chris/.herdr/` matching the actual host-level architecture.
   **Same-day follow-up:** dropped port 8443 from the firewall (nothing listens there — no Caddy/TLS sidecar deployed in front of Turnstone) and added the declarative `download-model-*` systemd services described in Section 3, so model weights are fetched automatically on boot instead of requiring a manual SSH session.
-- [ ] **Task 3.3: Container Spin-up — IN PROGRESS, model swap mid-flight**
-  `docker compose up -d` from `docker/` — vLLM primary + judge, LiteLLM (+ its own Postgres), Turnstone (+ its Postgres), Prometheus, Grafana. Ollama sandbox not included yet (no models staged for it).
-  **Status:** Discovered the target machine's `/home/chris/local-ai-machine/docker/` files (`docker-compose.yml`, `litellm/config.yaml`) were still the original Phase 1 scaffolding — old model names (Qwen2.5-72B) and old container names (`vllm-engine`/`hermes-agent`) — despite multiple config commits over the course of Phase 3. Only `configuration.nix` had actually been kept in sync via targeted rsync calls; the rest of the repo never was. Fixed with a full repo rsync (excluding `.git`, `.claude`, `hardware-configuration.nix`, `flake.lock`) from the Mac worktree to `/home/chris/local-ai-machine/` on the target; confirmed `docker-compose.yml` now matches exactly via `diff`. Generated `docker/.env` credentials locally (`LITELLM_MASTER_KEY`, `LITELLM_DB_PASSWORD`, `DB_PASSWORD` via `openssl rand`; `ANTHROPIC_API_KEY` left blank — optional, only needed for the `claude-sonnet` cloud-fallback route) — pushed to the target. Added `docker/.env.example` documenting these vars, consistent with the `secrets/*.env.example` pattern; `docker/.env` itself is already covered by the bare `.env` entry in `.gitignore`.
-  First `docker compose up -d` attempt **failed** with a real pull-access-denied error: `kyuz0/amd-strix-halo-vllm:latest` and `turnstonelabs/turnstone:latest` are both hallucinated image references that don't exist on Docker Hub (corrected to `docker.io/kyuz0/vllm-therock-gfx1151:latest` and `ghcr.io/turnstonelabs/turnstone:latest` — see Section 4). While fixing that, the primary model itself was swapped from Qwen3-Coder-Next-FP8 to Qwen3.6-35B-A3B (bf16) for the hardware-support reasons detailed in Section 4, and Turnstone's env vars/config mount were corrected against its actual docs (also Section 4).
-  **Current state:** the corrected `docker-compose.yml`, `configuration.nix`, and `litellm/config.yaml` have been pushed to the target and a `nixos-rebuild switch` was just triggered, which kicks off the Qwen3.6-35B-A3B download automatically via the new declarative systemd service (Section 3) — this is a large download, likely still in progress. `docker compose up -d` has **not** been run yet with the corrected model/images — the earlier attempt failed on the bad image reference and was never successfully retried, and now depends on the model download finishing first.
-  **Next:** wait for the `download-model-qwen3.6-35b-a3b` systemd service to complete, then run `docker compose up -d` from `docker/`, verify all containers (vllm-primary, vllm-judge, litellm-db, litellm, turnstone-db, turnstone, prometheus, grafana) come up healthy end-to-end.
-- [ ] **Task 3.4: Endpoint Validation**
-  Confirm both vLLM slots respond directly (`qwen3.6-35b-a3b`, `qwen3.5-4b-judge`), LiteLLM routes `coder`/`judge`/`governed_coder` correctly, and verify inference speed / prefix caching behavior under load.
+- [x] **Task 3.3: Container Spin-up — COMPLETE**
+  `docker compose up -d` from `docker/` — vLLM primary + judge, LiteLLM (+ its own Postgres), Turnstone (+ its Postgres), Prometheus, Grafana, and now Open WebUI. Ollama sandbox still not included (no models staged for it).
+  **History:** Discovered the target machine's `/home/chris/local-ai-machine/docker/` files were still the original Phase 1 scaffolding despite multiple config commits over the course of Phase 3 — only `configuration.nix` had actually been kept in sync via targeted rsync calls. Fixed with a full repo rsync from the Mac worktree, confirmed via `diff`. Generated real `docker/.env` credentials locally and pushed to the target; added `docker/.env.example` documenting the vars.
+  First `docker compose up -d` attempt **failed** with a real pull-access-denied error: `kyuz0/amd-strix-halo-vllm:latest` and `turnstonelabs/turnstone:latest` are both hallucinated image references that don't exist on Docker Hub (corrected to `docker.io/kyuz0/vllm-therock-gfx1151:latest` and `ghcr.io/turnstonelabs/turnstone:latest` — see Section 4). While fixing that, the primary model was swapped from Qwen3-Coder-Next-FP8 to Qwen3.6-35B-A3B (bf16) for the hardware-support reasons detailed in Section 4, and Turnstone's env vars/config mount were corrected against its actual docs.
+  **Resolved:** all containers (vllm-primary, vllm-judge, litellm-db, litellm, turnstone-db, turnstone, prometheus, grafana, open-webui) came up healthy end-to-end once the model download finished and the corrected images/config were applied.
+- [x] **Task 3.4: Endpoint Validation — COMPLETE**
+  Both vLLM slots confirmed responding directly (`qwen3.6-35b-a3b`, `qwen3.5-4b-judge`); LiteLLM routes `coder`/`judge`/`governed_coder` verified. Inference speed and latency under load were formally benchmarked (not just spot-checked) via `vllm bench serve` at concurrency 1 and 8 — full results in `docs/benchmark-report-2026-07-22.html` and summarized in the 2026-07-22 decision-log entries below. The Qwen3-Coder-Next-GPTQ-4bit comparison tier was benchmarked in the same pass. The 122B candidate still needs its own benchmark once its download finishes (tracked in Open Next Steps below).
 - [ ] **Task 3.5: Turnstone Judge & Governed Route Verification**
-  Confirm Turnstone's safety judge (Qwen3.5-4B judge slot) actually intercepts and evaluates `governed_coder` requests as intended, and that `turnstone-eval`/`turnstone-doctor` run cleanly. Wiring `vllm-judge` in as Turnstone's judge/reranker model has no env-var equivalent — it's TOML-config (`~/.config/turnstone/config.toml`) or console-UI only, so writing that config is real remaining work here, not just plumbing that got skipped.
+  Confirm Turnstone's safety judge (Qwen3.5-4B judge slot) actually intercepts and evaluates `governed_coder` requests as intended, and that `turnstone-eval`/`turnstone-doctor` run cleanly. Wiring `vllm-judge` in as Turnstone's judge/reranker model has no env-var equivalent — it's TOML-config (`~/.config/turnstone/config.toml`) or console-UI only, so writing that config is real remaining work here, not just plumbing that got skipped. Confirmed still empty as of the 2026-07-22 audit.
 - [ ] **Task 3.6: Multi-Tenant Key Verification**
   Generate `sk-chris-master` and `sk-drew-edge` via LiteLLM's `/key/generate` API (not static config — see Section 5). Confirm chris has full access and drew is correctly rate-limited and blocked from cloud/governed-admin routes.
 - [ ] **Task 3.7: Herdr & Hermes Control Plane Verification**
@@ -754,10 +1057,30 @@ Real hardware bring-up surfaced several bugs not visible from the config alone �
 
 - [ ] **Task 4.1: Execute Backup Mirror Test**
   Run `scripts/sync-backup.sh` (or `systemctl start synology-backup.service`) and verify files land under `tank/backups/local-ai-machine/` on the Synology, including the new `hermes/` and `herdr/` paths. Confirm DSM's Btrfs snapshot schedule is enabled on the `tank` share for point-in-time recovery.
-- [ ] **Task 4.2: Grafana Dashboard Baseline**
-  Open Grafana (`http://<host>:3000`) and establish baseline metrics for VRAM utilization, power draw, and thermals under full dual-vLLM load.
+- [ ] **Task 4.2: Grafana Dashboard Baseline — BLOCKED on monitoring wiring**
+  Open Grafana (`http://<host>:3000`) and establish baseline metrics for VRAM utilization, power draw, and thermals under full dual-vLLM load. **Not yet possible**: the 2026-07-22 audit (`docs/benchmark-report-2026-07-22.html`) found Grafana has no Prometheus datasource provisioned and its dashboard file is an empty placeholder (`"panels": []`); Prometheus itself has no scrape target for either vLLM server despite both exposing rich `/metrics`, the `litellm` scrape target is down, and the `node` target points at a `node-exporter` container that was never added to the compose stack. Grafana is also still on default `admin:admin` credentials. This is real open work, not a formality — see Open Next Steps below.
 - [ ] **Task 4.3: Edge Access Verification**
   Confirm Drew's WireGuard VPN path to the LiteLLM/Hermes endpoints works end-to-end with `sk-drew-edge`, respecting rate limits.
+
+### Decision Log — 2026-07-22: Benchmark pass, deployment pipeline redesign, hardware/system audit
+
+**Benchmark pass.** First real `vllm bench serve` runs across the 35B primary, 4B judge, and GPTQ 80B comparison models at concurrency 1 and 8, written up in full in `docs/benchmark-report-2026-07-22.html`. No clean speed winner: the GPTQ 80B model wins single-stream (14.34 vs 11.91 tok/s) with far more consistent latency, while the 35B bf16 model wins at concurrency 8 (33.19 vs 26.13 tok/s) and degrades less under load. Also surfaced a genuinely counterintuitive footprint finding: the 80B GPTQ model is *smaller on disk and leaves more KV cache headroom* than the 35B bf16 model (46.49GiB weights/40.42GiB KV vs 66.97GiB weights/18.49GiB KV) — quantization beat raw parameter count for memory footprint, worth remembering next time a bigger model looks automatically more expensive to run. The GPTQ model was run as a temporary swap-in, not concurrently with the primary; it is not a standing compose service.
+
+**Deployment pipeline redesign.** `nixos-rebuild switch` was found to block synchronously on starting/restarting any long-running systemd unit — a multi-GB model download turned unrelated config pushes into 15-40 minute stalls. Fixed with `restartIfChanged = false` on the download and `docker-compose-app` services, and by moving both from direct `wantedBy = multi-user.target` to timer-triggered units (`systemd.timers`, `OnBootSec`) — arming a timer is near-instant regardless of the triggered work's duration. `docker-compose-app` polls the downloads' own `.download-complete` marker files rather than using `after=`/`wants=` against them, since those retry indefinitely on failure and ordering against them would only prove "the most recent attempt exited," not "eventually succeeded." Verified end-to-end: killed an in-flight download mid-transfer, pushed a config change, confirmed the switch completed in ~3.4 seconds (not 15-40 minutes), and confirmed the download resumed rather than restarting from scratch. Also fixed a real data-integrity bug in the same effort: `hf download`'s exit code is not reliable evidence of completeness (observed directly — a "complete" 35B download was missing 6 of 26 shards); the download script now cross-checks `.incomplete` markers and sharded models' manifests instead of trusting the exit code alone.
+
+**Hardware/system audit.** Found and fixed the CPU governor stuck on `powersave` on all 32 threads (→ `performance`), an intermittently-timing-out router DNS resolver (→ fallback resolvers plus `networking.networkmanager.dns = "none"`, since NetworkManager was silently ignoring `networking.nameservers` otherwise), and `rocm-smi`'s VRAM metric being effectively useless on this unified-memory APU (→ added `amdgpu_top`/`nvtopPackages.amd`, plus a batch of missing common shell tools). Also found a real security gap: Docker's own FORWARD-chain iptables rules bypass NixOS's firewall entirely for published container ports — confirmed directly, port 8000 (raw vLLM, zero auth) was externally reachable despite never being in `allowedTCPPorts`. Fixed with `networking.firewall.filterForward = true` (required switching to the nftables backend). Ports 8000/8001 are now deliberately excluded from the allowlist going forward; LiteLLM on 4000 remains the only intended authenticated gateway. Full detail on all of the above is in Section 3.
+
+**New service: Open WebUI.** Added as the first browser-based chat interface in the stack, pointed at LiteLLM's unified endpoint rather than any vLLM server directly. See Section 4.
+
+### Open Next Steps
+
+The following are the concrete open items as of this update, in place of task-ID cross-references (task tracking is moving to an external kanban tool):
+
+- **Wire up Prometheus scrape targets.** Add scrape configs for both vLLM servers (they already expose rich `/metrics` and currently have no target at all), fix the `litellm` scrape target (currently down), and either add a real `node-exporter` container to the compose stack or remove the dangling `node` target that points at one.
+- **Provision a real Grafana setup.** Add the Prometheus datasource (currently none) and build out actual dashboard panels — `docker/grafana/dashboards/strix-halo.json` is still an empty `"panels": []` placeholder.
+- **Set real Grafana admin credentials.** Still on default `admin:admin`, confirmed active during the 2026-07-22 audit — needs a real password before this is exposed any further.
+- **Download the four confirmed-but-queued models** once the 122B download finishes and disk/bandwidth are free: `Qwen/Qwen3.6-27B` (55.6GB), `google/gemma-4-31B-it` (62.6GB), `google/gemma-4-26B-A4B-it` (51.6GB), and `Qwen/Qwen2.5-VL-7B-Instruct` (16.6GB, vision/OCR — will need `--limit-mm-per-prompt` flags not yet used anywhere in this stack).
+- **Benchmark the 122B model** once it finishes downloading, using the same `vllm bench serve` methodology as the 2026-07-22 report — run it without the judge model loaded concurrently, since KV cache headroom is expected to be tight at the usual utilization split.
 
 ---
 
