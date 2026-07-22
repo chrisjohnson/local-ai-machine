@@ -1,10 +1,13 @@
 version: '3.8'
 
 services:
-  # 1. Inference Engine (Donato Capitella Strix Halo Toolboxes)
-  vllm-engine:
+  # Primary: Qwen3-Coder-Next-FP8 (80B total / 3B active MoE, coding-agent
+  # specialized). Native FP8 checkpoint — matches vLLM's format directly,
+  # no GGUF/llama.cpp involved. Single unified-memory GPU, so no tensor
+  # parallelism needed (the official example assumes multi-GPU; we don't).
+  vllm-primary:
     image: kyuz0/amd-strix-halo-vllm:latest
-    container_name: vllm-engine
+    container_name: vllm-primary
     restart: unless-stopped
     devices:
       - /dev/kfd:/dev/kfd
@@ -20,15 +23,64 @@ services:
     volumes:
       - /var/lib/ai-models:/models
     command: >
-      --model /models/Qwen2.5-72B-Instruct-GGUF
+      --model /models/qwen3-coder-next-fp8
+      --served-model-name qwen3-coder-next
       --host 0.0.0.0
       --port 8000
       --enable-prefix-caching
-      --max-model-len 32768
+      --max-model-len 131072
+      --enable-auto-tool-choice
+      --tool-call-parser qwen3_coder
     ports:
       - "8000:8000"
 
-  # 2. Unified API Gateway
+  # Judge / quick-tasks: Qwen3.5-4B (BF16, tiny footprint). Same Qwen
+  # tokenizer/tool-call format as the primary slot for consistent behavior
+  # when Turnstone routes governed calls through it.
+  vllm-judge:
+    image: kyuz0/amd-strix-halo-vllm:latest
+    container_name: vllm-judge
+    restart: unless-stopped
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - video
+      - render
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      - ROCM_PATH=/opt/rocm
+      - HSA_OVERRIDE_GFX_VERSION=11.5.1
+    volumes:
+      - /var/lib/ai-models:/models
+    command: >
+      --model /models/qwen3.5-4b
+      --served-model-name qwen3.5-4b-judge
+      --host 0.0.0.0
+      --port 8001
+      --enable-prefix-caching
+      --max-model-len 131072
+      --enable-auto-tool-choice
+      --tool-call-parser qwen3_coder
+    ports:
+      - "8001:8001"
+
+  # Unified API Gateway
+  # Virtual keys (sk-chris-master, sk-drew-edge, etc.) are NOT declared in
+  # config.yaml — LiteLLM persists them in Postgres and they're generated
+  # at runtime via the /key/generate API (Task 3.6), not static YAML.
+  litellm-db:
+    image: postgres:16-alpine
+    container_name: litellm-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: litellm
+      POSTGRES_USER: litellm_user
+      POSTGRES_PASSWORD: ${LITELLM_DB_PASSWORD}
+    volumes:
+      - litellm_postgres_data:/var/lib/postgresql/data
+
   litellm:
     image: ghcr.io/berriai/litellm:main-latest
     container_name: litellm-proxy
@@ -37,11 +89,18 @@ services:
       - "4000:4000"
     volumes:
       - ./litellm/config.yaml:/app/config.yaml
+    environment:
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - DATABASE_URL=postgresql://litellm_user:${LITELLM_DB_PASSWORD}@litellm-db:5432/litellm
     command: ["--config", "/app/config.yaml", "--port", "4000"]
     depends_on:
-      - vllm-engine
+      - litellm-db
+      - vllm-primary
+      - vllm-judge
 
-  # 3. Turnstone Database & Server
+  # Turnstone Database & Governance Server. config.yaml is a placeholder —
+  # needs to be filled in against Turnstone's actual docs before Task 3.5.
   turnstone-db:
     image: postgres:16-alpine
     container_name: turnstone-db
@@ -53,35 +112,26 @@ services:
     volumes:
       - turnstone_postgres_data:/var/lib/postgresql/data
 
-  turnstone-server:
+  turnstone:
     image: turnstonelabs/turnstone:latest
     container_name: turnstone-server
     restart: unless-stopped
     ports:
       - "8080:8080"
+      - "8443:8443"
     environment:
       DATABASE_URL: postgres://turnstone_user:${DB_PASSWORD}@turnstone-db:5432/turnstone
-      OPENAI_API_BASE: http://litellm:4000/v1
-      OPENAI_API_KEY: ${LITELLM_MASTER_KEY}
+      PRIMARY_INFERENCE_URL: http://litellm:4000/v1
+      SAFETY_JUDGE_URL: http://vllm-judge:8001/v1
+      JUDGE_MODEL_NAME: qwen3.5-4b-judge
+    volumes:
+      - ./turnstone/config.yaml:/etc/turnstone/config.yaml
     depends_on:
       - turnstone-db
       - litellm
+      - vllm-judge
 
-  # 4. Hermes Autonomous Background Agent
-  hermes-agent:
-    image: nousresearch/hermes-agent:latest
-    container_name: hermes-agent
-    restart: unless-stopped
-    environment:
-      OPENAI_API_BASE: http://litellm:4000/v1
-      OPENAI_API_KEY: ${LITELLM_MASTER_KEY}
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
-    volumes:
-      - hermes_data:/root/.hermes
-    depends_on:
-      - litellm
-
-  # 5. Telemetry & Observability Stack
+  # Telemetry & Observability Stack
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
@@ -104,4 +154,4 @@ services:
 
 volumes:
   turnstone_postgres_data:
-  hermes_data:
+  litellm_postgres_data:

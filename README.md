@@ -25,7 +25,7 @@ local-ai-machine/
 │   ├── synology_backup_key    # SSH private key for ai_backup_svc (rsync-over-SSH)
 │   ├── wifi.env                # Fallback WiFi SSID/PSK (NetworkManager)
 │   ├── chris-password-hash.txt # Local console password fallback (SSH stays key-only)
-│   └── alex-ssh-key.pub        # Public key for the unprivileged edge/friend account
+│   └── drew-ssh-key.pub        # Public key for the unprivileged edge/friend account
 ├── docker/
 │   ├── docker-compose.yml     # vLLM x2, Ollama sandbox, LiteLLM, Turnstone, Herdr-adjacent, Prometheus, Grafana
 │   ├── litellm/
@@ -54,8 +54,8 @@ flowchart TD
     end
 
     subgraph Inference & Gateway Layer [Containerized Compute]
-        E[vLLM Primary Slot - Port 8000\nQwen 2.5 72B / Llama 3.3 70B\n--tool-call-parser hermes]
-        F[vLLM Helper Slot - Port 8001\nQwen 2.5 14B / Qwen2-VL 7B\n--tool-call-parser hermes]
+        E[vLLM Primary Slot - Port 8000\nQwen3-Coder-Next-FP8 80B-A3B\n--tool-call-parser qwen3_coder]
+        F[vLLM Judge Slot - Port 8001\nQwen3.5-4B\n--tool-call-parser qwen3_coder]
         G[Optional Ollama Sandbox - Port 11434\nDynamic Lazy-Loading & Offloading]
 
         H[LiteLLM Proxy - Port 4000\nVirtual Keys, Concurrency, Token Telemetry]
@@ -94,11 +94,11 @@ flowchart TD
 
     subgraph External Clients & Multi-Tenancy [Hybrid Access]
         L[Local Laptop: OpenCode / Pi\nDirect Local Shell Execution]
-        M[Edge Friend: Alex's Laptop\nLocal Hermes/OpenCode -> WireGuard VPN]
+        M[Edge Friend: Drew's Laptop\nLocal Hermes/OpenCode -> WireGuard VPN]
         N[Phone: Telegram App\nMulti-Topic Supergroup]
 
         L -- sk-chris-master --> H
-        M -- sk-alex-edge Rate Limited --> H
+        M -- sk-drew-edge Rate Limited --> H
         N <--> J
     end
 ```
@@ -107,7 +107,7 @@ flowchart TD
 
 ## 3. Declarative System Nix Configuration (`configuration.nix`)
 
-This is the **full target design**, merging the multi-tenant/dual-vLLM/Herdr architecture with the platform-level fixes discovered during actual Phase 2 hardware bring-up (see the roadmap for exactly what's applied on the real box today vs. still planned — `alex`, `herdr`, and the dual-vLLM firewall ports below are not yet applied).
+This is the **full target design**, merging the multi-tenant/dual-vLLM/Herdr architecture with the platform-level fixes discovered during actual Phase 2 hardware bring-up (see the roadmap for exactly what's applied on the real box today vs. still planned — `drew`, `herdr`, and the dual-vLLM firewall ports below are not yet applied).
 
 ```nix
 { config, pkgs, ... }:
@@ -185,10 +185,10 @@ This is the **full target design**, merging the multi-tenant/dual-vLLM/Herdr arc
 
   # Unprivileged Friend Account (Zero sudo, isolated home) — PLANNED, not
   # yet applied to the real box. Key-only SSH, same as chris.
-  users.users.alex = {
+  users.users.drew = {
     isNormalUser = true;
     extraGroups = [ "docker" ];
-    openssh.authorizedKeys.keyFiles = [ ../secrets/alex-ssh-key.pub ];
+    openssh.authorizedKeys.keyFiles = [ ../secrets/drew-ssh-key.pub ];
   };
 
   # 4. Core System Packages & Herdr Agent Multiplexer
@@ -274,11 +274,20 @@ This is the **full target design**, merging the multi-tenant/dual-vLLM/Herdr arc
 
 ## 4. Containerized Runtime Stack (`docker/docker-compose.yml`)
 
+First-pass model set: **Qwen3-Coder-Next-FP8** (primary) + **Qwen3.5-4B** (judge/quick tasks). This is a deliberate narrowing from a broader 9-model exploration (Qwen3.6-27B/35B-A3B, Gemma4-31B/26B-A4B, MiniMax-M2, DeepSeek-V4-Flash as other primary-candidate options; Qwen2.5-VL-7B for OCR/screenshots) — those alternatives, plus vision and the Ollama sandbox, aren't wired into compose yet since only the two first-pass models are actually staged on disk.
+
+**Two corrections made versus the original design draft, both load-bearing:**
+1. **vLLM needs native format, not GGUF.** GGUF is llama.cpp's format; vLLM's GGUF support is limited/experimental and unlikely to handle a brand-new hybrid-MoE architecture well. Qwen3-Coder-Next has an official native FP8 checkpoint (`Qwen/Qwen3-Coder-Next-FP8`, ~80GB, vLLM ≥0.15.0 has day-0 support) — smaller than the GGUF Q8 we'd have downloaded, and it's vLLM's actual format.
+2. **LiteLLM virtual keys aren't declared in `config.yaml`.** They're persisted in Postgres and generated at runtime via the `/key/generate` API against the master key (Task 3.6) — a static `keys:` YAML block (present in the original draft) isn't valid LiteLLM schema and would have silently done nothing.
+
 ```yaml
 version: '3.8'
 
 services:
-  # Slot 1: Heavy Primary Coder (vLLM)
+  # Primary: Qwen3-Coder-Next-FP8 (80B total / 3B active MoE, coding-agent
+  # specialized). Native FP8 checkpoint — matches vLLM's format directly,
+  # no GGUF/llama.cpp involved. Single unified-memory GPU, so no tensor
+  # parallelism needed (the official example assumes multi-GPU; we don't).
   vllm-primary:
     image: kyuz0/amd-strix-halo-vllm:latest
     container_name: vllm-primary
@@ -297,24 +306,23 @@ services:
     volumes:
       - /var/lib/ai-models:/models
     command: >
-      --model ${PRIMARY_MODEL:-/models/Qwen2.5-72B-Instruct-GGUF}
+      --model /models/qwen3-coder-next-fp8
+      --served-model-name qwen3-coder-next
       --host 0.0.0.0
       --port 8000
-      --gpu-memory-utilization 0.55
       --enable-prefix-caching
-      --enable-chunked-prefill
-      --kv-cache-dtype fp8
-      --max-model-len 32768
+      --max-model-len 131072
       --enable-auto-tool-choice
-      --tool-call-parser hermes
+      --tool-call-parser qwen3_coder
     ports:
       - "8000:8000"
 
-  # Slot 2: Helper & Vision Engine (vLLM) — also serves as the Turnstone
-  # safety judge model
-  vllm-helper:
+  # Judge / quick-tasks: Qwen3.5-4B (BF16, tiny footprint). Same Qwen
+  # tokenizer/tool-call format as the primary slot for consistent behavior
+  # when Turnstone routes governed calls through it.
+  vllm-judge:
     image: kyuz0/amd-strix-halo-vllm:latest
-    container_name: vllm-helper
+    container_name: vllm-judge
     restart: unless-stopped
     devices:
       - /dev/kfd:/dev/kfd
@@ -330,34 +338,32 @@ services:
     volumes:
       - /var/lib/ai-models:/models
     command: >
-      --model ${HELPER_MODEL:-/models/Qwen2.5-14B-Instruct-GGUF}
+      --model /models/qwen3.5-4b
+      --served-model-name qwen3.5-4b-judge
       --host 0.0.0.0
       --port 8001
-      --gpu-memory-utilization 0.35
       --enable-prefix-caching
-      --max-model-len 16384
+      --max-model-len 131072
       --enable-auto-tool-choice
-      --tool-call-parser hermes
+      --tool-call-parser qwen3_coder
     ports:
       - "8001:8001"
 
-  # Experimentation Sandbox (Ollama Lazy-Loading)
-  ollama:
-    image: ollama/ollama:rocm
-    container_name: ollama-sandbox
-    restart: unless-stopped
-    devices:
-      - /dev/kfd:/dev/kfd
-      - /dev/dri:/dev/dri
-    ports:
-      - "11434:11434"
-    volumes:
-      - /var/lib/ollama:/root/.ollama
-    environment:
-      - HSA_OVERRIDE_GFX_VERSION=11.5.1
-      - OLLAMA_KEEP_ALIVE=5m
-
   # Unified API Gateway
+  # Virtual keys (sk-chris-master, sk-drew-edge, etc.) are NOT declared in
+  # config.yaml — LiteLLM persists them in Postgres and they're generated
+  # at runtime via the /key/generate API (Task 3.6), not static YAML.
+  litellm-db:
+    image: postgres:16-alpine
+    container_name: litellm-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: litellm
+      POSTGRES_USER: litellm_user
+      POSTGRES_PASSWORD: ${LITELLM_DB_PASSWORD}
+    volumes:
+      - litellm_postgres_data:/var/lib/postgresql/data
+
   litellm:
     image: ghcr.io/berriai/litellm:main-latest
     container_name: litellm-proxy
@@ -369,12 +375,15 @@ services:
     environment:
       - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - DATABASE_URL=postgresql://litellm_user:${LITELLM_DB_PASSWORD}@litellm-db:5432/litellm
     command: ["--config", "/app/config.yaml", "--port", "4000"]
     depends_on:
+      - litellm-db
       - vllm-primary
-      - vllm-helper
+      - vllm-judge
 
-  # Turnstone Database & Governance / Deferred MCP Gateway
+  # Turnstone Database & Governance Server. config.yaml is a placeholder —
+  # needs to be filled in against Turnstone's actual docs before Task 3.5.
   turnstone-db:
     image: postgres:16-alpine
     container_name: turnstone-db
@@ -396,14 +405,14 @@ services:
     environment:
       DATABASE_URL: postgres://turnstone_user:${DB_PASSWORD}@turnstone-db:5432/turnstone
       PRIMARY_INFERENCE_URL: http://litellm:4000/v1
-      SAFETY_JUDGE_URL: http://vllm-helper:8001/v1
-      JUDGE_MODEL_NAME: Qwen2.5-14B-Instruct
+      SAFETY_JUDGE_URL: http://vllm-judge:8001/v1
+      JUDGE_MODEL_NAME: qwen3.5-4b-judge
     volumes:
       - ./turnstone/config.yaml:/etc/turnstone/config.yaml
     depends_on:
       - turnstone-db
       - litellm
-      - vllm-helper
+      - vllm-judge
 
   # Telemetry & Observability Stack
   prometheus:
@@ -428,6 +437,7 @@ services:
 
 volumes:
   turnstone_postgres_data:
+  litellm_postgres_data:
 ```
 
 ---
@@ -436,35 +446,28 @@ volumes:
 
 ```yaml
 model_list:
-  # Primary Coder
+  # Primary coder
   - model_name: coder
     litellm_params:
-      model: openai/Qwen2.5-72B-Instruct
+      model: openai/qwen3-coder-next
       api_base: http://vllm-primary:8000/v1
       api_key: "none"
 
-  # Fast Helper & Turnstone Judge
-  - model_name: gpt-4o-mini
+  # Judge / fast quick-task model
+  - model_name: judge
     litellm_params:
-      model: openai/Qwen2.5-14B-Instruct
-      api_base: http://vllm-helper:8001/v1
+      model: openai/qwen3.5-4b-judge
+      api_base: http://vllm-judge:8001/v1
       api_key: "none"
 
-  # Vision Model
-  - model_name: vision
-    litellm_params:
-      model: openai/Qwen2-VL-7B-Instruct
-      api_base: http://vllm-helper:8001/v1
-      api_key: "none"
-
-  # Governed Route (Passes through Turnstone Safety Judge)
+  # Governed route (passes through Turnstone's safety judge)
   - model_name: governed_coder
     litellm_params:
       model: openai/coder
       api_base: http://turnstone:8080/v1
       api_key: "none"
 
-  # Cloud Fallback Route
+  # Cloud fallback route if local GPU is saturated
   - model_name: claude-sonnet
     litellm_params:
       model: anthropic/claude-3-5-sonnet-20241022
@@ -475,18 +478,14 @@ router_settings:
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/DATABASE_URL
 
-keys:
-  - key: sk-chris-master
-    user_id: chris
-    models: ["coder", "gpt-4o-mini", "vision", "governed_coder", "claude-sonnet"]
-
-  - key: sk-alex-edge
-    user_id: alex
-    max_budget: 0
-    rate_limit_rpm: 60
-    models: ["coder", "gpt-4o-mini", "vision"] # Cloud keys & Turnstone admin blocked
+# Virtual keys (sk-chris-master, sk-drew-edge) are generated at runtime via
+# the /key/generate API against the master key, not declared here — see
+# Task 3.6 for the actual generation + verification steps.
 ```
+
+No `vision` route yet — that comes back once a vision/OCR model is actually downloaded (Qwen2.5-VL-7B-Instruct was the pick from the earlier model research, still pending).
 
 ---
 
@@ -513,11 +512,11 @@ When prompted for multi-file software engineering, build executions, or shell mo
 
 | Tier | Component | Role / Function | Connectivity / Endpoint |
 | :--- | :--- | :--- | :--- |
-| **Compute** | **vLLM Primary** | High-throughput 72B coder slot (`--tool-call-parser hermes`) | `http://localhost:8000/v1` |
-| **Compute** | **vLLM Helper** | Fast 14B helper, vision, and Turnstone safety judge | `http://localhost:8001/v1` |
-| **Compute** | **Ollama Sandbox** | Lazy-load testing for new model compositions | `http://localhost:11434` |
-| **Gateway** | **LiteLLM** | Virtual keys (`sk-chris`, `sk-alex`), parallel tool passing | `http://localhost:4000/v1` |
-| **Governance**| **Turnstone** | 14B LLM Judge, deferred BM25 MCP gateway, evals/doctor | `http://localhost:8080` |
+| **Compute** | **vLLM Primary** | Qwen3-Coder-Next-FP8 80B-A3B coder slot (`--tool-call-parser qwen3_coder`) | `http://localhost:8000/v1` |
+| **Compute** | **vLLM Judge** | Qwen3.5-4B — quick tasks and Turnstone safety judge | `http://localhost:8001/v1` |
+| **Compute** | **Ollama Sandbox** | Lazy-load testing for new model compositions — not yet wired into compose | `http://localhost:11434` |
+| **Gateway** | **LiteLLM** | Virtual keys (`sk-chris`, `sk-drew`, generated via `/key/generate`, not static config), parallel tool passing | `http://localhost:4000/v1` |
+| **Governance**| **Turnstone** | Qwen3.5-4B safety judge, deferred BM25 MCP gateway, evals/doctor | `http://localhost:8080` |
 | **Control** | **Herdr Daemon** | PTY multiplexer, state tracking (`🔴 Blocked`, `🟡 Working`) | `/run/user/1000/herdr.sock` |
 | **Control** | **Hermes Agent** | 24/7 Telegram topic router, profiles, memory, skills | Phone Telegram / Socket |
 | **Execution** | **OpenCode** | LSP diagnostics, AST parsing, multi-file editing | Local Shell / Server Attach |
@@ -564,18 +563,18 @@ Real hardware bring-up surfaced several bugs not visible from the config alone �
 ### Phase 3: AI Stack Deployment (Day 1)
 *Objective: Deploy the dual-vLLM slots, gateway, governance, and control-plane services.*
 
-- [ ] **Task 3.1: Model Staging**
-  Download primary (Qwen2.5-72B-Instruct GGUF) and helper (Qwen2.5-14B-Instruct GGUF, doubles as Turnstone judge) weights to `/var/lib/ai-models`. Do this over wired Ethernet if at all possible — the box is still WiFi-connected at a staging location as of Phase 2; consider relocating first.
+- [x] **Task 3.1: Model Staging (first pass)**
+  Explored 9 model candidates (Qwen3.6-27B/35B-A3B, Gemma4-31B/26B-A4B, MiniMax-M2, DeepSeek-V4-Flash, Qwen2.5-VL-7B for OCR, Qwen3.5-4B for judge) before narrowing the first real pass to **Qwen3-Coder-Next** (primary) + **Qwen3.5-4B** (judge). Originally started downloading GGUF quants for vLLM, then caught the format mismatch — GGUF is llama.cpp's format, not vLLM's; switched to the native `Qwen/Qwen3-Coder-Next-FP8` safetensors checkpoint (~80GB, day-0 vLLM ≥0.15.0 support) and `Qwen/Qwen3.5-4B` BF16 (~9GB) via `hf download`, staged to `/var/lib/ai-models/{qwen3-coder-next-fp8,qwen3.5-4b}`. Done over WiFi at the staging location (not relocated first — accepted the slower transfer rather than wait).
 - [ ] **Task 3.2: Apply configuration.nix Additions**
-  Add the `alex` user, Herdr systemd user service, and expanded firewall ports (Section 3 above) to the real `configuration.nix` — these are documented as target design but not yet applied to the box.
+  Add the `drew` user, Herdr systemd user service, and expanded firewall ports (Section 3 above) to the real `configuration.nix` — these are documented as target design but not yet applied to the box.
 - [ ] **Task 3.3: Container Spin-up**
-  `docker compose up -d` from `docker/` — vLLM x2, Ollama sandbox, LiteLLM, Turnstone (+ its Postgres), Prometheus, Grafana.
+  `docker compose up -d` from `docker/` — vLLM primary + judge, LiteLLM (+ its own Postgres), Turnstone (+ its Postgres), Prometheus, Grafana. Ollama sandbox not included yet (no models staged for it).
 - [ ] **Task 3.4: Endpoint Validation**
-  Confirm both vLLM slots respond directly, LiteLLM routes `coder`/`gpt-4o-mini`/`vision`/`governed_coder` correctly, and verify inference speed / prefix caching behavior under load.
+  Confirm both vLLM slots respond directly (`qwen3-coder-next`, `qwen3.5-4b-judge`), LiteLLM routes `coder`/`judge`/`governed_coder` correctly, and verify inference speed / prefix caching behavior under load.
 - [ ] **Task 3.5: Turnstone Judge & Governed Route Verification**
-  Confirm Turnstone's safety judge (helper slot) actually intercepts and evaluates `governed_coder` requests as intended, and that `turnstone-eval`/`turnstone-doctor` run cleanly.
+  Confirm Turnstone's safety judge (Qwen3.5-4B judge slot) actually intercepts and evaluates `governed_coder` requests as intended, and that `turnstone-eval`/`turnstone-doctor` run cleanly. `docker/turnstone/config.yaml` is still a placeholder — needs to be written against Turnstone's actual docs first.
 - [ ] **Task 3.6: Multi-Tenant Key Verification**
-  Confirm `sk-chris-master` has full access and `sk-alex-edge` is correctly rate-limited and blocked from cloud/governed-admin routes.
+  Generate `sk-chris-master` and `sk-drew-edge` via LiteLLM's `/key/generate` API (not static config — see Section 5). Confirm chris has full access and drew is correctly rate-limited and blocked from cloud/governed-admin routes.
 - [ ] **Task 3.7: Herdr & Hermes Control Plane Verification**
   Verify the Herdr daemon socket is reachable, panes spawn correctly, and Hermes' Telegram topic routing + sub-agent delegation rules (Section 6) behave as documented.
 
@@ -586,7 +585,7 @@ Real hardware bring-up surfaced several bugs not visible from the config alone �
 - [ ] **Task 4.2: Grafana Dashboard Baseline**
   Open Grafana (`http://<host>:3000`) and establish baseline metrics for VRAM utilization, power draw, and thermals under full dual-vLLM load.
 - [ ] **Task 4.3: Edge Access Verification**
-  Confirm Alex's WireGuard VPN path to the LiteLLM/Hermes endpoints works end-to-end with `sk-alex-edge`, respecting rate limits.
+  Confirm Drew's WireGuard VPN path to the LiteLLM/Hermes endpoints works end-to-end with `sk-drew-edge`, respecting rate limits.
 
 ---
 
