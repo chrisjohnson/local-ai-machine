@@ -44,6 +44,19 @@ let
     # usual 0.70 utilization; plan to run this without the judge model
     # loaded concurrently, budget utilization accordingly at serve time.
     { name = "qwen3.5-122b-a10b-awq4bit"; repo = "cyankiwi/Qwen3.5-122B-A10B-AWQ-4bit"; }
+    # Remaining candidates from the original model exploration, confirmed
+    # real repo IDs — not yet benchmarked. Qwen3.6-27B: dense mid-level
+    # alternative, bf16 (avoid Qwen/Qwen3.6-27B-FP8 — same no-native-FP8
+    # wall as everything else on this hardware). Gemma4-31B: dense, listed
+    # directly in the toolbox's own README as 1-GPU-viable. Gemma4-26B-A4B:
+    # MoE variant, also toolbox-README-listed as 1-GPU-viable.
+    { name = "qwen3.6-27b"; repo = "Qwen/Qwen3.6-27B"; }
+    { name = "gemma-4-31b-it"; repo = "google/gemma-4-31B-it"; }
+    { name = "gemma-4-26b-a4b-it"; repo = "google/gemma-4-26B-A4B-it"; }
+    # Vision/OCR model — different use case (screenshot/document parsing,
+    # not chat coding). Will need --limit-mm-per-prompt flags not used
+    # anywhere else in this stack once actually served.
+    { name = "qwen2.5-vl-7b-instruct"; repo = "Qwen/Qwen2.5-VL-7B-Instruct"; }
   ];
 in
 {
