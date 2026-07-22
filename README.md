@@ -99,7 +99,7 @@ flowchart TD
 
     subgraph Telemetry [Observability - running but not yet wired up, see Section 8]
         P[Prometheus - Port 9090\nNo vLLM scrape targets;\nlitellm/node targets both down]
-        Q[Grafana - Port 3000\nNo datasource, empty dashboard,\nstill on admin:admin]
+        Q[Grafana - Port 3000\nProvisioned datasource + real dashboard,\nreal admin password]
         P -.-> Q
     end
 
@@ -987,7 +987,7 @@ When prompted for multi-file software engineering, build executions, or shell mo
 | **Execution** | **Claude Code** | Headless Auto Mode under Anthropic ML Classifier | Server Subshell / Herdr |
 | **Execution** | **Pi Agent** | Ultra-minimal 4-tool primitive harness & TS extensions | Local Terminal / Herdr |
 | **Telemetry** | **Prometheus** | Running, but no scrape target for either vLLM server; `litellm` target down; `node` target points at a nonexistent `node-exporter` container | `http://localhost:9090` |
-| **Telemetry** | **Grafana** | Running, but no datasource provisioned, dashboard is an empty placeholder, still on default `admin:admin` | `http://localhost:3000` |
+| **Telemetry** | **Grafana** | Provisioned Prometheus datasource, real 10-panel dashboard, real admin password | `http://localhost:3000` |
 
 ---
 
@@ -1057,8 +1057,8 @@ Real hardware bring-up surfaced several bugs not visible from the config alone �
 
 - [ ] **Task 4.1: Execute Backup Mirror Test**
   Run `scripts/sync-backup.sh` (or `systemctl start synology-backup.service`) and verify files land under `tank/backups/local-ai-machine/` on the Synology, including the new `hermes/` and `herdr/` paths. Confirm DSM's Btrfs snapshot schedule is enabled on the `tank` share for point-in-time recovery.
-- [ ] **Task 4.2: Grafana Dashboard Baseline — BLOCKED on monitoring wiring**
-  Open Grafana (`http://<host>:3000`) and establish baseline metrics for VRAM utilization, power draw, and thermals under full dual-vLLM load. **Not yet possible**: the 2026-07-22 audit (`docs/benchmark-report-2026-07-22.html`) found Grafana has no Prometheus datasource provisioned and its dashboard file is an empty placeholder (`"panels": []`); Prometheus itself has no scrape target for either vLLM server despite both exposing rich `/metrics`, the `litellm` scrape target is down, and the `node` target points at a `node-exporter` container that was never added to the compose stack. Grafana is also still on default `admin:admin` credentials. This is real open work, not a formality — see Open Next Steps below.
+- [x] **Task 4.2: Grafana Dashboard Baseline**
+  Prometheus now scrapes all 5 targets successfully (`prometheus`, `node`, `litellm`, `vllm-primary`, `vllm-judge`) — added missing vLLM scrape configs, a real `node-exporter` container, and `litellm_settings.callbacks: ["prometheus"]` (the `/metrics` route didn't exist at all without it — confirmed 404, not 401, until added). Grafana now has a provisioned Prometheus datasource and a real 10-panel dashboard (request throughput, token throughput, KV cache usage, TTFT/ITL percentiles, prefix cache hit rate, host CPU/memory) replacing the old empty `"panels": []` placeholder. Admin password changed from the default (confirmed old `admin:admin` now returns 401). Verified end-to-end by querying real metric data through Grafana's own datasource proxy. Along the way found and fixed a real bug in the earlier `filterForward` firewall fix — it only exempted the `input` chain for `trustedInterfaces`, not `forward` (matches a known upstream nixpkgs issue, #437920), which was silently blocking legitimate container-to-container traffic including to already-allowlisted ports. Fixed with `extraForwardRules` plus a fixed docker bridge interface name (`br-localai`, not Docker's default auto-generated per-network-ID name, which would've broken this on a fresh install).
 - [ ] **Task 4.3: Edge Access Verification**
   Confirm Drew's WireGuard VPN path to the LiteLLM/Hermes endpoints works end-to-end with `sk-drew-edge`, respecting rate limits.
 
@@ -1070,17 +1070,25 @@ Real hardware bring-up surfaced several bugs not visible from the config alone �
 
 **Hardware/system audit.** Found and fixed the CPU governor stuck on `powersave` on all 32 threads (→ `performance`), an intermittently-timing-out router DNS resolver (→ fallback resolvers plus `networking.networkmanager.dns = "none"`, since NetworkManager was silently ignoring `networking.nameservers` otherwise), and `rocm-smi`'s VRAM metric being effectively useless on this unified-memory APU (→ added `amdgpu_top`/`nvtopPackages.amd`, plus a batch of missing common shell tools). Also found a real security gap: Docker's own FORWARD-chain iptables rules bypass NixOS's firewall entirely for published container ports — confirmed directly, port 8000 (raw vLLM, zero auth) was externally reachable despite never being in `allowedTCPPorts`. Fixed with `networking.firewall.filterForward = true` (required switching to the nftables backend). Ports 8000/8001 are now deliberately excluded from the allowlist going forward; LiteLLM on 4000 remains the only intended authenticated gateway. Full detail on all of the above is in Section 3.
 
-**New service: Open WebUI.** Added as the first browser-based chat interface in the stack, pointed at LiteLLM's unified endpoint rather than any vLLM server directly. See Section 4.
+**New service: Open WebUI.** Added as the first browser-based chat interface in the stack, pointed at LiteLLM's unified endpoint rather than any vLLM server directly. Uses first-signup-becomes-admin (`WEBUI_AUTH=true`) — deliberately left for the human to do, not automated, since it's their own login. See Section 4.
+
+### Decision Log — 2026-07-22 (later): Monitoring wiring, 122B model, deployment pipeline hardening
+
+**122B model finished downloading** (`cyankiwi/Qwen3.5-122B-A10B-AWQ-4bit`, 75GB, verified zero `.incomplete` files remaining) — not yet benchmarked.
+
+**Deployment pipeline hardening, verified under real conditions.** The timer-based redesign from earlier today held up in production, not just the synthetic kill-test: the 122B download was killed mid-transfer to test resume behavior, a config push during the retry cycle completed in ~3.4s without disturbing it (`NOT restarting the following changed units: download-model-...` in the switch output), the download resumed from its prior progress, and `docker-compose-app` correctly waited on its marker-poll loop before running `docker compose up -d` once the download actually finished — asynchronously, off the critical path of any `nixos-rebuild switch` call.
+
+**Monitoring fully wired** — see Task 4.2 above for the complete writeup (Prometheus targets, Grafana provisioning/dashboard, the `filterForward` forward-chain bug, `extraForwardRules`, fixed bridge name, LiteLLM's `prometheus` callback).
+
+**Process note:** twice this session, live-deployed changes sat uncommitted for a while before being caught and fixed — once by the user directly asking, once by a manual audit. Also caught: a multi-file `scp <files...> host:dest/` call silently flattened `docker/prometheus/prometheus.yml` and `docker/litellm/config.yaml` into `docker/prometheus.yml` and `docker/config.yaml` on the target instead of preserving their subdirectories (scp doesn't preserve relative paths across multiple sources to one destination) — masked as a "config didn't take effect" bug for a while before being traced to the actual file location. Going forward: commit immediately after confirming a change works, and use per-file destination paths (or rsync) rather than batched multi-source scp calls.
 
 ### Open Next Steps
 
 The following are the concrete open items as of this update, in place of task-ID cross-references (task tracking is moving to an external kanban tool):
 
-- **Wire up Prometheus scrape targets.** Add scrape configs for both vLLM servers (they already expose rich `/metrics` and currently have no target at all), fix the `litellm` scrape target (currently down), and either add a real `node-exporter` container to the compose stack or remove the dangling `node` target that points at one.
-- **Provision a real Grafana setup.** Add the Prometheus datasource (currently none) and build out actual dashboard panels — `docker/grafana/dashboards/strix-halo.json` is still an empty `"panels": []` placeholder.
-- **Set real Grafana admin credentials.** Still on default `admin:admin`, confirmed active during the 2026-07-22 audit — needs a real password before this is exposed any further.
-- **Download the four confirmed-but-queued models** once the 122B download finishes and disk/bandwidth are free: `Qwen/Qwen3.6-27B` (55.6GB), `google/gemma-4-31B-it` (62.6GB), `google/gemma-4-26B-A4B-it` (51.6GB), and `Qwen/Qwen2.5-VL-7B-Instruct` (16.6GB, vision/OCR — will need `--limit-mm-per-prompt` flags not yet used anywhere in this stack).
-- **Benchmark the 122B model** once it finishes downloading, using the same `vllm bench serve` methodology as the 2026-07-22 report — run it without the judge model loaded concurrently, since KV cache headroom is expected to be tight at the usual utilization split.
+- **Download the four confirmed-but-queued models**: `Qwen/Qwen3.6-27B` (55.6GB), `google/gemma-4-31B-it` (62.6GB), `google/gemma-4-26B-A4B-it` (51.6GB), and `Qwen/Qwen2.5-VL-7B-Instruct` (16.6GB, vision/OCR — will need `--limit-mm-per-prompt` flags not yet used anywhere in this stack).
+- **Benchmark the 122B model**, using the same `vllm bench serve` methodology as the 2026-07-22 report — run it without the judge model loaded concurrently, since KV cache headroom is expected to be tight at the usual utilization split.
+- **Human action needed:** sign up at Open WebUI (`http://local-ai-machine.local:3001`) to create the admin account — deliberately not automated.
 
 ---
 
