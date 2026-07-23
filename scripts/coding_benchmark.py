@@ -210,6 +210,15 @@ def run_tier_a_task(base_url, model, task):
         return result
 
     code = extract_code(content)
+    if not code.strip() and result.get("raw_reasoning"):
+        # `content` can come back empty even at an 8192-token budget if the
+        # model spins excessively on an easy task and never exits its
+        # thinking block - confirmed directly (27,438-char reasoning trace
+        # on the trivial palindrome task, correct code visible inside it
+        # multiple times, budget exhausted before ever emitting `content`).
+        # The reasoning trace still contains a real answer worth grading,
+        # so fall back to extracting from it instead of failing outright.
+        code = extract_code(result["raw_reasoning"])
     result["extracted_code"] = code
     full_source = code + "\n\n" + task["test_code"]
 
