@@ -38,7 +38,7 @@ docker run -d --name vllm-bench-swap \
   --network docker_default \
   -v /var/lib/ai-models:/models \
   -v vllm_swap_cache:/root/.cache/vllm \
-  -p 8000:8000 \
+  -p 127.0.0.1:8000:8000 \
   "${ENV_FLAGS[@]}" \
   docker.io/kyuz0/vllm-therock-gfx1151:latest \
   vllm serve "/models/$MODEL_DIR" \

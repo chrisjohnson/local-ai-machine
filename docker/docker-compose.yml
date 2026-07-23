@@ -51,8 +51,19 @@ services:
       --enable-auto-tool-choice
       --tool-call-parser qwen3_coder
       --reasoning-parser qwen3
+    # Bound to loopback only, not 0.0.0.0 — the real fix for a root-caused
+    # gap (2026-07-23): NixOS's firewall module has a built-in, unconditional
+    # `ct status dnat accept` rule in the forward chain, which accepts ANY
+    # DNAT'd (i.e. any Docker `-p`-published) connection regardless of
+    # allowedTCPPorts. It's evaluated before extraForwardRules and is a
+    # terminal accept, so that rule was never actually protecting published
+    # ports at all — confirmed directly by reading the live nftables
+    # ruleset. Loopback binding sidesteps the whole forward-chain question:
+    # a 127.0.0.1-bound port isn't reachable from the LAN by basic IP
+    # routing, no matter what the forward chain does. Reach this port via
+    # SSH tunnel (`ssh -L 8000:localhost:8000 ...`) or LiteLLM on 4000.
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
 
   # Judge / quick-tasks: Qwen3.5-4B (BF16, tiny footprint). Same Qwen
   # tokenizer/tool-call format as the primary slot for consistent behavior
@@ -88,8 +99,9 @@ services:
       --enable-auto-tool-choice
       --tool-call-parser qwen3_coder
       --reasoning-parser qwen3
+    # Same loopback-only reasoning as vllm-primary above.
     ports:
-      - "8001:8001"
+      - "127.0.0.1:8001:8001"
 
   # Unified API Gateway
   # Virtual keys (sk-chris-master, sk-drew-edge, etc.) are NOT declared in
