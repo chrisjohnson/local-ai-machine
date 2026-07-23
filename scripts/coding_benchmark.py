@@ -243,8 +243,15 @@ def run_tier_a_task(base_url, model, task):
 def run_tier_b_task(base_url, model, task):
     result = {"id": task["id"], "tier": "B"}
     try:
+        # 2048, not 512: same root cause as Tier A's budget bug - reasoning
+        # models can burn the whole budget on their thinking trace before
+        # ever emitting a tool_calls entry. Confirmed directly: a run against
+        # qwen3.6-35b-a3b produced a fully-correct reasoning trace for
+        # multi_step_tool_call (correctly planning to write FizzBuzz +
+        # tests) but hit the 512-token cap before emitting the actual call,
+        # leaving tool_calls empty.
         resp, elapsed = call_model(
-            base_url, model, task["prompt"], tools=task["tools"], max_tokens=512
+            base_url, model, task["prompt"], tools=task["tools"], max_tokens=2048
         )
         result["elapsed_s"] = round(elapsed, 2)
     except (urllib.error.URLError, json.JSONDecodeError) as e:
