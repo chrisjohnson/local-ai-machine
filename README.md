@@ -1183,7 +1183,19 @@ Tested enabling it: swapped in the 35B-A3B primary model with `SWAP_ENV_VARS='VL
 - **Gemma-4-31B-it**: 58.9 GiB weights, 50.45 GiB KV cache, 274,525 tokens, 4.19× max concurrency @65536 — notably the *lowest* concurrency headroom of any model tested, consistent with it also being the slowest model under load.
 - **Gemma-4-26B-A4B-it**: 48.5 GiB weights, 61.02 GiB KV cache, 1,328,176 tokens, 20.27× max concurrency @65536 — the best combination of small footprint and high concurrency headroom of any model tested, on top of already being the fastest and a perfect coding score.
 
-`docs/benchmark-report-2026-07-23.html` updated with these real figures in place of the earlier placeholders. Moving to item (c): `--max-num-batched-tokens`/chunked-prefill tuning.
+`docs/benchmark-report-2026-07-23.html` updated with these real figures in place of the earlier placeholders.
+
+**Item (c) is DONE — real negative result, don't adopt.** Tested the 35B-A3B primary at `--max-num-batched-tokens 16384` (double the confirmed default of 8192) against the c8 baseline:
+
+| | Baseline (8192, default) | 16384 |
+|---|---|---|
+| Output tok/s | 33.19 | 30.09 (**-9%**) |
+| TTFT mean/median/p99 (ms) | 6213/5705/11069 | 10250/11243/14521 (**mean +65%, worse across the board**) |
+| TPOT mean/median/p99 (ms) | 217.53/212.01/238.60 | 220.70/220.25/257.32 (slightly worse) |
+
+A larger chunked-prefill budget is a real regression here, not a win — live throughput samples mid-run looked promising (35-37 tok/s generation-only), but the full-run aggregate (which correctly accounts for the whole request lifecycle) came out worse on every metric. Likely explanation: a bigger max-batched-tokens value lets larger prefill chunks get scheduled per step, which delays other in-flight requests' first tokens — exactly the TTFT regression observed. **Recommendation: keep the default (8192), do not adopt 16384.** Good reminder that live per-second throughput samples during a benchmark run are not a substitute for the final aggregate result.
+
+Phase 3 optimization work complete: (a) AITER — tested, crashes, correctly left off. (b) non-enforce-eager AWQ for 122B — tested, marginal real improvement, worth adopting. (c) chunked-prefill tuning — tested, real regression, don't adopt. (d) MTP speculative decoding not attempted this session (unconfirmed ROCm support, same architecture family that broke outright on FP8 — a real experiment for a dedicated session, not a quick test).
 
 ### Open Next Steps — resume here after context compaction
 
