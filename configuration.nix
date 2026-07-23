@@ -483,6 +483,25 @@ in
       '';
     };
 
+    # amdgpu-specific metrics (GPU busy %, GTT/VRAM usage) aren't standard
+    # hwmon values, so node-exporter's built-in hwmon collector (which
+    # already surfaces GPU temp/power/frequency for free, zero config
+    # needed - confirmed directly via its /metrics output) doesn't pick
+    # them up. They live under /sys/class/drm/card0/device/ instead,
+    # amdgpu-driver-specific DRM sysfs attributes. Written as a
+    # node-exporter textfile-collector file instead of a dedicated
+    # exporter container - simplest option for values this cheap to read.
+    amdgpu-metrics = {
+      description = "Write amdgpu-specific metrics for node-exporter's textfile collector";
+      serviceConfig.Type = "oneshot";
+      script = ''
+        mkdir -p /var/lib/node-exporter-textfile
+        chmod 755 /var/lib/node-exporter-textfile
+        ${pkgs.bash}/bin/bash /home/chris/local-ai-machine/scripts/amdgpu-metrics.sh
+        chmod 644 /var/lib/node-exporter-textfile/amdgpu.prom
+      '';
+    };
+
     synology-backup = {
       description = "Mirror local AI state to Synology NAS";
       after = [ "network-online.target" ];
@@ -529,6 +548,16 @@ in
       timerConfig = {
         OnCalendar = "03:00";
         Persistent = true;
+      };
+    };
+    amdgpu-metrics = {
+      description = "Refresh amdgpu textfile-collector metrics";
+      wantedBy = [ "timers.target" ];
+      # Faster than Prometheus's 15s scrape_interval so the textfile
+      # collector's data is never stale by the time it's actually scraped.
+      timerConfig = {
+        OnBootSec = "10s";
+        OnUnitActiveSec = "10s";
       };
     };
   };

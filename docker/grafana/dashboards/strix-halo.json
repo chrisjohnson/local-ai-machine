@@ -116,6 +116,87 @@
       "targets": [
         { "expr": "rate(vllm:request_success_total[1m])", "legendFormat": "{{model_name}}" }
       ]
+    },
+    {
+      "id": 11,
+      "title": "GPU Activity (%)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 40, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percent", "max": 100, "min": 0 } },
+      "targets": [
+        { "expr": "node_amdgpu_busy_percent", "legendFormat": "GPU busy %" }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "GPU Memory — GTT & VRAM",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 40, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "bytes" } },
+      "targets": [
+        { "expr": "node_amdgpu_gtt_used_bytes", "legendFormat": "GTT used" },
+        { "expr": "node_amdgpu_gtt_total_bytes", "legendFormat": "GTT total" },
+        { "expr": "node_amdgpu_vram_used_bytes", "legendFormat": "VRAM used (static carve-out)" },
+        { "expr": "node_amdgpu_vram_total_bytes", "legendFormat": "VRAM total (static carve-out)" }
+      ]
+    },
+    {
+      "id": 13,
+      "title": "GPU Temperature & Power",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 48, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        { "expr": "node_hwmon_temp_celsius{chip=~\".*08_1_0000.*\"}", "legendFormat": "Temp (°C)" },
+        { "expr": "node_hwmon_power_average_watt{chip=~\".*08_1_0000.*\"}", "legendFormat": "Power draw (W)" }
+      ]
+    },
+    {
+      "id": 14,
+      "title": "GPU Clock Frequency (MHz)",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 48, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        { "expr": "node_hwmon_freq_freq_mhz{chip=~\".*08_1_0000.*\"}", "legendFormat": "GPU clock (sclk)" }
+      ]
+    },
+    {
+      "id": 15,
+      "title": "Disk I/O",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 56, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "Bps" } },
+      "targets": [
+        { "expr": "rate(node_disk_read_bytes_total[1m])", "legendFormat": "{{device}} read" },
+        { "expr": "rate(node_disk_written_bytes_total[1m])", "legendFormat": "{{device}} write" }
+      ]
+    },
+    {
+      "id": 16,
+      "title": "Disk Space Available",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 56, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "bytes" } },
+      "targets": [
+        { "expr": "node_filesystem_avail_bytes{mountpoint=\"/\"}", "legendFormat": "{{mountpoint}} available" }
+      ]
+    },
+    {
+      "id": 17,
+      "title": "Network Throughput",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 64, "w": 24, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "Bps" } },
+      "targets": [
+        { "expr": "rate(node_network_receive_bytes_total{device!=\"lo\"}[1m])", "legendFormat": "{{device}} rx" },
+        { "expr": "rate(node_network_transmit_bytes_total{device!=\"lo\"}[1m])", "legendFormat": "{{device}} tx" }
+      ]
     }
   ]
 }

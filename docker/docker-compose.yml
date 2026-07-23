@@ -207,11 +207,16 @@ services:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
       - /:/rootfs:ro
+      # amdgpu-specific metrics (GPU busy %, GTT/VRAM) written here by the
+      # amdgpu-metrics systemd timer (every 10s) - not standard hwmon
+      # values, so the hwmon collector alone doesn't cover them.
+      - /var/lib/node-exporter-textfile:/textfile:ro
     command:
       - "--path.procfs=/host/proc"
       - "--path.sysfs=/host/sys"
       - "--path.rootfs=/rootfs"
       - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+      - "--collector.textfile.directory=/textfile"
 
   grafana:
     image: grafana/grafana:latest
