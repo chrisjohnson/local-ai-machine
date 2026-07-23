@@ -1,0 +1,58 @@
+{
+  "model": "gemma-4-31b-it",
+  "base_url": "http://localhost:18000",
+  "tier_a_pass": 3,
+  "tier_a_total": 3,
+  "tier_b_pass": 2,
+  "tier_b_total": 2,
+  "results": [
+    {
+      "id": "palindrome",
+      "tier": "A",
+      "elapsed_s": 19.54,
+      "raw_content": "```python\nimport re\n\ndef is_palindrome(s: str) -> bool:\n    clean_s = re.sub(r'[^a-zA-Z0-9]', '', s).lower()\n    return clean_s == clean_s[::-1]\n```",
+      "raw_reasoning": null,
+      "extracted_code": "import re\n\ndef is_palindrome(s: str) -> bool:\n    clean_s = re.sub(r'[^a-zA-Z0-9]', '', s).lower()\n    return clean_s == clean_s[::-1]\n",
+      "passed": true
+    },
+    {
+      "id": "merge_sorted",
+      "tier": "A",
+      "elapsed_s": 37.71,
+      "raw_content": "```python\ndef merge_sorted(a: list, b: list) -> list:\n    result = []\n    i = 0\n    j = 0\n    \n    while i < len(a) and j < len(b):\n        if a[i] < b[j]:\n            result.append(a[i])\n            i += 1\n        else:\n            result.append(b[j])\n            j += 1\n            \n    result.extend(a[i:])\n    result.extend(b[j:])\n    \n    return result\n```",
+      "raw_reasoning": null,
+      "extracted_code": "def merge_sorted(a: list, b: list) -> list:\n    result = []\n    i = 0\n    j = 0\n    \n    while i < len(a) and j < len(b):\n        if a[i] < b[j]:\n            result.append(a[i])\n            i += 1\n        else:\n            result.append(b[j])\n            j += 1\n            \n    result.extend(a[i:])\n    result.extend(b[j:])\n    \n    return result\n",
+      "passed": true
+    },
+    {
+      "id": "expr_eval",
+      "tier": "A",
+      "elapsed_s": 111.27,
+      "raw_content": "```python\ndef evaluate(expr: str) -> float:\n    def apply_op(operators, values):\n        operator = operators.pop()\n        right = values.pop()\n        left = values.pop()\n        if operator == '+': values.append(left + right)\n        elif operator == '-': values.append(left - right)\n        elif operator == '*': values.append(left * right)\n        elif operator == '/': values.append(left / right)\n\n    def precedence(op):\n        if op in ('+', '-'): return 1\n        if op in ('*', '/'): return 2\n        return 0\n\n    values = []\n    operators = []\n    i = 0\n    while i < len(expr):\n        if expr[i].isspace():\n            i += 1\n            continue\n        if expr[i].isdigit():\n            val = 0\n            while i < len(expr) and expr[i].isdigit():\n                val = val * 10 + int(expr[i])\n                i += 1\n            values.append(float(val))\n            continue\n        elif expr[i] == '(':\n            operators.append('(')\n        elif expr[i] == ')':\n            while operators and operators[-1] != '(':\n                apply_op(operators, values)\n            operators.pop()\n        else:\n            while (operators and operators[-1] != '(' and \n                   precedence(operators[-1]) >= precedence(expr[i])):\n                apply_op(operators, values)\n            operators.append(expr[i])\n        i += 1\n\n    while operators:\n        apply_op(operators, values)\n        \n    return values[0]\n```",
+      "raw_reasoning": null,
+      "extracted_code": "def evaluate(expr: str) -> float:\n    def apply_op(operators, values):\n        operator = operators.pop()\n        right = values.pop()\n        left = values.pop()\n        if operator == '+': values.append(left + right)\n        elif operator == '-': values.append(left - right)\n        elif operator == '*': values.append(left * right)\n        elif operator == '/': values.append(left / right)\n\n    def precedence(op):\n        if op in ('+', '-'): return 1\n        if op in ('*', '/'): return 2\n        return 0\n\n    values = []\n    operators = []\n    i = 0\n    while i < len(expr):\n        if expr[i].isspace():\n            i += 1\n            continue\n        if expr[i].isdigit():\n            val = 0\n            while i < len(expr) and expr[i].isdigit():\n                val = val * 10 + int(expr[i])\n                i += 1\n            values.append(float(val))\n            continue\n        elif expr[i] == '(':\n            operators.append('(')\n        elif expr[i] == ')':\n            while operators and operators[-1] != '(':\n                apply_op(operators, values)\n            operators.pop()\n        else:\n            while (operators and operators[-1] != '(' and \n                   precedence(operators[-1]) >= precedence(expr[i])):\n                apply_op(operators, values)\n            operators.append(expr[i])\n        i += 1\n\n    while operators:\n        apply_op(operators, values)\n        \n    return values[0]\n",
+      "passed": true
+    },
+    {
+      "id": "single_tool_call",
+      "tier": "B",
+      "elapsed_s": 5.96,
+      "called_tool": "read_file",
+      "called_args": {
+        "path": "/tmp/data.txt"
+      },
+      "passed": true
+    },
+    {
+      "id": "multi_step_tool_call",
+      "tier": "B",
+      "elapsed_s": 50.41,
+      "called_tool": "write_file",
+      "called_args": {
+        "content": "def fizzbuzz(n):\n    if n % 15 == 0:\n        return \"FizzBuzz\"\n    if n % 3 == 0:\n        return \"Fizz\"\n    if n % 5 == 0:\n        return \"Buzz\"\n    return str(n)\n\ndef test_fizzbuzz():\n    assert fizzbuzz(3) == \"Fizz\"\n    assert fizzbuzz(5) == \"Buzz\"\n    assert fizzbuzz(15) == \"FizzBuzz\"\n    assert fizzbuzz(7) == \"7\"\n    print(\"All tests passed!\")\n\nif __name__ == \"__main__\":\n    test_fizzbuzz()\n",
+        "path": "/tmp/fizzbuzz.py"
+      },
+      "passed": true
+    }
+  ]
+}

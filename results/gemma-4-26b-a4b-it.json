@@ -1,0 +1,58 @@
+{
+  "model": "gemma-4-26b-a4b-it",
+  "base_url": "http://localhost:18000",
+  "tier_a_pass": 3,
+  "tier_a_total": 3,
+  "tier_b_pass": 2,
+  "tier_b_total": 2,
+  "results": [
+    {
+      "id": "palindrome",
+      "tier": "A",
+      "elapsed_s": 5.06,
+      "raw_content": "```python\nimport re\n\ndef is_palindrome(s: str) -> bool:\n    clean_s = re.sub(r'[^a-zA-Z0-9]', '', s).lower()\n    return clean_s == clean_s[::-1]\n```",
+      "raw_reasoning": null,
+      "extracted_code": "import re\n\ndef is_palindrome(s: str) -> bool:\n    clean_s = re.sub(r'[^a-zA-Z0-9]', '', s).lower()\n    return clean_s == clean_s[::-1]\n",
+      "passed": true
+    },
+    {
+      "id": "merge_sorted",
+      "tier": "A",
+      "elapsed_s": 6.79,
+      "raw_content": "```python\ndef merge_sorted(a: list, b: list) -> list:\n    merged = []\n    i = 0\n    j = 0\n    \n    while i < len(a) and j < len(b):\n        if a[i] <= b[j]:\n            merged.append(a[i])\n            i += 1\n        else:\n            merged.append(b[j])\n            j += 1\n            \n    while i < len(a):\n        merged.append(a[i])\n        i += 1\n        \n    while j < len(b):\n        merged.append(b[j])\n        j += 1\n        \n    return merged\n```",
+      "raw_reasoning": null,
+      "extracted_code": "def merge_sorted(a: list, b: list) -> list:\n    merged = []\n    i = 0\n    j = 0\n    \n    while i < len(a) and j < len(b):\n        if a[i] <= b[j]:\n            merged.append(a[i])\n            i += 1\n        else:\n            merged.append(b[j])\n            j += 1\n            \n    while i < len(a):\n        merged.append(a[i])\n        i += 1\n        \n    while j < len(b):\n        merged.append(b[j])\n        j += 1\n        \n    return merged\n",
+      "passed": true
+    },
+    {
+      "id": "expr_eval",
+      "tier": "A",
+      "elapsed_s": 43.76,
+      "raw_content": "```python\nimport operator\n\ndef evaluate(expr: str) -> float:\n    def apply_op(operators, values):\n        operator_func = operators.pop()\n        right = values.pop()\n        left = values.pop()\n        values.append(operator_func(left, right))\n\n    def precedence(op):\n        if op in ('+', '-'):\n            return 1\n        if op in ('*', '/'):\n            return 2\n        return 0\n\n    values = []\n    operators = []\n    i = 0\n    while i < len(expr):\n        if expr[i] == ' ':\n            i += 1\n            continue\n        \n        if expr[i] == '(':\n            operators.append(expr[i])\n        elif expr[i].isdigit():\n            val = 0\n            while i < len(expr) and expr[i].isdigit():\n                val = val * 10 + int(expr[i])\n                i += 1\n            values.append(float(val))\n            continue\n        elif expr[i] == ')':\n            while operators and operators[-1] != '(':\n                apply_op(operators, values)\n            operators.pop()  # Remove '('\n        else:\n            ops = {\n                '+': operator.add,\n                '-': operator.sub,\n                '*': operator.mul,\n                '/': operator.truediv\n            }\n            while (operators and operators[-1] != '(' and \n                   precedence(operators[-1]) >= precedence(expr[i])):\n                apply_op(operators, values)\n            operators.append(expr[i])\n            # We need to store the function reference for apply_op to work easily\n            # but the precedence logic uses the character. \n            # Let's adjust the dictionary mapping.\n            operators[-1] = (expr[i], ops[expr[i]])\n            # Redefining apply_op to handle the tuple\n            def apply_op_tuple(operators, values):\n                op_char, op_func = operators.pop()\n                right = values.pop()\n                left = values.pop()\n                values.append(op_func(left, right))\n            \n            # To maintain clean code, let's re-structure the loop logic slightly:\n            # We'll use a helper that treats the operators stack as (char, func) tuples\n            pass \n        i += 1\n    \n    # Re-implementing cleanly to avoid the logic error above\n    return _internal_eval(expr)\n\ndef _internal_eval(expr: str) -> float:\n    def precedence(op):\n        if op in ('+', '-'): return 1\n        if op in ('*', '/'): return 2\n        return 0\n\n    ops_map = {'+': operator.add, '-': operator.sub, '*': operator.mul, '/': operator.truediv}\n    values = []\n    operators = []\n    i = 0\n    while i < len(expr):\n        if expr[i] == ' ':\n            i += 1\n            continue\n        if expr[i] == '(':\n            operators.append('(')\n        elif expr[i].isdigit():\n            val = 0\n            while i < len(expr) and expr[i].isdigit():\n                val = val * 10 + int(expr[i])\n                i += 1\n            values.append(float(val))\n            i -= 1\n        elif expr[i] == ')':\n            while operators and operators[-1] != '(':\n                op = operators.pop()\n                right, left = values.pop(), values.pop()\n                values.append(ops_map[op](left, right))\n            operators.pop()\n        else:\n            while (operators and operators[-1] != '(' and \n                   precedence(operators[-1]) >= precedence(expr[i])):\n                op = operators.pop()\n                right, left = values.pop(), values.pop()\n                values.append(ops_map[op](left, right))\n            operators.append(expr[i])\n        i += 1\n\n    while operators:\n        op = operators.pop()\n        right, left = values.pop(), values.pop()\n        values.append(ops_map[op](left, right))\n        \n    return values[0]\n\n# Re-assigning the working logic to the required function name\nevaluate = _internal_eval\n```",
+      "raw_reasoning": null,
+      "extracted_code": "import operator\n\ndef evaluate(expr: str) -> float:\n    def apply_op(operators, values):\n        operator_func = operators.pop()\n        right = values.pop()\n        left = values.pop()\n        values.append(operator_func(left, right))\n\n    def precedence(op):\n        if op in ('+', '-'):\n            return 1\n        if op in ('*', '/'):\n            return 2\n        return 0\n\n    values = []\n    operators = []\n    i = 0\n    while i < len(expr):\n        if expr[i] == ' ':\n            i += 1\n            continue\n        \n        if expr[i] == '(':\n            operators.append(expr[i])\n        elif expr[i].isdigit():\n            val = 0\n            while i < len(expr) and expr[i].isdigit():\n                val = val * 10 + int(expr[i])\n                i += 1\n            values.append(float(val))\n            continue\n        elif expr[i] == ')':\n            while operators and operators[-1] != '(':\n                apply_op(operators, values)\n            operators.pop()  # Remove '('\n        else:\n            ops = {\n                '+': operator.add,\n                '-': operator.sub,\n                '*': operator.mul,\n                '/': operator.truediv\n            }\n            while (operators and operators[-1] != '(' and \n                   precedence(operators[-1]) >= precedence(expr[i])):\n                apply_op(operators, values)\n            operators.append(expr[i])\n            # We need to store the function reference for apply_op to work easily\n            # but the precedence logic uses the character. \n            # Let's adjust the dictionary mapping.\n            operators[-1] = (expr[i], ops[expr[i]])\n            # Redefining apply_op to handle the tuple\n            def apply_op_tuple(operators, values):\n                op_char, op_func = operators.pop()\n                right = values.pop()\n                left = values.pop()\n                values.append(op_func(left, right))\n            \n            # To maintain clean code, let's re-structure the loop logic slightly:\n            # We'll use a helper that treats the operators stack as (char, func) tuples\n            pass \n        i += 1\n    \n    # Re-implementing cleanly to avoid the logic error above\n    return _internal_eval(expr)\n\ndef _internal_eval(expr: str) -> float:\n    def precedence(op):\n        if op in ('+', '-'): return 1\n        if op in ('*', '/'): return 2\n        return 0\n\n    ops_map = {'+': operator.add, '-': operator.sub, '*': operator.mul, '/': operator.truediv}\n    values = []\n    operators = []\n    i = 0\n    while i < len(expr):\n        if expr[i] == ' ':\n            i += 1\n            continue\n        if expr[i] == '(':\n            operators.append('(')\n        elif expr[i].isdigit():\n            val = 0\n            while i < len(expr) and expr[i].isdigit():\n                val = val * 10 + int(expr[i])\n                i += 1\n            values.append(float(val))\n            i -= 1\n        elif expr[i] == ')':\n            while operators and operators[-1] != '(':\n                op = operators.pop()\n                right, left = values.pop(), values.pop()\n                values.append(ops_map[op](left, right))\n            operators.pop()\n        else:\n            while (operators and operators[-1] != '(' and \n                   precedence(operators[-1]) >= precedence(expr[i])):\n                op = operators.pop()\n                right, left = values.pop(), values.pop()\n                values.append(ops_map[op](left, right))\n            operators.append(expr[i])\n        i += 1\n\n    while operators:\n        op = operators.pop()\n        right, left = values.pop(), values.pop()\n        values.append(ops_map[op](left, right))\n        \n    return values[0]\n\n# Re-assigning the working logic to the required function name\nevaluate = _internal_eval\n",
+      "passed": true
+    },
+    {
+      "id": "single_tool_call",
+      "tier": "B",
+      "elapsed_s": 0.94,
+      "called_tool": "read_file",
+      "called_args": {
+        "path": "/tmp/data.txt"
+      },
+      "passed": true
+    },
+    {
+      "id": "multi_step_tool_call",
+      "tier": "B",
+      "elapsed_s": 10.77,
+      "called_tool": "write_file",
+      "called_args": {
+        "content": "def fizzbuzz(n):\n    if n % 3 == 0 and n % 5 == 0:\n        return \"FizzBuzz\"\n    elif n % 3 == 0:\n        return \"Fizz\"\n    elif n % 5 == 0:\n        return \"Buzz\"\n    else:\n        return str(n)\n\ndef test_fizzbuzz():\n    assert fizzbuzz(3) == \"Fizz\"\n    assert fizzbuzz(5) == \"Buzz\"\n    assert fizzbuzz(15) == \"FizzBuzz\"\n    assert fizzbuzz(1) == \"1\"\n    assert fizzbuzz(2) == \"2\"\n    assert fizzbuzz(6) == \"Fizz\"\n    assert fizzbuzz(10) == \"Buzz\"\n    print(\"All tests passed!\")\n\nif __name__ == \"__main__\":\n    test_fizzbuzz()\n    for i in range(1, 16):\n        print(fizzbuzz(i))\n",
+        "path": "/tmp/fizzbuzz.py"
+      },
+      "passed": true
+    }
+  ]
+}

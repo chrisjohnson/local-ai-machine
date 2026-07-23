@@ -1142,14 +1142,31 @@ Four phases, in order, with a second HTML report at the end for direct before/af
 
 **Process note**: Mac-side backgrounded harness runs got killed by the harness/session infrastructure itself partway through (not a crash in the script) at least once this session — recovered by re-running with `nohup ... & disown` and redirecting to a log file instead of relying on the tool's own backgrounding, which held up reliably afterward.
 
+**Phase 2 COMPLETE — all 7 models coding-benchmarked.** Final results (Tier A = 3 correctness tasks, Tier B = 2 tool-calling tasks):
+
+| Model | Tier A | Tier B | Total |
+|---|---|---|---|
+| Qwen3-Coder-Next-GPTQ-4bit (80B) | 3/3 | 2/2 | **5/5** |
+| Qwen3.5-122B-A10B-AWQ-4bit | 3/3 | 2/2 | **5/5** |
+| Gemma-4-31B-it | 3/3 | 2/2 | **5/5** |
+| Gemma-4-26B-A4B-it | 3/3 | 2/2 | **5/5** |
+| Qwen3.6-35B-A3B (current primary) | 2/3 | 2/2 | 4/5 |
+| Qwen3.6-27B | 2/3 | 2/2 | 4/5 |
+| Qwen3.5-4B (judge) | 2/3 | 2/2 | 4/5 |
+
+**Notable finding**: the current production **primary** (35B-A3B) is one of only three models that *didn't* score a perfect 5/5 — four other models did, including two size tiers already in the comparison rotation (80B GPTQ, 122B AWQ) and both Gemma models. All three 4/5 scores failed on Tier A only (`palindrome` for the primary, `expr_eval` for the other two) — Tier B tool-calling was 2/2 across the board for every model tested. Worth weighing against the speed data before any primary-swap decision: Gemma-4-26B-A4B-it is now both the fastest model tested this session (50.38 tok/s @c8) *and* a perfect coding score — the strongest combined result of any model.
+
+**Caveat on the primary's score**: `results/qwen3.6-35b-a3b.json` was captured *before* the reasoning-trace-fallback fix (the third harness bug fixed this session) — its `palindrome` failure is exactly the failure mode that fix targets. Time constraints meant it wasn't re-run under the final harness version like the other six models were, so 4/5 for the primary is likely a conservative floor, not a fully apples-to-apples number. Worth a one-off re-run before treating this table as final.
+
 ### Open Next Steps — resume here after context compaction
 
 Precise state as of this update, written for picking back up with zero prior context:
 
 - **Phase 1 (speed-benchmark) COMPLETE** — all four new models benchmarked, see decision log above.
-- **Phase 2 (coding-capability) IN PROGRESS — 4/7 models done**: primary (35B, ~4/5 flaky), judge (4B, 4/5), GPTQ-80B (**5/5**), 122B AWQ (**5/5**). Remaining: Qwen3.6-27B, Gemma-4-31B-it, Gemma-4-26B-A4B-it. Qwen2.5-VL-7B is excluded (vision/OCR specialist, not a coding candidate).
-- **Coding-benchmark harness (`scripts/coding_benchmark.py`) has had 6 real bugs found and fixed total this session** (3 from initial validation, 3 more from running it for real against all model tiers) — see decision log above for the latest three. Treat any future "it failed" result skeptically until you've checked whether it's a genuine capability gap or another budget/timeout edge case; this harness has a track record of surfacing new edge cases each time it meets a new model.
-- **Workflow for remaining Phase 2 models**: `ssh chris@local-ai-machine.local "cd .../scripts && ./swap_model_start.sh <dir> <name> <max-len> [extra vllm args]"` (foreground, waits for health) → run harness locally via the SSH tunnel with `nohup python3 scripts/coding_benchmark.py --base-url http://localhost:18000 --model <name> --output results/<name>.json > /tmp/coding-bench-<name>.log 2>&1 & disown` (nohup+disown, not the tool's own backgrounding — see process note above) → `ssh chris@local-ai-machine.local "cd .../scripts && ./swap_model_stop.sh"` once done, always, even on failure.
+- **Phase 2 (coding-capability) COMPLETE — all 7/7 models done**, see table above. Four perfect 5/5 scores (80B GPTQ, 122B AWQ, both Gemma models); primary/27B/judge all landed at 4/5, each on a different Tier A task.
+- **Coding-benchmark harness (`scripts/coding_benchmark.py`) had 6 real bugs found and fixed total this session** (3 from initial validation, 3 more from running it for real against all model tiers) — see decision log above. Treat any future "it failed" result skeptically until you've checked whether it's a genuine capability gap or another budget/timeout edge case; this harness has a track record of surfacing new edge cases each time it meets a new model.
+- **Optional follow-up before trusting the primary's score fully**: re-run `nohup python3 scripts/coding_benchmark.py --base-url http://localhost:18000 --model qwen3.6-35b-a3b --output results/qwen3.6-35b-a3b.json > /tmp/coding-bench-35b.log 2>&1 & disown` (primary is already serving on 8000, no swap needed) to get a result captured under the exact same harness version as the other six models.
+- **Next action**: fold both phases' results into `docs/benchmark-report-2026-07-22.html` (new models' speed data + all 7 models' coding-capability table), then start Phase 3 (optimize) per the Plan section above — AITER MoE kernels, non-enforce-eager AWQ path for 122B, chunked-prefill tuning, MTP speculative decoding last. After Phase 3, Phase 4 re-benchmarks everything into a new comparable HTML doc.
 - **SSH tunnel must be up** for the harness to reach vLLM at all: `ssh -f -N -L 18000:localhost:8000 -L 18001:localhost:8001 chris@local-ai-machine.local` (backgrounds itself with `-f`). Verify with `curl -s --max-time 3 http://localhost:18000/health` before assuming it's still alive.
 - **Real requirement already folded in**: 64K minimum context window — Gemma models tested at 65536, Qwen3.6-27B at 131072, **122B AWQ now correctly re-served at 65536** (bumped up from the old 32768, confirmed it fits).
 - **Real, currently-unresolved security finding**: see decision log above — raw vLLM port 8000 reachable off-box despite firewall config intent. Workaround (SSH tunnel) in place; root cause and real fix still open.
