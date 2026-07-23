@@ -1001,6 +1001,7 @@ flowchart TD
     P4 --> P5[Phase 5: Model Research & Continuous Optimization]
     P5 --> P6[Phase 6: Multi-Tenant & Control Plane Verification]
     P6 --> P7[Phase 7: Review, Codify, Rebuild]
+    P7 --> P8[Phase 8: Day-N Operations Documentation]
 ```
 
 **Restructured 2026-07-23**: Phases 5, 6, and 7 are new. Turnstone, Herdr/Hermes, Drew's connectivity and remaining key generation, and the backup mirror test moved out of Phases 3/4 into Phase 6 — they're all "verify the multi-tenant/control-plane pieces" work, distinct from the ongoing model research/optimization effort. Phase 3 is now fully complete; Phase 4 is trimmed to just the Grafana/observability work. Phase 5 is where the in-progress benchmark→optimize→re-benchmark effort now lives, reframed as an open-ended loop rather than a one-time task list. **Phase 7 is now the true final phase**: a full audit cross-referencing everything done on the machine against this repo, then an actual wipe-and-rebuild to prove real reproducibility — this was the project's original stated end goal from early in the session, now formalized as its own phase.
@@ -1113,6 +1114,18 @@ This phase absorbs and continues the in-progress "benchmark → coding-capabilit
 - [ ] **Task 7.4: Fix anything the rebuild surfaces**, then re-verify. Repeat until a from-scratch rebuild genuinely works end-to-end unattended.
 
 **This is a hard-stop-style task** — actually wiping the production machine is exactly the kind of destructive, high-blast-radius action that needs explicit user confirmation before execution (per the "Executing actions with care" guidance), not something to do autonomously as part of Phase 5's unattended optimization loop. Task 7.3 specifically requires the user's direct go-ahead immediately before it happens, even though the audit/fix work in 7.1/7.2 can proceed without that gate.
+
+### Phase 8: Day-N Operations Documentation (requested 2026-07-23)
+
+*Objective: this project has grown from a one-shot deployment task into a long-lived, ongoingly-maintained system, and its documentation needs to reflect that. `README.md` has functioned as a running project journal/decision-log this entire time — genuinely useful for that purpose, but not what a human needs when they sit down to actually operate or rebuild this machine. Split it into purpose-built pieces.*
+
+- [ ] **Task 8.1: Extract kanban-ready items.** Once this project migrates to the agentic-fleet kanban queue platform (mentioned earlier as a planned move), pull the genuinely trackable work — open tasks, in-progress experiments — into fleet-style cards instead of leaving it embedded in README prose.
+- [ ] **Task 8.2: Write a project-scoped `AGENTS.md`.** Operational rules for any agent (human or AI) working on this repo specifically: the declarative-pipeline discipline (never ad-hoc changes directly on the live machine, always commit through the standard rsync/`nixos-rebuild`/`docker compose` flow), the benchmark/swap-script conventions and real gotchas found this session (the swap-in pattern, known crash modes like the AITER incompatibility, the `--tokenizer` flag requirement, timeout tuning for slow models), secrets-handling rules specific to this repo, and other operational guidance that isn't end-user documentation.
+- [ ] **Task 8.3: Write a proper human-facing `README.md`.** What this project is and its architecture, at a level a new reader can actually use — not a chronological journal. Must include, concretely:
+  - **How to destroy-and-recreate the machine from scratch**, including the real bootstrapping gotchas found this session: `nmcli` (not raw `wpa_supplicant`) for WiFi during install, the BIOS one-time boot-override trick (not a permanent boot-order change), the kernel-version requirement for the M5's MT7925 WiFi chip (needs ≥6.7, NixOS 24.11's default 6.6.94 silently doesn't work), and the iGPU UMA memory BIOS configuration (`UMA_SPECIFIED` + smallest frame buffer, not the `Auto` default which silently carves out 64GB as static VRAM).
+  - **How to obtain/generate every secret this stack needs** — what each one is for and the mechanism to create it (LiteLLM master key, per-user virtual keys via `/key/generate`, Grafana admin password via `grafana-cli admin reset-admin-password`, HF token, Synology backup SSH key), not the live values themselves.
+  - **Day-to-day operational instructions**: how to swap in and benchmark a model, how to check what's currently loaded (`docker ps`, `/v1/models`), how to reach services (SSH tunnel vs. LiteLLM gateway vs. on-box only), and anything else a human would actually need to maintain this machine going forward.
+- [ ] **Task 8.4: Confirm nothing is lost in the split.** The current README's decision-log history is real project memory, not filler — it shouldn't just be deleted when the "live" README becomes lean. Preserve it somewhere sensible (e.g. `docs/history.md` or similar) even after the split.
 
 ### Decision Log — 2026-07-22: Benchmark pass, deployment pipeline redesign, hardware/system audit
 
