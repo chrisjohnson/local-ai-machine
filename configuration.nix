@@ -346,7 +346,39 @@ in
         DEST=/var/lib/ai-models/${name}
         set +e
         ${pkgs.nix}/bin/nix --extra-experimental-features "nix-command flakes" shell nixpkgs#python3Packages.huggingface-hub \
-          --command hf download ${repo} --local-dir "$DEST"
+          --command hf download ${repo} --local-dir "$DEST" &
+        HF_PID=$!
+
+        # Stall watchdog — a real, observed failure mode distinct from the
+        # DNS-timeout stalls that already surface as clean errors: a TCP
+        # connection can sit with data queued in the kernel receive buffer
+        # that hf's own process just never reads (confirmed directly via
+        # `ss -tnp` showing a nonzero Recv-Q with zero disk growth for many
+        # minutes). It never errors, never exits — Restart=on-failure can't
+        # help because there's no failure to restart from, so this has to
+        # be force-killed on lack of progress rather than waited out. 3
+        # consecutive zero-growth checks at 2min intervals (6min total)
+        # before killing; genuinely slow-but-progressing transfers still
+        # show nonzero growth each interval and are left alone.
+        STALL_CHECKS=0
+        LAST_SIZE=-1
+        while kill -0 "$HF_PID" 2>/dev/null; do
+          sleep 120
+          CUR_SIZE=$(du -sb "$DEST" 2>/dev/null | cut -f1)
+          if [ "$CUR_SIZE" = "$LAST_SIZE" ]; then
+            STALL_CHECKS=$((STALL_CHECKS + 1))
+          else
+            STALL_CHECKS=0
+          fi
+          LAST_SIZE="$CUR_SIZE"
+          if [ "$STALL_CHECKS" -ge 3 ]; then
+            echo "No download progress for 6+ minutes, killing stalled process" >&2
+            kill -TERM "$HF_PID" 2>/dev/null || true
+            break
+          fi
+        done
+
+        wait "$HF_PID"
         HF_EXIT=$?
         set -e
 
