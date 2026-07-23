@@ -81,6 +81,14 @@ fi
 run_bench() {
   local conc="$1" out_len="$2" num_prompts="$3"
   echo "=== Benchmarking $SERVED_NAME @ concurrency $conc ==="
+  # `|| true`: vllm bench serve has a known segfault-on-exit during Python
+  # interpreter shutdown (observed with the 122B model too) that happens
+  # AFTER results are printed and saved - it's a client cleanup crash, not a
+  # benchmark failure. Under `set -e` a non-zero exit here would abort the
+  # whole script before teardown/restore ran, leaving the standard stack
+  # down (happened once, recovered manually). Verify success by checking
+  # the result file exists inside the container instead of trusting the
+  # exit code.
   docker exec vllm-bench-swap vllm bench serve \
     --backend openai-chat \
     --base-url http://localhost:8000 \
@@ -94,7 +102,16 @@ run_bench() {
     --num-prompts "$num_prompts" \
     --ignore-eos \
     --save-result --result-dir /tmp \
-    --result-filename "${SERVED_NAME}-c${conc}.json"
+    --result-filename "${SERVED_NAME}-c${conc}.json" || true
+
+  if ! docker exec vllm-bench-swap test -f "/tmp/${SERVED_NAME}-c${conc}.json"; then
+    echo "Benchmark result file missing after concurrency $conc run - real failure, not just the known exit-segfault" >&2
+    docker logs vllm-bench-swap --tail 100 >&2
+    docker rm -f vllm-bench-swap
+    docker volume rm -f vllm_swap_cache >/dev/null 2>&1 || true
+    docker compose up -d vllm-primary vllm-judge
+    exit 1
+  fi
   docker cp "vllm-bench-swap:/tmp/${SERVED_NAME}-c${conc}.json" "$RESULTS_DIR/"
 }
 
