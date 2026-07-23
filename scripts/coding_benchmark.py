@@ -152,11 +152,12 @@ TIER_B_TASKS = [
 ]
 
 
-def call_model(base_url, model, prompt, tools=None, max_tokens=1024, timeout=900):
-    # 900s: at an 8192-token Tier A budget, the 122B tier's observed
-    # 7.87 tok/s single-stream speed alone could take 15+ minutes for a
-    # response that actually uses the full budget — this needs real
-    # headroom, not just enough for the faster models.
+def call_model(base_url, model, prompt, tools=None, max_tokens=1024, timeout=1500):
+    # 1500s: 900s undershot in practice - confirmed directly against the
+    # 122B tier generating at ~7.5-8 tok/s, where an 8192-token Tier A
+    # response needs ~18 minutes just for a legitimate full-length answer,
+    # already past the old 900s/15min cap before counting TTFT/variance.
+    # 1500s (25min) leaves real margin for the slowest model tested.
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
@@ -205,7 +206,12 @@ def run_tier_a_task(base_url, model, task):
         result["elapsed_s"] = round(elapsed, 2)
         result["raw_content"] = content
         result["raw_reasoning"] = message.get("reasoning_content") or message.get("reasoning")
-    except (urllib.error.URLError, KeyError, json.JSONDecodeError) as e:
+    except (urllib.error.URLError, TimeoutError, KeyError, json.JSONDecodeError) as e:
+        # TimeoutError (not just urllib.error.URLError): a read-phase
+        # socket timeout during http.client.getresponse() propagates as a
+        # raw TimeoutError, not wrapped in URLError - confirmed directly,
+        # this crashed the whole harness (killing every other task's
+        # result) the first time a request genuinely ran past the timeout.
         result.update(passed=False, error=f"request failed: {e}")
         return result
 
@@ -263,7 +269,7 @@ def run_tier_b_task(base_url, model, task):
             base_url, model, task["prompt"], tools=task["tools"], max_tokens=2048
         )
         result["elapsed_s"] = round(elapsed, 2)
-    except (urllib.error.URLError, json.JSONDecodeError) as e:
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as e:
         result.update(passed=False, error=f"request failed: {e}")
         return result
 
