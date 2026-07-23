@@ -1165,7 +1165,25 @@ Four phases, in order, with a second HTML report at the end for direct before/af
 
 Tested enabling it: swapped in the 35B-A3B primary model with `SWAP_ENV_VARS='VLLM_ROCM_USE_AITER=1'` via `swap_model_start.sh`, same serve flags as the standing primary. **Result: immediate engine crash**, not a slow start or a benchmark artifact — `UnicodeDecodeError: 'utf-8' codec can't decode byte 0xc9 in position 215: invalid continuation byte` while registering an AITER torch op via `torch._C._jit_get_operation`, during initial engine core startup before any model-specific work runs at all. This isn't an AWQ-specific interaction (the 122B tier's known issue, worked around via `VLLM_USE_TRITON_AWQ=1`) — it's a fundamental incompatibility between this AITER build and this exact toolbox image/hardware combination, for a plain bf16 MoE model with no quantization involved. Recovery was fully automatic — `swap_model_start.sh`'s own health-check-failure path restored the standard stack without manual intervention.
 
-**Conclusion**: AITER being off (the current default) is the *correct* configuration for this hardware, not an untested opportunity being left on the table. Not worth revisiting without a different toolbox/AITER build. Moving to item (b): whether a non-`enforce-eager` AWQ path is viable for the 122B model.
+**Conclusion**: AITER being off (the current default) is the *correct* configuration for this hardware, not an untested opportunity being left on the table. Not worth revisiting without a different toolbox/AITER build.
+
+**Item (b) is DONE — real, but marginal, result.** Tested the 122B AWQ tier without `--enforce-eager` (still keeping `VLLM_USE_TRITON_AWQ=1`, same everything else). **It starts and runs successfully without `enforce-eager`** — contrary to the earlier session's note that it was "required for this model's AWQ kernel path," it's actually optional; the model just wasn't tested without it before. Benchmarked head-to-head against the original enforce-eager baseline:
+
+| | c1 (enforce-eager baseline) | c1 (no-eager) | c8 (enforce-eager baseline) | c8 (no-eager) |
+|---|---|---|---|---|
+| Output tok/s | 7.87 | 8.14 | 16.05 | 16.28 |
+| TTFT mean/median/p99 (ms) | 3808/3799/4012 | 3743/3582/6114 | 20383/24833/28927 | 18583/20130/27444 |
+| TPOT mean/median/p99 (ms) | 119.88/119.88/120.02 | 115.77/115.78/115.84 | 420.08/405.88/488.59 | 408.13/408.87/458.59 |
+
+**The improvement is real but marginal (~1-9% across metrics), not the dramatic fix the original hypothesis suggested.** `enforce-eager` is *not* actually the main driver of this model's poor concurrency scaling — removing it helps a little on every metric with no regression anywhere, so it's worth adopting, but the model's fundamental slowness at this size on this hardware is the bigger factor, not the eager-mode flag. Tradeoff: slightly slower cold start (410s vs 350s) from CUDA graph capture at startup — worth it for a model that stays loaded, less clear-cut for one that gets swapped in/out frequently like during this session's benchmarking.
+
+**Bonus: real KV-cache data captured for all four Phase 1/2 comparison models**, closing a gap flagged by the user after reviewing `benchmark-report-2026-07-23.html` — the report's "Concurrency" column for the four newly-benchmarked models had shown disk-size estimates or "n/a" instead of real figures. Captured directly from each model's startup log:
+- **122B AWQ (no-eager)**: 73.58 GiB weights, 35.21 GiB KV cache, 1,264,154 tokens, 19.29× max concurrency @65536.
+- **Qwen3.6-27B**: 51.1 GiB weights, 57.65 GiB KV cache, 906,957 tokens, 6.92× max concurrency @131072.
+- **Gemma-4-31B-it**: 58.9 GiB weights, 50.45 GiB KV cache, 274,525 tokens, 4.19× max concurrency @65536 — notably the *lowest* concurrency headroom of any model tested, consistent with it also being the slowest model under load.
+- **Gemma-4-26B-A4B-it**: 48.5 GiB weights, 61.02 GiB KV cache, 1,328,176 tokens, 20.27× max concurrency @65536 — the best combination of small footprint and high concurrency headroom of any model tested, on top of already being the fastest and a perfect coding score.
+
+`docs/benchmark-report-2026-07-23.html` updated with these real figures in place of the earlier placeholders. Moving to item (c): `--max-num-batched-tokens`/chunked-prefill tuning.
 
 ### Open Next Steps — resume here after context compaction
 

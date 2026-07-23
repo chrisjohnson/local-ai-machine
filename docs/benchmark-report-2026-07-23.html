@@ -245,23 +245,23 @@
     </tr>
     <tr>
       <td class="model-122b">Qwen3.5-122B-A10B-AWQ-4bit</td><td>Comparison (122B/10B-active)</td><td>AWQ 4-bit, enforce-eager</td>
-      <td class="num">74.52 GiB</td><td class="num">0.90</td>
-      <td class="num">n/a</td><td class="num">n/a</td><td class="num">65536 ctx</td>
+      <td class="num">73.58 GiB</td><td class="num">0.90</td>
+      <td class="num">35.21 GiB</td><td class="num">1,264,154</td><td class="num">19.29× @65536</td>
     </tr>
     <tr>
       <td class="model-27b">Qwen3.6-27B</td><td>Comparison (dense, 27B)</td><td>bf16</td>
-      <td class="num">52 GiB (disk)</td><td class="num">0.90</td>
-      <td class="num">n/a</td><td class="num">n/a</td><td class="num">131072 ctx</td>
+      <td class="num">51.1 GiB</td><td class="num">0.90</td>
+      <td class="num">57.65 GiB</td><td class="num">906,957</td><td class="num">6.92× @131K</td>
     </tr>
     <tr>
       <td class="model-gemma31">Gemma-4-31B-it</td><td>Comparison (dense, 31B)</td><td>bf16</td>
-      <td class="num">59 GiB (disk)</td><td class="num">0.90</td>
-      <td class="num">n/a</td><td class="num">n/a</td><td class="num">65536 ctx</td>
+      <td class="num">58.9 GiB</td><td class="num">0.90</td>
+      <td class="num">50.45 GiB</td><td class="num">274,525</td><td class="num">4.19× @65536</td>
     </tr>
     <tr>
       <td class="model-gemma26">Gemma-4-26B-A4B-it</td><td>Comparison (26B/4B-active MoE)</td><td>bf16</td>
-      <td class="num">49 GiB (disk)</td><td class="num">0.90</td>
-      <td class="num">n/a</td><td class="num">n/a</td><td class="num">65536 ctx</td>
+      <td class="num">48.5 GiB</td><td class="num">0.90</td>
+      <td class="num">61.02 GiB</td><td class="num">1,328,176</td><td class="num">20.27× @65536</td>
     </tr>
     <tr>
       <td class="model-vl">Qwen2.5-VL-7B-Instruct</td><td>Vision/OCR (not a coding candidate)</td><td>bf16</td>
@@ -273,7 +273,7 @@
     <strong>Unexpected finding (2026-07-22, still holds):</strong> the 80B GPTQ-4bit model is <em>smaller on disk and leaves more KV cache headroom</em> than the 35B bf16 model (46.49 GiB vs 66.97 GiB weights; 40.42 GiB vs 18.49 GiB KV cache) — 4-bit compression on 2.3× the parameters still nets smaller than bf16 on the smaller model. Model size alone is a poor proxy for memory footprint once quantization enters the picture.
   </div>
   <div class="callout warn">
-    <strong>Methodology note on the four new models:</strong> each was run alone via a swap-in script (standard stack stopped, model loaded solo at <code>--gpu-memory-utilization 0.90</code>). Weight sizes for these four are disk footprint, not loaded-GPU-memory figures — the exact KV-cache-headroom numbers the 2026-07-22 report captured for the first four models weren't preserved for these (the periodic throughput log rotated the one-time init lines out of the retained tail). All four models were re-tested at <strong>65536+ context</strong> (32768 for the vision-only model) per a stated 64K-minimum requirement, not the toolbox's more conservative 32768 default — including <strong>122B AWQ, now correctly re-served at 65536</strong>, up from the under-provisioned 32768 it launched at.
+    <strong>Methodology note:</strong> each of the four new comparison models was run alone via a swap-in script (standard stack stopped, model loaded solo at <code>--gpu-memory-utilization 0.90</code>). All were re-tested at <strong>65536+ context</strong> per a stated 64K-minimum requirement, not the toolbox's more conservative 32768 default — including <strong>122B AWQ, now correctly re-served at 65536</strong>, up from the under-provisioned 32768 it launched at. Loaded-weights and KV-cache figures for 122B, Qwen3.6-27B, Gemma-4-31B, and Gemma-4-26B-A4B were captured directly from each model's startup log during the Phase 3 optimization work (2026-07-23) and are real measurements, not disk-footprint estimates. <strong>Qwen2.5-VL-7B's weights figure is still disk footprint</strong> (16 GiB) — it wasn't touched during Phase 3, since it's excluded from the coding-capability comparison as a vision/OCR specialist, not a coding candidate.
   </div>
 </section>
 
