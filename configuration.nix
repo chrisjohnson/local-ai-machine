@@ -57,6 +57,30 @@ let
     # not chat coding). Will need --limit-mm-per-prompt flags not used
     # anywhere else in this stack once actually served.
     { name = "qwen2.5-vl-7b-instruct"; repo = "Qwen/Qwen2.5-VL-7B-Instruct"; }
+    # Phase 5.1/5.2 candidates, approved by Chris 2026-07-23. All three
+    # confirmed real repo IDs (HF API 200) before being added here.
+    #
+    # GPT-OSS-120B: MXFP4 native weights, BF16 compute path (NOT
+    # amd/gpt-oss-120b-w-mxfp4-a-fp8 — that variant quantizes activations
+    # to FP8, which this hardware can't run; the vanilla openai/ release
+    # keeps activations bf16). Already in kyuz0's own toolbox compatibility
+    # table for this exact image/hardware at TP=1 — highest-confidence new
+    # candidate, not a guess. ~65GB. Native vLLM tool-call/reasoning parser
+    # support (openai / openai_gptoss).
+    { name = "gpt-oss-120b"; repo = "openai/gpt-oss-120b"; }
+    # GPT-OSS-20B: same MXFP4/BF16 family, also proven-compatible in the
+    # same table, TP=1. Smaller footprint (~13GB) — candidate to replace
+    # Qwen3.5-4B as the judge/quick-tasks model, not primarily a coding
+    # contender given its size.
+    { name = "gpt-oss-20b"; repo = "openai/gpt-oss-20b"; }
+    # GLM-4.7-Flash: MoE, ~30B total/~3B active (same active-param class as
+    # the two fastest models already proven here), AWQ 4-bit so a very
+    # small footprint (well under 20GB) with lots of KV cache headroom.
+    # Z.AI's own SWE-bench/LiveCodeBench numbers beat GPT-OSS-20B and
+    # Qwen3-30B, but this exact checkpoint has no gfx1151-specific test
+    # evidence yet (unlike the two GPT-OSS entries above) — genuinely
+    # untested here, not just unbenchmarked. Cheap to try given the size.
+    { name = "glm-4.7-flash-awq"; repo = "QuantTrio/GLM-4.7-Flash-AWQ"; }
   ];
 in
 {
