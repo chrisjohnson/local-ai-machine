@@ -1167,6 +1167,8 @@ Tested enabling it: swapped in the 35B-A3B primary model with `SWAP_ENV_VARS='VL
 
 **Conclusion**: AITER being off (the current default) is the *correct* configuration for this hardware, not an untested opportunity being left on the table. Not worth revisiting without a different toolbox/AITER build.
 
+**Confirmed universal across architectures (2026-07-23, follow-up)**: re-tested `VLLM_ROCM_USE_AITER=1` on Qwen3-Coder-Next-GPTQ-4bit (80B) and Gemma-4-26B-A4B-it — **both crash identically** to the original 35B-A3B test (same `UnicodeDecodeError` in `torch._C._jit_get_operation`, just a different byte offset each time, same underlying failure). Three distinct architectures now confirmed broken (Qwen dense-MoE, Qwen GPTQ, Gemma) — conclusive that this is a toolbox/hardware-level incompatibility affecting every model tested, not something specific to one architecture. Closing this investigation out for good; no further AITER testing planned without a different toolbox image.
+
 **Item (b) is DONE — real, but marginal, result.** Tested the 122B AWQ tier without `--enforce-eager` (still keeping `VLLM_USE_TRITON_AWQ=1`, same everything else). **It starts and runs successfully without `enforce-eager`** — contrary to the earlier session's note that it was "required for this model's AWQ kernel path," it's actually optional; the model just wasn't tested without it before. Benchmarked head-to-head against the original enforce-eager baseline:
 
 | | c1 (enforce-eager baseline) | c1 (no-eager) | c8 (enforce-eager baseline) | c8 (no-eager) |
