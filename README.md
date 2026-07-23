@@ -997,8 +997,12 @@ When prompted for multi-file software engineering, build executions, or shell mo
 flowchart TD
     P1[Phase 1: Pre-Arrival GitOps Setup] --> P2[Phase 2: Day 0 Host Provisioning]
     P2 --> P3[Phase 3: Day 1 AI Stack Deployment]
-    P3 --> P4[Phase 4: Day-N Resilience & Operations]
+    P3 --> P4[Phase 4: Observability]
+    P4 --> P5[Phase 5: Model Research & Continuous Optimization]
+    P5 --> P6[Phase 6: Multi-Tenant & Control Plane Verification]
 ```
+
+**Restructured 2026-07-23**: Phases 5 and 6 are new. Turnstone, Herdr/Hermes, Drew's connectivity and remaining key generation, and the backup mirror test moved out of Phases 3/4 into the new final phase (6) — they're all "verify the multi-tenant/control-plane pieces" work, distinct from the ongoing model research/optimization effort. Phase 3 is now fully complete; Phase 4 is trimmed to just the Grafana/observability work. Phase 5 is where the in-progress benchmark→optimize→re-benchmark effort now lives, reframed as an open-ended loop rather than a one-time task list.
 
 ### Phase 1: Pre-Arrival Preparation — COMPLETE
 
@@ -1030,8 +1034,9 @@ Real hardware bring-up surfaced several bugs not visible from the config alone �
 - [x] **Task 2.4: Verify iGPU Memory Allocation**
   BIOS defaulted `iGPU Configuration` to `Auto`, silently carving out a fixed 64GB as static VRAM. Fixed via `Advanced → GFX Configuration → iGPU Configuration → UMA_SPECIFIED` + smallest `UMA Frame Buffer Size` (1GB). Confirmed: `free -h` shows 124GiB system RAM, `rocm-smi` shows 1GiB static VRAM, GTT makes nearly the full pool available to the GPU.
 
-### Phase 3: AI Stack Deployment (Day 1)
+### Phase 3: AI Stack Deployment (Day 1) — COMPLETE
 *Objective: Deploy the dual-vLLM slots, gateway, governance, and control-plane services.*
+*(Turnstone judge verification, remaining key generation, and Herdr/Hermes control-plane verification moved to Phase 6 — 2026-07-23 restructure.)*
 
 - [x] **Task 3.1: Model Staging (first pass)**
   Explored 9 model candidates (Qwen3-Coder-Next, Qwen3.6-27B/35B-A3B, Gemma4-31B/26B-A4B, MiniMax-M2, DeepSeek-V4-Flash, Qwen2.5-VL-7B for OCR, Qwen3.5-4B for judge) before narrowing the first real pass to **Qwen3-Coder-Next-FP8** (primary) + **Qwen3.5-4B** (judge). Originally started downloading GGUF quants for vLLM, then caught the format mismatch — GGUF is llama.cpp's format, not vLLM's; switched to the native `Qwen/Qwen3-Coder-Next-FP8` safetensors checkpoint (~80GB, day-0 vLLM ≥0.15.0 support) and `Qwen/Qwen3.5-4B` BF16 (~9GB) via `hf download`, staged to `/var/lib/ai-models/{qwen3-coder-next-fp8,qwen3.5-4b}` and confirmed complete (40/40 and 2/2 safetensors shards, no `.incomplete` files left). Root cause of repeated multi-hour download stalls (persisted across both WiFi and Ethernet) turned out to be `hf-xet`, huggingface_hub's newer accelerated transfer backend, hanging on this network path — `HF_HUB_DISABLE_XET=1` plus longer `HF_HUB_DOWNLOAD_TIMEOUT`/`HF_HUB_ETAG_TIMEOUT` fixed it. Both now set permanently via `environment.variables`, with `HF_TOKEN` support added too (sourced from a gitignored secrets file at shell login) for better unauthenticated-rate-limit headroom on future downloads.
@@ -1046,23 +1051,45 @@ Real hardware bring-up surfaced several bugs not visible from the config alone �
   **Resolved:** all containers (vllm-primary, vllm-judge, litellm-db, litellm, turnstone-db, turnstone, prometheus, grafana, open-webui) came up healthy end-to-end once the model download finished and the corrected images/config were applied.
 - [x] **Task 3.4: Endpoint Validation — COMPLETE**
   Both vLLM slots confirmed responding directly (`qwen3.6-35b-a3b`, `qwen3.5-4b-judge`); LiteLLM routes `coder`/`judge`/`governed_coder` verified. Inference speed and latency under load were formally benchmarked (not just spot-checked) via `vllm bench serve` at concurrency 1 and 8 — full results in `docs/benchmark-report-2026-07-22.html` and summarized in the 2026-07-22 decision-log entries below. The Qwen3-Coder-Next-GPTQ-4bit and Qwen3.5-122B-AWQ-4bit comparison tiers were both benchmarked in the same report — the 122B tier came out slowest at both concurrency levels tested, likely due to `--enforce-eager` being required for its AWQ kernel path.
-- [ ] **Task 3.5: Turnstone Judge & Governed Route Verification**
-  Confirm Turnstone's safety judge (Qwen3.5-4B judge slot) actually intercepts and evaluates `governed_coder` requests as intended, and that `turnstone-eval`/`turnstone-doctor` run cleanly. Wiring `vllm-judge` in as Turnstone's judge/reranker model has no env-var equivalent — it's TOML-config (`~/.config/turnstone/config.toml`) or console-UI only, so writing that config is real remaining work here, not just plumbing that got skipped. Confirmed still empty as of the 2026-07-22 audit.
-- [ ] **Task 3.6: Multi-Tenant Key Verification (partial)**
-  **Chris's key done (2026-07-23)**: generated via LiteLLM's `/key/generate` API (alias `chris-master`, key stored in chris's own records, not committed anywhere — LiteLLM persists it in Postgres, confirmed via `LiteLLM_VerificationToken` table), no model/rate restrictions, verified working end-to-end (`/v1/models` returns all four configured routes: `coder`, `judge`, `governed_coder`, `claude-sonnet`). **Drew's rate-limited/scoped key (`sk-drew-edge`) still not generated** — needs actual rate-limit and route-blocking parameters (`rpm_limit`, `models` allowlist excluding cloud/governed-admin routes) decided before creating it, not just an unrestricted key with a different name.
-- [ ] **Task 3.7: Herdr & Hermes Control Plane Verification**
-  Verify the Herdr daemon socket is reachable, panes spawn correctly, and Hermes' Telegram topic routing + sub-agent delegation rules (Section 6) behave as documented.
+- [x] **Task 3.5 (moved to Phase 6, Task 6.1): Turnstone Judge & Governed Route Verification**
+- [x] **Task 3.6: Multi-Tenant Key Verification — chris's portion done, Drew's portion moved to Phase 6 (Task 6.2)**
+  **Chris's key done (2026-07-23)**: generated via LiteLLM's `/key/generate` API (alias `chris-master`, key stored in chris's own records, not committed anywhere — LiteLLM persists it in Postgres, confirmed via `LiteLLM_VerificationToken` table), no model/rate restrictions, verified working end-to-end (`/v1/models` returns all four configured routes: `coder`, `judge`, `governed_coder`, `claude-sonnet`).
+- [x] **Task 3.7 (moved to Phase 6, Task 6.3): Herdr & Hermes Control Plane Verification**
 
-### Phase 4: Day-N Operations & Resilience
+### Phase 4: Observability
 
-- [ ] **Task 4.1: Execute Backup Mirror Test**
-  Run `scripts/sync-backup.sh` (or `systemctl start synology-backup.service`) and verify files land under `tank/backups/local-ai-machine/` on the Synology, including the new `hermes/` and `herdr/` paths. Confirm DSM's Btrfs snapshot schedule is enabled on the `tank` share for point-in-time recovery.
+*(Backup mirror test and edge access verification moved to Phase 6 — 2026-07-23 restructure. This phase is now just the Grafana/Prometheus observability work.)*
+
 - [x] **Task 4.2: Grafana Dashboard Baseline**
   Prometheus now scrapes all 5 targets successfully (`prometheus`, `node`, `litellm`, `vllm-primary`, `vllm-judge`) — added missing vLLM scrape configs, a real `node-exporter` container, and `litellm_settings.callbacks: ["prometheus"]` (the `/metrics` route didn't exist at all without it — confirmed 404, not 401, until added). Grafana now has a provisioned Prometheus datasource and a real 10-panel dashboard (request throughput, token throughput, KV cache usage, TTFT/ITL percentiles, prefix cache hit rate, host CPU/memory) replacing the old empty `"panels": []` placeholder. Admin password changed from the default (confirmed old `admin:admin` now returns 401). Verified end-to-end by querying real metric data through Grafana's own datasource proxy. Along the way found and fixed a real bug in the earlier `filterForward` firewall fix — it only exempted the `input` chain for `trustedInterfaces`, not `forward` (matches a known upstream nixpkgs issue, #437920), which was silently blocking legitimate container-to-container traffic including to already-allowlisted ports. Fixed with `extraForwardRules` plus a fixed docker bridge interface name (`br-localai`, not Docker's default auto-generated per-network-ID name, which would've broken this on a fresh install).
-- [ ] **Task 4.3: Edge Access Verification**
-  Confirm Drew's WireGuard VPN path to the LiteLLM/Hermes endpoints works end-to-end with `sk-drew-edge`, respecting rate limits.
-- [ ] **Task 4.4: Grafana Dashboard — Memory/GPU Utilization Panels** (requested 2026-07-23, after Phase 3/4 wraps up)
+- [ ] **Task 4.4: Grafana Dashboard — Memory/GPU Utilization Panels** (requested 2026-07-23)
   Current dashboard (Task 4.2) covers vLLM-level metrics (request throughput, KV cache usage, TTFT/ITL) and basic host CPU/memory from node-exporter, but not the specific memory breakdown or GPU activity graphs the user wants: **VRAM**, **system RAM**, and **GTT** (unified-memory allocation, the actual thing that matters on this APU — recall `rocm-smi`'s VRAM metric only shows the 1GB static carve-out, not real GTT usage, per the earlier hardware audit), plus a **graphed GPU activity/utilization** panel (not just point-in-time `rocm-smi`/`amdgpu_top` checks). Needs research into whether node-exporter or another exporter already surfaces GTT/VRAM/GPU-utilization metrics in a Prometheus-scrapeable way (amdgpu has some sysfs/debugfs stats; may need a dedicated AMD GPU exporter, e.g. something in the `amdgpu_top`/`rocm-smi` family with a metrics-export mode, since node-exporter itself is GPU-agnostic).
+
+### Phase 5: Model Research & Continuous Optimization
+
+*Objective: an open-ended loop, not a one-time task list — continuously find, test, and optimize the best available models for coding-assistant use on this hardware. "Done" for this phase means the model lineup and its serving configuration are genuinely dialed in for the best available experience and performance, not that a checklist is empty.*
+
+This phase absorbs and continues the in-progress "benchmark → coding-capability eval → optimize → re-benchmark" effort documented in the Decision Log entries above (2026-07-22 through 2026-07-23) — that work isn't restarting, it's continuing under this roadmap phase instead of a separate ad-hoc plan.
+
+- [ ] **5.1: Research additional model candidates.** Periodically check for new or updated models that might beat the current lineup on tok/s, wall-clock latency, code quality, or large-problem-solving capability. Not a one-time search — revisit as new releases land.
+- [ ] **5.2: Download and stage promising new candidates**, following the same declarative download pattern (`download-model-*` systemd services) as the existing lineup.
+- [ ] **5.3: Endless optimization loop** — squeeze the best real performance out of each model on this exact hardware/toolbox combination. Try anything findable via research (kernel flags, quantization choices, speculative decoding, scheduler tuning, etc.), verify each with real benchmarks rather than trusting claims, and keep only what's confirmed to actually help. **In progress now**: Phase 3 of the original optimize plan is substantially complete (AITER confirmed broken across 3 architectures and left off; non-`enforce-eager` AWQ for the 122B tier tested as a marginal real win, not yet adopted as the new default; `--max-num-batched-tokens` tuning tested as a real regression across multiple models, being confirmed across the remaining tiers now; MTP speculative decoding deliberately deferred — unconfirmed ROCm support, same architecture family that broke outright on FP8, a real experiment for a dedicated session rather than a quick test).
+- [ ] **5.4: Continuously expand the benchmark comparison report** with new data as models/optimizations are added — `docs/benchmark-report-2026-07-23.html` is the current baseline; each meaningful round of new data (new model, confirmed optimization) should produce a new dated report for direct before/after comparison, not overwrite history.
+
+### Phase 6: Multi-Tenant & Control Plane Verification
+
+*Objective: verify the remaining pieces that support Drew's access, safety governance, and operational resilience — distinct from the model research/optimization work in Phase 5, and appropriately last since none of it blocks day-to-day use of the stack by Chris.*
+
+- [ ] **Task 6.1 (was 3.5): Turnstone Judge & Governed Route Verification**
+  Confirm Turnstone's safety judge (Qwen3.5-4B judge slot) actually intercepts and evaluates `governed_coder` requests as intended, and that `turnstone-eval`/`turnstone-doctor` run cleanly. Wiring `vllm-judge` in as Turnstone's judge/reranker model has no env-var equivalent — it's TOML-config (`~/.config/turnstone/config.toml`) or console-UI only, so writing that config is real remaining work here, not just plumbing that got skipped. Confirmed still empty as of the 2026-07-22 audit.
+- [ ] **Task 6.2 (was part of 3.6): Drew's Rate-Limited Key Generation**
+  Generate `sk-drew-edge` via LiteLLM's `/key/generate` API — needs actual rate-limit and route-blocking parameters (`rpm_limit`, `models` allowlist excluding cloud/governed-admin routes) decided before creating it, not just an unrestricted key with a different name. Confirm Drew is correctly rate-limited and blocked from cloud/governed-admin routes.
+- [ ] **Task 6.3 (was 3.7): Herdr & Hermes Control Plane Verification**
+  Verify the Herdr daemon socket is reachable, panes spawn correctly, and Hermes' Telegram topic routing + sub-agent delegation rules (Section 6) behave as documented.
+- [ ] **Task 6.4 (was 4.3): Drew's Edge Access Verification**
+  Confirm Drew's WireGuard VPN path to the LiteLLM/Hermes endpoints works end-to-end with `sk-drew-edge`, respecting rate limits.
+- [ ] **Task 6.5 (was 4.1): Execute Backup Mirror Test**
+  Run `scripts/sync-backup.sh` (or `systemctl start synology-backup.service`) and verify files land under `tank/backups/local-ai-machine/` on the Synology, including the new `hermes/` and `herdr/` paths. Confirm DSM's Btrfs snapshot schedule is enabled on the `tank` share for point-in-time recovery.
 
 ### Decision Log — 2026-07-22: Benchmark pass, deployment pipeline redesign, hardware/system audit
 
