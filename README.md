@@ -1159,6 +1159,14 @@ Four phases, in order, with a second HTML report at the end for direct before/af
 
 **Caveat on the primary's score**: `results/qwen3.6-35b-a3b.json` was captured *before* the reasoning-trace-fallback fix (the third harness bug fixed this session) — its `palindrome` failure is exactly the failure mode that fix targets. Time constraints meant it wasn't re-run under the final harness version like the other six models were, so 4/5 for the primary is likely a conservative floor, not a fully apples-to-apples number. Worth a one-off re-run before treating this table as final.
 
+### Decision Log — 2026-07-23 (later still): Phase 3 optimization — AITER tested, doesn't work
+
+**Item (a) of the optimization plan is DONE — real, negative result.** Before touching anything, confirmed via vLLM's own `envs.py` source (read directly inside the running `vllm-primary` container) that `VLLM_ROCM_USE_AITER` is a master switch defaulting to **False** ("Disable aiter ops unless specifically enabled"), and it isn't set anywhere in this stack's configuration — meaning AITER has been fully off, by default, for every model benchmarked so far this session. This directly resolves the open question from the 2026-07-22 report ("AITER fused MoE kernels untested").
+
+Tested enabling it: swapped in the 35B-A3B primary model with `SWAP_ENV_VARS='VLLM_ROCM_USE_AITER=1'` via `swap_model_start.sh`, same serve flags as the standing primary. **Result: immediate engine crash**, not a slow start or a benchmark artifact — `UnicodeDecodeError: 'utf-8' codec can't decode byte 0xc9 in position 215: invalid continuation byte` while registering an AITER torch op via `torch._C._jit_get_operation`, during initial engine core startup before any model-specific work runs at all. This isn't an AWQ-specific interaction (the 122B tier's known issue, worked around via `VLLM_USE_TRITON_AWQ=1`) — it's a fundamental incompatibility between this AITER build and this exact toolbox image/hardware combination, for a plain bf16 MoE model with no quantization involved. Recovery was fully automatic — `swap_model_start.sh`'s own health-check-failure path restored the standard stack without manual intervention.
+
+**Conclusion**: AITER being off (the current default) is the *correct* configuration for this hardware, not an untested opportunity being left on the table. Not worth revisiting without a different toolbox/AITER build. Moving to item (b): whether a non-`enforce-eager` AWQ path is viable for the 122B model.
+
 ### Open Next Steps — resume here after context compaction
 
 Precise state as of this update, written for picking back up with zero prior context:
