@@ -1094,6 +1094,8 @@ This phase absorbs and continues the in-progress "benchmark → coding-capabilit
 
 **Operating mode for this phase (2026-07-23, refined later same day)**: the user is stepping away for an extended period and wants continuous, largely unattended progress — research, test, and optimize on an ongoing loop, checking in via README updates and git history rather than needing synchronous confirmation for routine judgment calls. **Exception, added explicitly**: new model downloads always need a check-in first, regardless of how routine the candidate looks — this is a standing rule, not a one-time gate. Genuinely risky/destructive/irreversible actions still get flagged rather than taken silently; everything else proceeds and gets recorded here.
 
+**Standing permission (Chris, 2026-07-23)**: freely swap `vllm-primary`/`vllm-judge` for testing purposes during this phase — Chris isn't actively relying on the served models right now, so there's no need to protect production continuity the way a real multi-user deployment would. This does not relax the download check-in rule above (a new model swap-in is fine; a new model *download* still needs a reply) — it only removes the earlier "avoid disrupting in-flight benchmarking/serving" caution for the swap-in pattern itself.
+
 ### Phase 6: Multi-Tenant & Control Plane Verification
 
 *Objective: verify the remaining pieces that support Drew's access, safety governance, and operational resilience — distinct from the model research/optimization work in Phase 5, and appropriately last since none of it blocks day-to-day use of the stack by Chris.*
