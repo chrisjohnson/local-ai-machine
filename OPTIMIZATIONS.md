@@ -50,3 +50,56 @@ services:
     ipc: host
     shm_size: '24gb' # Bumped from 16GB to optimize MoE inter-process expert routing
 Use code with caution.Explaining the 35B Custom Flags--max-model-len 65536: You can comfortably push past the standard 32k window. Gated DeltaNet uses fixed-size sequence state compression, meaning your Strix Halo memory bus won't choke under massive token contexts.--max-num-batched-tokens 32768: Restricts the chunk size for prefilling. MoE models can cause spikey VRAM allocation behavior under sudden multi-user or dense systemic queries; keeping this value balanced prevents hardware OOM resets.shm_size: '24gb': Raised from 16GB. Because 8 experts are dynamically selected out of 256 per token, the kernel demands higher instant shared memory allocation pools to serialize the mathematical weights on the RDNA3 compute engine.Would you like help setting up a script to benchmark the exact tokens/sec throughput difference between your 27B model and this MoE 35B model under this config?
+
+
+Also, details about hybrid models here utilizing NPU + iGPU:
+https://www.reddit.com/r/LocalLLaMA/comments/1uegdu0/big_news_for_amd_strix_halo_owners/
+
+## NPU+iGPU Hybrid Inference — r/LocalLLaMA thread (2026-07-23)
+
+Source: https://www.reddit.com/r/LocalLLaMA/comments/1uegdu0/big_news_for_amd_strix_halo_owners/
+
+**Retrieval note:** All automated fetch paths (direct WebFetch on `www.reddit.com`/`old.reddit.com`, the `.json` API on three reddit domains, and three reddit-mirror front ends) were blocked with HTTP 403. The user supplied the actual post text directly (pasted by hand, confirmed by OP as written without LLM assistance), which is what the summary below is based on. Only the OP's post was available — no comments/replies were retrieved, so any disagreement or correction from commenters is unknown and not reflected here.
+
+### What the thread (OP post) actually says
+
+- **OP owns an AMD Ryzen AI Max+ 395 ("Strix Halo")** and states they have relied solely on GGUF models via Vulkan for about a year, while AMD's ROCm software has been catching up to the hardware.
+- **OP's core claim: "THE NPU IS USABLE"** — i.e., their headline news is that the XDNA NPU on Strix Halo can now actually be put to work, which OP frames as new/recent (their framing, not independently verified here).
+- OP links the **kyuz0 AMD Strix Halo toolboxes database** (`https://kyuz0.github.io/amd-strix-halo-toolboxes/` — the same `kyuz0` project family behind this machine's current vLLM image) and says it "did NOT look so ROCm friendly 6 months ago," implying that page has been tracking/improving ROCm support for gfx1151 over time.
+- **"Hybrid Mode" claim**: OP says devices with both an NPU and iGPU (like Strix Halo) benefit from "hybrid models" that use both — describing the NPU as "CRAZY FAST at Prompt Processing" and able to "run parallel to gpu firing" (i.e., NPU handles prefill/prompt-processing while the iGPU handles generation, running concurrently). This is OP's characterization; no benchmark numbers were given to substantiate the "crazy fast" claim.
+- OP distinguishes two modes: **NPU-only models** (built specifically for the NPU — OP points to "FastFlowLM NPU" models as an example) vs. **Hybrid mode**, which OP says is the one that actually uses both pieces of hardware together and is the point of the post.
+- **Tool named: Lemonade** (lemonade-server.ai) — OP credits the Lemonade project/team ("focus primarily on Ryzen AI and working directly w/ AMD") with making hybrid mode work on their machine "in ways it couldn't a year ago." OP explicitly describes Lemonade's GUI as "ultra bare-bones" and says they "wouldn't recommend it for any actual agentic/chat/harness usage" — it's positioned as a sanity-test/proof-of-concept tool, not a production serving stack.
+- OP links AMD's own docs on Hybrid Mode and building hybrid models: `https://ryzenai.docs.amd.com/en/latest/llm/overview.html`.
+- **OP's wishlist, not a claim of existing support**: OP explicitly says they want ("wishlist/request") MTP-supported (Multi-Token Prediction) hybrid models — noting Qwen 3.6 has MTP speedup tech from Unsloth, and that AMD has a guide for adapting to "new processor shapes" since a 3.6 GGUF apparently "can't simply be converted to ONNX." OP links AMD's op-prepare guide: `https://ryzenai.docs.amd.com/en/latest/oga_op_prepare.html`. **This means MTP + hybrid-mode is not something OP has done or verified working — it's a request for the community to attempt, with a note to publish results to HuggingFace if anyone does.**
+
+### Relevant/actionable for this machine (gfx1151, kyuz0 vLLM toolbox, 128GB unified memory)
+
+- **Lemonade Server** (lemonade-server.ai) is the concrete, named tool to investigate for NPU+iGPU hybrid execution on this exact chip family. OP's own assessment is that it's good for a quick sanity test of whether hybrid mode works at all, but not suited to real agentic/chat serving — so treat it as a feasibility probe, not a replacement for the current vLLM stack.
+- The `kyuz0` toolbox site OP links is the same upstream project this machine's vLLM image (`kyuz0/vllm-therock-gfx1151`) comes from — worth checking that page directly for any newer NPU/hybrid-related toolbox variants, since OP says it has changed significantly in the last 6 months.
+- AMD's own Ryzen AI docs (`ryzenai.docs.amd.com`) are the primary/official source for how hybrid mode and model conversion actually work — start there rather than reverse-engineering from secondhand summaries.
+- No vLLM-specific hybrid NPU support is mentioned anywhere in the post — Lemonade and AMD's hybrid/ONNX (OGA) tooling are a separate stack from vLLM. Realistically, testing this on this machine means running Lemonade as a **separate, parallel process/container** to sanity-check NPU usability, not modifying the existing vLLM Compose service.
+- The MTP-hybrid combination OP wants (relevant to this machine's actual model, Qwen3.6-35B-A3B) does not exist yet per OP — it requires converting a GGUF to ONNX/OGA format for the NPU's "processor shape," which OP flags as non-trivial ("can't simply be converted"). Not actionable today; worth revisiting if the community produces a working conversion.
+
+### Still unclear / needs further verification
+
+- No comments were retrieved, so any pushback, corrections, or "this doesn't actually work / already tried it" replies from the r/LocalLLaMA community are unknown.
+- No benchmark numbers at all were given for NPU prompt-processing speed, hybrid-mode throughput, or the claimed "parallel firing" behavior — OP's "crazy fast" is qualitative only.
+- Whether Lemonade / hybrid mode works under Linux + Docker (this machine's actual environment) is not addressed by OP at all — OP doesn't mention their OS or whether they're running bare-metal or containerized.
+- Whether Lemonade and the existing `kyuz0` vLLM container can coexist on the same GPU/NPU device nodes without conflict is untested and unmentioned.
+- MTP + hybrid-mode for Qwen3.6-class models is confirmed *not yet done* by anyone per OP — it's a stated wishlist, not a working recipe. Do not attempt to follow "instructions" for this from the earlier (unverified, chatbot-generated) content elsewhere in this file, since no such recipe exists yet per this thread's OP.
+
+## Qwen3.6-35B-A3B real benchmark data — kyuz0 toolboxes site (verified 2026-07-22)
+
+Source: `https://kyuz0.github.io/amd-strix-halo-toolboxes/`, underlying data pulled directly from `https://kyuz0.github.io/amd-strix-halo-toolboxes/results.json` (the page renders this JSON client-side; WebFetch alone only sees the empty page shell, so the raw JSON was fetched directly to get real numbers). This is real, machine-generated benchmark data (not an LLM's guess), run on a Framework Desktop / Ryzen AI MAX 395+ / 128GB unified RAM — same chip family as this machine (gfx1151) — via `llama.cpp`. Data generated 2026-05-18, on Fedora Linux 43, kernel 6.19.12.
+
+**Answering the question "could 35B-A3B at 16-bit quant hit 300+ tok/sec?" — no, not for text generation.** The actual `Qwen3.6-35B-A3B-BF16` results (30 runs across 5 backend environments: `rocm-7_2_3`, `rocm6_4_4`, `rocm7-nightlies`, `vulkan_amdvlk`, `vulkan_radv`, all with flash attention on, `ngl=99`):
+
+- **Text generation (tg128, default/short context)**: best result was **26.01 tok/s** (ROCm 7.2.3). ROCm 6.4.4 and ROCm 7-nightlies were close behind (~25-26 tok/s). Vulkan backends were much slower for TG: RADV 10.68 tok/s, AMDVLK 11.6 tok/s.
+- **Prompt processing (pp512, default context)**: this is where large numbers show up — ROCm 6.4.4 hit **573.71 tok/s**, ROCm 7.2.3 hit 525.94, ROCm 7-nightlies 528.97 tok/s. Vulkan RADV hit 328.4 tok/s, AMDVLK only 122.89 tok/s. **So the "300+ tok/s" figure is real, but it's a prompt-processing (prefill) number, not a generation (decode) speed** — likely what's being misread on the page.
+- Longer contexts degrade both PP and TG somewhat (e.g. BF16 ROCm 7.2.3: pp2048@32k context = 417.86 tok/s, pp2048@65k context = 322.65 tok/s; tg32@32k = 23.91 tok/s, tg32@65k = 22.2 tok/s).
+
+For comparison, quantized variants of the same model (also in the dataset) generate much faster than BF16:
+- **Q4_K_XL**: tg128 best = **60.43 tok/s** (Vulkan RADV) / ~51 tok/s (ROCm). pp512 best = 1120 tok/s (ROCm 7.2.3).
+- **Q8_K_XL**: tg128 best = **46.53 tok/s** (Vulkan AMDVLK) / ~46 tok/s (ROCm). pp512 best = ~1095 tok/s (ROCm).
+
+**Takeaway for this machine**: BF16 (full 16-bit) is the slowest option for actual token generation (~26 tok/s ceiling) despite having the fastest-looking prompt-processing numbers on the page — the 300+ figures on that page are PP throughput, not TG/decode throughput, and pp512 is a burst/short-prompt metric, not sustained output speed. If generation speed for interactive/agentic use is the priority, the quantized (Q4_K_XL or Q8_K_XL) variants roughly double-to-triple TG speed vs BF16 on this hardware class. Also notable: ROCm environments substantially beat Vulkan for prompt processing on BF16, but Vulkan RADV actually wins on TG for the quantized variants — backend choice matters and isn't uniformly "ROCm always wins."
