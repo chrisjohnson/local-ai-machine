@@ -1000,9 +1000,10 @@ flowchart TD
     P3 --> P4[Phase 4: Observability]
     P4 --> P5[Phase 5: Model Research & Continuous Optimization]
     P5 --> P6[Phase 6: Multi-Tenant & Control Plane Verification]
+    P6 --> P7[Phase 7: Review, Codify, Rebuild]
 ```
 
-**Restructured 2026-07-23**: Phases 5 and 6 are new. Turnstone, Herdr/Hermes, Drew's connectivity and remaining key generation, and the backup mirror test moved out of Phases 3/4 into the new final phase (6) — they're all "verify the multi-tenant/control-plane pieces" work, distinct from the ongoing model research/optimization effort. Phase 3 is now fully complete; Phase 4 is trimmed to just the Grafana/observability work. Phase 5 is where the in-progress benchmark→optimize→re-benchmark effort now lives, reframed as an open-ended loop rather than a one-time task list.
+**Restructured 2026-07-23**: Phases 5, 6, and 7 are new. Turnstone, Herdr/Hermes, Drew's connectivity and remaining key generation, and the backup mirror test moved out of Phases 3/4 into Phase 6 — they're all "verify the multi-tenant/control-plane pieces" work, distinct from the ongoing model research/optimization effort. Phase 3 is now fully complete; Phase 4 is trimmed to just the Grafana/observability work. Phase 5 is where the in-progress benchmark→optimize→re-benchmark effort now lives, reframed as an open-ended loop rather than a one-time task list. **Phase 7 is now the true final phase**: a full audit cross-referencing everything done on the machine against this repo, then an actual wipe-and-rebuild to prove real reproducibility — this was the project's original stated end goal from early in the session, now formalized as its own phase.
 
 ### Phase 1: Pre-Arrival Preparation — COMPLETE
 
@@ -1101,6 +1102,17 @@ This phase absorbs and continues the in-progress "benchmark → coding-capabilit
   Confirm Drew's WireGuard VPN path to the LiteLLM/Hermes endpoints works end-to-end with `sk-drew-edge`, respecting rate limits.
 - [ ] **Task 6.5 (was 4.1): Execute Backup Mirror Test**
   Run `scripts/sync-backup.sh` (or `systemctl start synology-backup.service`) and verify files land under `tank/backups/local-ai-machine/` on the Synology, including the new `hermes/` and `herdr/` paths. Confirm DSM's Btrfs snapshot schedule is enabled on the `tank` share for point-in-time recovery.
+
+### Phase 7: Review, Codify, Rebuild (requested 2026-07-23)
+
+*Objective: prove the whole machine is genuinely, fully reproducible from this repo alone — not just mostly declarative, but actually wipeable and rebuildable with zero manual steps left implicit anywhere. This was the stated end goal from early in the project ("wipe the machine, reinstall fresh, ensure it's able to 100% bootstrap") — this phase is where that gets verified for real, not assumed.*
+
+- [ ] **Task 7.1: Full audit — everything adjusted, configured, executed, downloaded, or created on the machine, cross-referenced against this git repo.** Go through the session history systematically: every `configuration.nix`/`docker-compose.yml`/script change, every manual `docker exec`/`ssh` command that changed live state, every model download, every credential generated, every ad-hoc fix applied directly on the box. For each, confirm it's either (a) fully captured declaratively in a committed file, (b) captured as a documented manual step (e.g., Open WebUI's first-signup, which genuinely can't be automated per earlier research), or (c) flag it as a real gap — something that happened on the machine but isn't reproducible from the repo alone. Known candidates to check carefully given this session's history: the swap-in test containers (`vllm-bench-swap` and its many variants) never touched `docker-compose.yml` and shouldn't need to — confirm nothing from those experiments leaked into persistent state; the temporary NOPASSWD sudo rule added and reverted for the firewall investigation — confirm it's truly gone from both the repo and the live `/etc/sudoers`; LiteLLM virtual keys (chris's, and Drew's once created) — these live in Postgres, not in any file, so confirm the *mechanism* to regenerate them is documented (it is: `/key/generate` API) even though the specific key values aren't and shouldn't be committed; the orphaned FP8 model file and any other stray downloads.
+- [ ] **Task 7.2: Fix every gap found in 7.1** — commit the missing pieces, document the genuinely-manual steps clearly (in this README, not tribal knowledge), until the audit comes back clean.
+- [ ] **Task 7.3: Wipe and rebuild the machine from scratch**, using only this repo (fresh NixOS install per Section 8 Phase 2's own bootstrapping notes, `nixos-rebuild switch --flake`, `docker compose up -d`) — no manual fixes, no "oh right, I also need to..." steps. This is the actual test of Task 7.1/7.2's completeness, not a formality.
+- [ ] **Task 7.4: Fix anything the rebuild surfaces**, then re-verify. Repeat until a from-scratch rebuild genuinely works end-to-end unattended.
+
+**This is a hard-stop-style task** — actually wiping the production machine is exactly the kind of destructive, high-blast-radius action that needs explicit user confirmation before execution (per the "Executing actions with care" guidance), not something to do autonomously as part of Phase 5's unattended optimization loop. Task 7.3 specifically requires the user's direct go-ahead immediately before it happens, even though the audit/fix work in 7.1/7.2 can proceed without that gate.
 
 ### Decision Log — 2026-07-22: Benchmark pass, deployment pipeline redesign, hardware/system audit
 
