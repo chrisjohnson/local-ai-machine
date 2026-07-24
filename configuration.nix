@@ -65,14 +65,31 @@ let
     # to FP8, which this hardware can't run; the vanilla openai/ release
     # keeps activations bf16). Already in kyuz0's own toolbox compatibility
     # table for this exact image/hardware at TP=1 — highest-confidence new
-    # candidate, not a guess. ~65GB. Native vLLM tool-call/reasoning parser
+    # candidate, not a guess. ~65GB (the shards we actually want -
+    # model-*-of-00014.safetensors). Native vLLM tool-call/reasoning parser
     # support (openai / openai_gptoss).
-    { name = "gpt-oss-120b"; repo = "openai/gpt-oss-120b"; }
+    #
+    # hfExclude is required, not just an optimization: this repo also ships
+    # metal/model.bin (a 65GB single-file Apple-Metal-format checkpoint,
+    # irrelevant on this hardware) and original/*.safetensors (a redundant
+    # ~63GB full-precision copy). Confirmed directly - the download failed
+    # outright on metal/model.bin ("Invalid value. The file is too large to
+    # be downloaded using the regular download method... Install hf_xet"),
+    # since HF_HUB_DISABLE_XET=1 is set globally above (needed because Xet
+    # hangs repeatedly on this network path for other models) and this one
+    # file is apparently large enough that HF's non-Xet HTTP path refuses
+    # it outright. Excluding both directories avoids ~128GB of unneeded
+    # download AND sidesteps the hard failure, without having to compromise
+    # the global Xet-disable fix for every other model.
+    { name = "gpt-oss-120b"; repo = "openai/gpt-oss-120b"; hfExclude = [ "metal/*" "original/*" ]; }
     # GPT-OSS-20B: same MXFP4/BF16 family, also proven-compatible in the
-    # same table, TP=1. Smaller footprint (~13GB) — candidate to replace
-    # Qwen3.5-4B as the judge/quick-tasks model, not primarily a coding
-    # contender given its size.
-    { name = "gpt-oss-20b"; repo = "openai/gpt-oss-20b"; }
+    # same table, TP=1. Smaller footprint (~13GB real weights) — candidate
+    # to replace Qwen3.5-4B as the judge/quick-tasks model, not primarily a
+    # coding contender given its size. Same metal/original bloat as the
+    # 120B tier above (this repo's metal/model.bin is only 13.75GB, under
+    # whatever size threshold triggers the hard failure, but still ~28GB of
+    # pure waste without hfExclude).
+    { name = "gpt-oss-20b"; repo = "openai/gpt-oss-20b"; hfExclude = [ "metal/*" "original/*" ]; }
     # GLM-4.7-Flash: MoE, ~30B total/~3B active (same active-param class as
     # the two fastest models already proven here), AWQ 4-bit so a very
     # small footprint (well under 20GB) with lots of KV cache headroom.
@@ -309,7 +326,7 @@ in
   # HF_HUB_DISABLE_XET / timeout env vars and `nix shell ... hf download`
   # invocation already proven to work reliably on this network path.
   systemd.services = let
-    mkModelDownloadService = { name, repo }: {
+    mkModelDownloadService = { name, repo, hfExclude ? [] }: {
       description = "Download ${repo} to /var/lib/ai-models/${name}";
       after = [ "network-online.target" ];
       wants = [ "network-online.target" ];
@@ -370,7 +387,8 @@ in
         DEST=/var/lib/ai-models/${name}
         set +e
         ${pkgs.nix}/bin/nix --extra-experimental-features "nix-command flakes" shell nixpkgs#python3Packages.huggingface-hub \
-          --command hf download ${repo} --local-dir "$DEST" &
+          --command hf download ${repo} --local-dir "$DEST" \
+          ${lib.concatMapStringsSep " " (p: "--exclude '${p}'") hfExclude} &
         HF_PID=$!
 
         # Stall watchdog — a real, observed failure mode distinct from the
