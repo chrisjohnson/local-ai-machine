@@ -223,3 +223,49 @@ task never explicitly says to strip — likely a task-spec ambiguity, not a mode
     **Action needed**: decide whether to add those flags to the build file and re-run Tier B
     (and the coding harness generally, since it's one combined run) for this build before
     trusting its 0/5 as real data.
+- **Canary 2 completed end-to-end (`qwen3.6-27b--llamacpp-vulkan-radv-v1`, commit `5f68ced`)
+  after one real bug found and fixed mid-run (`c805f2e`):** the coding harness's 1800s (30min)
+  wrapper timeout was much too short for a slow llama.cpp backend (~12.5 tok/s tg128, vs
+  canary 1's faster vLLM candidate) — `seven-tier-coding-v2`'s own `timeout_s: 1500` is a
+  PER-REQUEST budget inside `coding_benchmark.py`, not a whole-harness one, and 22+ tasks
+  (several with an 8192-token budget) genuinely need well over 30 minutes at that decode
+  speed. First attempt hit a real `subprocess.TimeoutExpired`, silently producing zero
+  data (no raw JSON, no commit) — but the failure handling itself worked correctly: clean
+  teardown, vLLM restored and confirmed healthy, downloads resumed, no corrupted/partial
+  state. Bumped the wrapper timeout to 3h (also bumped llama-bench to 1h and the vLLM
+  per-trial timeout to 40min — canary 1's own c8 trials ran as long as ~22min, uncomfortably
+  close to the old 20min budget). Re-ran clean: llama-bench (344.83±14.49 pp512, 12.77±0.02
+  tg128, consistent with the earlier reference numbers) + full coding harness (19/22 across
+  all 7 tiers — Tier A 2/3, Tier B 4/5, Tier J 7/8, Tier P 2/2, Tier D 1/1, Tier Q 2/2, Tier L
+  1/1, all real/plausible results, no misleading-config artifact like canary 1's Tier B this
+  time since this build's flags were already complete). Total run time ~52 minutes.
+  Also found and fixed a small cosmetic YAML-rendering issue while reviewing the committed
+  data: `yaml.safe_dump` without `allow_unicode=True` backslash-escapes the "±" character in
+  the raw pp512/tg128 strings (re-parses identically either way, just harder for a human to
+  read directly) — fixed (`3a4c016`).
+  One remaining minor, non-blocking gap noted but not fixed: the coding-tier benchmark_runs
+  entry's `engine_version` came back `null` for llama-server (unlike llama-bench, which does
+  print a `build: <hash> (<n>)` line, `llama-server`'s own stdout genuinely never includes one
+  in this image/version — confirmed by reading the full captured startup log, not a truncation
+  bug). Not a real data gap since the image is already pinned by digest and the sibling
+  llama-bench entry for the same run captures the matching build hash — just not duplicated
+  into the coding-tier entry's own fingerprint block.
+
+**Phase 1 recommendation (both canaries complete): ready for Phase 2, pending Chris's
+explicit review/go-ahead per the standing risk-control plan** — this task was scoped to stop
+here regardless of how clean the canaries came out. Both canaries are now real, end-to-end
+validated on real hardware (not just code review): vLLM standing-service-adjacent swap-in
+path (canary 1) and the full llama.cpp two-leg (llama-bench + llama-server-with-coding-harness)
+path (canary 2) both produced real, committed data with correct run-fingerprint capture, raw
+files landing in `catalog/raw/`, clean teardown/restore, and confirmed-healthy standing
+services afterward every time — including through two genuine failures (non-executable
+scripts, two separate timeout-related bugs) that were each found, fixed, verified via a
+real re-run, and documented rather than silently patched around. The one item that should get
+explicit attention before a full unattended pass, not just implicitly waved through: the
+qwen3-coder-next-gptq4bit missing-tool-parser-flags gap noted above — either fix that build
+file's flags (and accept it'll re-run when Phase 2 starts, since it won't match the "already
+has both benchmark IDs" skip condition until it's re-run with real Tier B data) or explicitly
+accept the misleading Tier B 0/5 as known-bad data to be revisited later. No systemd unit or
+timer has been created — confirmed via `systemctl list-units --all`, `systemctl list-timers`,
+and `/etc/nixos/` contents on the box, nothing benchmark-orchestrator-related exists anywhere
+outside this repo's own `scripts/benchmark_orchestrator.py` file.
