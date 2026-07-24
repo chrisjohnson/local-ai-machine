@@ -254,6 +254,42 @@ services:
     depends_on:
       - litellm
 
+  # Alternate serving path (Phase 5.6) — a llama.cpp-backed alternative to
+  # vLLM, evaluated because its backend showed materially different
+  # (sometimes better, sometimes worse) numbers than vLLM/ROCm in the
+  # kyuz0 toolbox data gathered this session. Pinned to 0.17.7-rocm, NOT
+  # `:rocm`/`latest` — two open upstream issues (ollama/ollama#13589,
+  # #15336) report gfx1151-on-Linux silently falling back to CPU, with
+  # #15336 specifically identifying 0.18.x+ as a regression from a
+  # working 0.17.7. Real, not assumed: any benchmark data from this
+  # container must be checked against actual GPU utilization
+  # (node_amdgpu_busy_percent via Grafana, or amdgpu_top) before trusting
+  # it, since silent CPU fallback is the exact reported failure mode on
+  # this exact chip. No models pulled yet - staged empty pending Chris's
+  # separate go-ahead per the standing download-approval rule. Bound to
+  # loopback only, same reasoning as vllm-primary/judge above.
+  ollama:
+    image: ollama/ollama:0.17.7-rocm
+    container_name: ollama
+    restart: unless-stopped
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    # Numeric GIDs, not names ("video"/"render") - unlike the kyuz0 vLLM
+    # image, this image's own /etc/group doesn't define those group names,
+    # and `group_add` by name requires the name to exist inside the
+    # container (confirmed directly: "unable to find group render: no
+    # matching entries in group file"). Numeric GIDs sidestep that
+    # entirely - these are this host's actual video/render GIDs
+    # (`getent group video render` on the target).
+    group_add:
+      - "26"
+      - "303"
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
 volumes:
   turnstone_postgres_data:
   litellm_postgres_data:
@@ -261,6 +297,7 @@ volumes:
   vllm_judge_cache:
   open_webui_data:
   grafana_data:
+  ollama_data:
 
 # Fixed bridge interface name, not docker-compose's default auto-generated
 # one (br-<hash of the network ID>, different every time the network is
