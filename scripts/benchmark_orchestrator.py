@@ -447,7 +447,11 @@ def run_vllm_bench_serve_trial(container, served_name, model_dir, backend, endpo
     ]
     # Known client segfault-on-exit right after a run completes — tolerate
     # nonzero exit, verify success via the result file's existence instead.
-    run(cmd, check=False, timeout=1200)
+    # 2400s (up from 1200s) — canary 1's own c8 trials ran as long as ~22min
+    # (1320s) on a mid-size 80B GPTQ model; 1200s was uncomfortably close to
+    # that in practice and would leave zero margin for a larger/slower
+    # candidate still in the queue (e.g. 122B-class models).
+    run(cmd, check=False, timeout=2400)
     check = run(["docker", "exec", container, "test", "-f", f"/tmp/{result_path_in_container}"], check=False)
     if check.returncode != 0:
         raise RuntimeError(f"vllm bench serve trial produced no result file: {result_path_in_container}")
@@ -551,7 +555,11 @@ def run_llamacpp_bench(build_id, build, timestamp, dry_run):
         TOOLBOX_IMAGE,
         "llama-bench", "-m", f"/models/{gguf_rel}", "-ngl", "999", "-fa", "1", "-lm", "none",
     ]
-    result = run(cmd, check=True, timeout=1800)
+    # 3600s (up from 1800s) — margin for the largest still-untested models
+    # in the queue (e.g. MiniMax-M2.7, 228B total params) where model load
+    # alone could plausibly eat a large chunk of a 30min budget before
+    # pp512/tg128 even starts.
+    result = run(cmd, check=True, timeout=3600)
     raw_out = RAW_DIR / f"{build_id}--{LLAMACPP_BENCH_ID}--{timestamp}.txt"
     raw_out.write_text(result.stdout)
 
@@ -638,7 +646,20 @@ def run_coding_harness(build_id, base_url, served_name, timestamp, dry_run):
         "--model", served_name,
         "--output", str(out_path),
     ]
-    run(cmd, timeout=1800)
+    # Real bug found running canary 2 (qwen3.6-27b via llama-server, ~12.5
+    # tok/s): a 1800s (30min) wrapper timeout is fine for vLLM-speed engines
+    # (canary 1's full harness took ~5min) but genuinely too short for a
+    # slow llama.cpp backend across 22+ tasks, several with an 8192-token
+    # budget — killed the harness mid-run with subprocess.TimeoutExpired,
+    # silently producing zero data (no raw JSON, no benchmark_runs entry,
+    # no commit) while still reporting a clean-looking teardown afterward.
+    # seven-tier-coding-v2's own `timeout_s: 1500` is a PER-REQUEST budget
+    # inside coding_benchmark.py's call_model(), not a whole-harness one —
+    # this wrapper timeout is a separate, outer safety net against a truly
+    # hung process, not the harness's own pacing control. Set generously
+    # (3 hours) so it only fires on a genuine hang, not a slow-but-working
+    # engine; still bounded so a real hang doesn't run forever unattended.
+    run(cmd, timeout=10800)
     data = json.loads(out_path.read_text())
     return {
         "tier_scores": {
