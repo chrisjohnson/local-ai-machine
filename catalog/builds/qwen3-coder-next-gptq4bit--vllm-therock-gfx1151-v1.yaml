@@ -20,6 +20,8 @@ served_model_name: qwen3-coder-next-gptq4bit
 build_specific_flags:
   - --gpu-memory-utilization 0.70-0.90   # swap-in benchmarks used this range
   - --max-model-len 131072
+  - --enable-auto-tool-choice
+  - --tool-call-parser qwen3_coder   # added 2026-07-24 — canary run found this build was missing tool-call flags entirely (Tier B: 0/5, every request 400'd); qwen3_coder matches the parser already proven for the Qwen3-Coder-Next family elsewhere in this project (e.g. the judge build)
 build_specific_env: {}
 compose_service: null   # swap-in-only, never a standing compose service
 notes: >
@@ -180,42 +182,8 @@ benchmark_runs:
         - catalog/raw/qwen3-coder-next-gptq4bit--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c8-trial2--20260724T200929Z.json
         - catalog/raw/qwen3-coder-next-gptq4bit--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c8-trial3--20260724T200929Z.json
       server_log_raw_file: catalog/raw/qwen3-coder-next-gptq4bit--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--server-log--20260724T200929Z.txt
-
-  - timestamp: '2026-07-24T20:09:29Z'
-    benchmark_id: seven-tier-coding-v2
-    fingerprint:
-      host_kernel: 6.18.39
-      repo_commit: 0469169ca39a73a58f603195b16525e260a874dc
-      host_gpu_driver: Mesa 25.3.6
-      concurrent_load:
-        downloads_paused: true
-        vllm_co_resident_or_stopped: stopped_for_swap
-      host_metrics_window:
-        start: '2026-07-24T20:09:29Z'
-        end: '2026-07-24T21:45:08Z'
-      image_digest: '[kyuz0/vllm-therock-gfx1151@sha256:25fd294fde9f729d1e75f109022ab4496c78190c0a6dc0142440529f7af20e4d]'
-      engine_version: 0.22.1rc1.dev499+g470229c37.d20260613.rocm714
-    result:
-      tier_scores:
-        a:
-          pass: 3
-          total: 3
-        b:
-          pass: 0
-          total: 5
-        j:
-          pass: 8
-          total: 8
-        p:
-          pass: 2
-          total: 2
-        d:
-          pass: 1
-          total: 1
-        q:
-          pass: 2
-          total: 2
-        l:
-          pass: 1
-          total: 1
-      raw_file: catalog/raw/qwen3-coder-next-gptq4bit--vllm-therock-gfx1151-v1--seven-tier-coding-v2--20260724T200929Z.json
+# seven-tier-coding-v2 run from 2026-07-24T20:09:29Z removed 2026-07-24 — recorded before
+# build_specific_flags had --enable-auto-tool-choice/--tool-call-parser, so Tier B scored 0/5
+# on HTTP 400s rather than real model behavior. Raw file left at
+# catalog/raw/qwen3-coder-next-gptq4bit--vllm-therock-gfx1151-v1--seven-tier-coding-v2--20260724T200929Z.json
+# for reference. Orchestrator will re-run this leg fresh now that the flags are fixed.
