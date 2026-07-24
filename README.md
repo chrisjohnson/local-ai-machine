@@ -1334,18 +1334,40 @@ Phase 3 optimization work complete: (a) AITER — tested, crashes across 3 archi
 
 ### Open Next Steps — resume here after context compaction
 
-Precise state as of this update, written for picking back up with zero prior context:
+Precise state as of this update (2026-07-24, late), written for picking back up with zero prior context.
 
-- **Phases 1-4 are COMPLETE.** Speed benchmarking (all 7+1 models), coding-capability eval (7/7 models), Phase 3 optimization work (AITER tested/rejected across 3 architectures, non-eager AWQ for 122B tested as a marginal real win and adopted as the new default, chunked-prefill tuning tested as a universal regression across all 6 models and rejected), and Phase 4 observability (Grafana dashboard now 17 panels, real GPU/disk/network metrics wired up).
-- **Phase 5 has started (Chris gave the go-ahead 2026-07-23)**, ordered to front-load anything that depends on him before he's away for an extended period: 5.1 (research candidates) and 5.2 (present candidates, get download approval) come first, ahead of the fully-autonomous 5.3-5.7 work. The 122B non-eager-AWQ decision was raised and resolved immediately per that ordering (see below). **Standing rule, not a one-time gate: check in before starting any new model download**, every time, regardless of how routine the candidate looks — this applies within 5.2 and to any download 5.5 (MTP)/5.6 (Lemonade/Ollama) turn out to need.
-- **122B non-`enforce-eager` decision: RESOLVED.** Chris chose to adopt it as the standing default (2026-07-23) — going forward, swap this model in *without* `--enforce-eager` (keep `VLLM_USE_TRITON_AWQ=1`). See the Phase 3 optimization decision-log entry for the full before/after numbers and the accepted ~410s vs 350s cold-start tradeoff.
-- **Optional cleanup, not yet done**: re-run `scripts/coding_benchmark.py` against the primary (35B-A3B) under the exact final harness version — its saved 4/5 score predates the harness's last bug fix and is likely a conservative floor, not fully apples-to-apples with the other six models' scores.
-- **Both benchmark phases' results are folded into `docs/benchmark-report-2026-07-23.html`** (supersedes the 2026-07-22 report, which is preserved not deleted, as the pre-optimization baseline). Phase 4 of the *original* benchmark plan — re-running everything into a new post-optimization comparison report — hasn't happened yet; folded into Phase 5's item 5.4 (continuously expand the report) going forward rather than being its own separate step.
-- **Firewall gap: FIXED** (not just worked around) — root cause was NixOS's built-in `ct status dnat accept` forward-chain rule (not `extraForwardRules`, which was solving a different, real problem). `vllm-primary`/`vllm-judge` and the swap scripts now bind to `127.0.0.1:8000`/`127.0.0.1:8001`, not `0.0.0.0` — direct LAN access to those ports no longer works at all. Reach them via SSH tunnel (`ssh -f -N -L 18000:localhost:8000 -L 18001:localhost:8001 chris@local-ai-machine.local`) or from the target itself. LiteLLM on port 4000 is the only externally-reachable gateway now, for real.
-- **Grafana admin password was reset this session** (see decision log above) — new value was given to Chris directly, not written to any tracked file. If needed again, the reset mechanism (`grafana cli admin reset-admin-password`) is documented; the value itself isn't recoverable, only resettable.
-- **Chris's LiteLLM key exists** (`chris-master` alias, unrestricted) — use LiteLLM (port 4000) for regular API access going forward, not the raw master key. Drew's scoped key is still open (Task 6.2).
-- Production stack (`vllm-primary`, `vllm-judge`) should be up and serving normally — confirmed healthy as of this update, but always worth a `docker ps` sanity check given how many swap cycles this session has done.
-- **Feedback logged this session**: don't run other GPU workloads concurrently with an in-flight speed benchmark — keep phases strictly sequential per model.
+**Standing authorization, active right now: work autonomously overnight on downloading and benchmarking.** Chris is going to sleep and explicitly asked for unattended progress within these bounds. This is not a one-time note — treat it as in effect until he says otherwise. See `feedback_separate_selection_from_confirmation.md`-style memory for the durable version of the gates below; this section is the specific, current instance.
+
+**What's authorized to proceed autonomously (no further check-in needed):**
+- Finish the in-flight download queue (see exact list below) — all already approved.
+- Register each Ollama GGUF as it completes (`scripts/ollama_register_model.sh`) and benchmark it via Ollama+Vulkan.
+- Benchmark each llama.cpp GGUF directly via `kyuz0/amd-strix-halo-toolboxes` (the more meaningful number per this session's findings — see 5.6 below).
+- MTP speculative-decoding test via llama.cpp on Qwen3.6-27B/35B-A3B (Phase 5.5, already approved, not yet attempted).
+- Benchmark GPT-OSS-120B/20B and North Mini Code 1.0 via vLLM once downloaded (none have been served/benchmarked at all yet).
+- Fold all of the above into a new dated benchmark report + README updates, committing and pushing regularly.
+- Swap `vllm-primary`/`vllm-judge` freely for any of the above (standing permission already in effect).
+
+**Real gates — do NOT cross these autonomously, no matter how good a result looks:**
+1. **Any new model download beyond the queue below.** If further research or benchmarking surfaces a new candidate, record it and wait for Chris — do not start pulling it. This applies even to "obviously good" candidates.
+2. **FastFlowLM's IOMMU + reboot tradeoff (Phase 5.6).** Explicitly deferred by Chris ("decide later") — a real, quantified 5-12% performance cost to the whole stack plus a full reboot. Stays deferred until he revisits it.
+3. **Promoting any newly-benchmarked model to standing production primary** — i.e., changing what `vllm-primary` actually serves in `docker-compose.yml` as the permanent default. Testing/swapping is fine (standing permission); making a new model *the* default is Chris's call, even if the numbers are compelling.
+4. **Anything destructive/irreversible** — force-push, deleting data, the Phase 7 wipe-and-rebuild (already a documented hard stop needing his direct go-ahead).
+
+**Exact download queue as of this update** (shared flock, one at a time, check `.download-complete` markers under `/var/lib/ai-models/<name>/`):
+- ✅ done: `ollama-gemma-4-26b-a4b-it`, `ollama-glm-4.7-flash`
+- in progress/queued: `ollama-qwen3.6-27b`, `ollama-qwen3.6-35b-a3b`, `gpt-oss-120b`, `gpt-oss-20b`, `north-mini-code-1.0-w4a16`, `llamacpp-gpt-oss-120b`, `llamacpp-qwen3.5-122b-a10b`, `llamacpp-nemotron-3-super-120b`, `llamacpp-minimax-m2.7`
+- Disk space checked 2026-07-24: 1.2TB free, remaining queue ~430GB — comfortable headroom, not a concern.
+
+**Benchmarking state**: GLM-4.7-Flash fully benchmarked both ways (vLLM AWQ: 18.95/30.19 tok/s c1/c8; llama.cpp direct/Vulkan: 81.3 PP / 70.1 TG — llama.cpp is the real number, ~3.7x faster generation). Ollama+Vulkan works now (see 5.6 — real bug found and fixed, wrong image tag) but is meaningfully slower than llama.cpp direct (~13 vs 70.1 tok/s for the same file) — use llama.cpp direct as the benchmark-of-record, Ollama for convenience/API-compat only. Gemma-4-26B-A4B GGUF is downloaded but not yet benchmarked either way — good next target once autonomous work resumes.
+
+**Research provenance note**: several new model/engine leads this session came from a cold query to a different AI (Gemini), fact-checked afterward — see `OPTIMIZATIONS.md`'s "Third pass" entry for exactly what held up (kept) vs. what was confidently-stated fabrication (rejected, including two separate wildly-wrong throughput numbers for a model with real measured data already on hand). Treat any *future* cold-AI-query leads the same way — verify every specific number/claim before trusting or acting on it.
+
+**Standing facts, unchanged from earlier, still true:**
+- 122B non-`enforce-eager`: adopted as standing default (`VLLM_USE_TRITON_AWQ=1`, no `--enforce-eager`).
+- Firewall: fixed for real (loopback binding), not just worked around.
+- Passwordless `systemctl start/stop/restart` added 2026-07-24 for exactly this kind of unattended download-management work — use it instead of asking Chris to run commands.
+- Grafana password reset, Chris's LiteLLM key (`chris-master`) — both still valid, see earlier decision log entries.
+- Production stack should be up and healthy — `docker ps` sanity check worthwhile given how many swap cycles happen during benchmarking.
 
 ---
 
