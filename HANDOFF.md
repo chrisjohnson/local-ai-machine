@@ -149,3 +149,77 @@ task never explicitly says to strip — likely a task-spec ambiguity, not a mode
 - **The box's old, pre-git-fix, disconnected commit history was preserved** (not deleted) as
   a local-only branch on the box named `master-old-standalone-snapshot`. Harmless, but a
   candidate for pruning if it's never going to be needed.
+- **Ollama skipped entirely for this benchmark pass — deliberate, not an oversight.** The
+  currently-registered Ollama models (`qwen3.6-35b-a3b-gguf` etc., via
+  `scripts/ollama_register_model.sh`) have a broken bare-passthrough chat template
+  (`TEMPLATE {{ .Prompt }}`, no tool-calling schema, `<think>` blocks leak into `content`
+  unparsed) — confirmed via `curl .../api/show` showing no real template, and via harness runs
+  scoring far worse than llama-server on identical tasks for template-related reasons, not real
+  model-quality differences. `scripts/benchmark_orchestrator.py` hard-skips every `ollama-*`
+  engine build for this reason (`engine_family() == "ollama"` short-circuits with a skip
+  reason). Fixing the template needs a proper Go-template translation of each model's real
+  chat template — real work, deliberately out of scope here to avoid producing bad data under
+  time pressure. Left for a dedicated follow-up, not attempted.
+- **`scripts/benchmark_orchestrator.py` added (Phase 1 of 2) — resumable orchestrator for the
+  real-data benchmark pass, intentionally NOT yet wired to run unattended.** Implements
+  everything in `catalog/OPERATIONS.md`'s safety procedure programmatically: live
+  `.download-complete` marker checks (never trusts build-file notes/status text — real drift
+  found and confirmed during this task, see below), preflight download-pause/resume with
+  correct unit-name parsing, vLLM standing-service-in-place vs swap-in-candidate handling,
+  llama.cpp's two-separate-container-lifecycle pattern (llama-bench then llama-server),
+  mandatory correctness-gate before trusting `llamacpp-server-concurrent-v1` throughput,
+  full run-fingerprint capture, and YAML-surgery appends to `benchmark_runs:` (never a full
+  re-dump) so hand-written build-file formatting survives. Supports `--dry-run` and `--only
+  <build-id>`. **Deliberately not yet wired to a systemd unit and not yet run against the full
+  build matrix** — that's Phase 2, gated on Chris reviewing the two canary commits below.
+  Real bug found and fixed by the first canary attempt: `swap_model_start.sh`/
+  `swap_model_stop.sh` (plus `speed_benchmark_swap.sh`/`amdgpu-metrics.sh`) were committed as
+  mode 644 (non-executable) — harmless when invoked via `bash script.sh` but broke the
+  orchestrator's direct `subprocess.run([path, ...])` call with a real `Permission denied`.
+  Fixed via `chmod +x` + commit (`0469169`), not hand-patched on the box.
+  Real drift found live during this task, confirming why the download-completeness check must
+  be live and not trusted from any snapshot: `qwen3.5-122b-a10b--llamacpp-vulkan-radv-v1.yaml`'s
+  own notes still say "download actively in progress" but its `.download-complete` marker
+  already existed on the box — the orchestrator correctly picked it up as runnable rather than
+  skipping it based on stale prose.
+- **Canary 1 completed end-to-end (`qwen3-coder-next-gptq4bit--vllm-therock-gfx1151-v1`,
+  commit `53281e6`, ~96 minutes wall-clock for all 6 speed trials + coding harness) — real
+  results committed, but two more real issues surfaced from the full run, one fixed
+  (`5f830e0`), one flagged for Chris rather than silently patched:**
+  - **Fixed: footprint fields were all `null` in the committed data.** Root cause: the
+    orchestrator captured the vLLM startup log (`docker logs --tail 400`) only AFTER all 6
+    speed trials finished — 30+ minutes of per-request log lines had already pushed the
+    one-time "Model loading took...GiB" / "GPU KV cache size..." lines completely out of even
+    a 400-line tail. Fixed by moving the capture to immediately after the health check, before
+    any trial traffic (`--tail 2000` for extra margin too). Not re-run against canary 1's
+    already-committed entry — the fix only affects future runs; canary 1's `footprint` block
+    stays `null` unless someone re-runs it.
+  - **Fixed: `resume_downloads()`'s `systemctl start` call hung the whole orchestrator for
+    (at least) the remainder of the session.** These are `Type=oneshot` units with no
+    `RemainAfterExit`, so a plain `systemctl start` blocks the CLIENT until the unit's
+    `ExecStart` exits — for a multi-hour download that's effectively forever. Confirmed live:
+    the orchestrator sat unresponsive well past printing its own teardown-complete log lines
+    while `sudo -n systemctl start <5 units>` sat blocked on the shared-flock queue. This was
+    a responsiveness bug, not a safety bug — the downloads WERE correctly resuming in the
+    background the whole time (confirmed via `ps -ef --forest`, a real `hf download` process
+    was actively running under one of the five oneshot scripts). Fixed with `--no-block`.
+    Had to manually `kill` the stuck orchestrator process on the box after deploying the fix
+    (the actual work — data commit, push, stack restore, health confirm — had already fully
+    completed by that point; only the trailing systemctl-wait and final log line were stuck).
+  - **NOT silently fixed — flagged for Chris/next session:** Tier B (tool-calling) scored 0/5,
+    every task failing with `HTTP Error 400: Bad Request`. Root cause: this candidate's own
+    `build_specific_flags` in `catalog/builds/qwen3-coder-next-gptq4bit--vllm-therock-gfx1151-v1.yaml`
+    never included `--enable-auto-tool-choice --tool-call-parser qwen3_coder` (or a reasoning
+    parser) — only `--gpu-memory-utilization` and `--max-model-len` are present. vLLM correctly
+    rejects any request with a `tools=[...]` payload with a 400 when tool calling isn't enabled
+    server-side, so the harness's Tier B requests never had a chance to succeed — this is a
+    missing-flag artifact, not a real measurement of the model's tool-calling ability. Every
+    other tier (A/J/P/D/Q/L) scored normally (12/13 combined) since they don't send `tools=`.
+    Did NOT invent a fix (add the flags myself) because this is a genuine pre-existing gap in
+    hand-written build-file content, not an orchestrator bug — the sibling `qwen3.6-35b-a3b`
+    build (same model family) uses `--enable-auto-tool-choice --tool-call-parser qwen3_coder
+    --reasoning-parser qwen3`, which is probably the right fix, but that's a build-file content
+    edit a human should confirm, not something to silently guess into the swap-in flag list.
+    **Action needed**: decide whether to add those flags to the build file and re-run Tier B
+    (and the coding harness generally, since it's one combined run) for this build before
+    trusting its 0/5 as real data.
