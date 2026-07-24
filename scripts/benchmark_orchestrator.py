@@ -205,7 +205,20 @@ def resume_downloads(paused_units):
         log("Teardown: no downloads were paused for this run, nothing to resume.")
         return
     log(f"Teardown: resuming {len(paused_units)} download unit(s): {paused_units}")
-    run(["sudo", "-n", "systemctl", "start", *paused_units], check=False)
+    # --no-block is required here — real bug found during the first canary
+    # run: these are Type=oneshot units with no RemainAfterExit, so a plain
+    # `systemctl start` blocks the CLIENT (and therefore this whole script)
+    # until the unit's ExecStart process actually exits, which for a
+    # multi-hour model download means the orchestrator hangs for hours after
+    # "resuming" a download, never reaching the next build or printing
+    # "=== Done ===". --no-block only changes how long the systemctl client
+    # waits for job completion before returning; it does not change how the
+    # service itself starts or run in the background. Confirmed live: the
+    # download process (flock-waiting child of the oneshot's ExecStart) was
+    # already running correctly even while the blocking `systemctl start`
+    # call sat unfinished — this is a orchestrator responsiveness bug, not a
+    # safety bug (downloads were already resuming correctly).
+    run(["sudo", "-n", "systemctl", "start", "--no-block", *paused_units], check=False)
 
 
 def check_no_other_benchmark_activity():
@@ -467,6 +480,20 @@ def run_vllm_speed_benchmark(build_id, build, container, served_name, model_dir,
         "mean_tpot_ms", "median_tpot_ms", "p99_tpot_ms",
     ]
 
+    # Footprint capture MUST happen before running any trials, not after —
+    # real bug found in the first canary run: capturing after 6 trials'
+    # worth of per-request log lines (30+ min of traffic) pushed the
+    # one-time "Model loading took...GiB"/"GPU KV cache size..." startup
+    # lines completely out of even a --tail 400 window, leaving every
+    # footprint field null. The container is freshly healthy at this point
+    # (for a swap-in) or has comparatively little traffic yet (for a
+    # standing service argument, still safer to capture early), so this is
+    # the right place to read it, once, before traffic accumulates.
+    server_log = run(["docker", "logs", container, "--tail", "2000"], check=False).stdout
+    footprint = parse_vllm_footprint_from_log(server_log)
+    log_out = RAW_DIR / f"{build_id}--{VLLM_SPEED_BENCHMARK_ID}--server-log--{timestamp}.txt"
+    log_out.write_text(server_log)
+
     configs = {
         "c1": {"out_len": 512, "num_prompts": 20, "conc": 1},
         "c8": {"out_len": 256, "num_prompts": 100, "conc": 8},
@@ -487,12 +514,6 @@ def run_vllm_speed_benchmark(build_id, build, container, served_name, model_dir,
             raw_out.write_text(json.dumps(data, indent=2))
             raw_results.setdefault(tier, []).append(str(raw_out.relative_to(REPO_ROOT)))
         trial_summaries[tier] = summarize_trials(trials, metric_keys)
-
-    # One-time footprint capture from the server's own startup log.
-    server_log = run(["docker", "logs", container, "--tail", "400"], check=False).stdout
-    footprint = parse_vllm_footprint_from_log(server_log)
-    log_out = RAW_DIR / f"{build_id}--{VLLM_SPEED_BENCHMARK_ID}--server-log--{timestamp}.txt"
-    log_out.write_text(server_log)
 
     return {
         "trial_summaries": trial_summaries,
