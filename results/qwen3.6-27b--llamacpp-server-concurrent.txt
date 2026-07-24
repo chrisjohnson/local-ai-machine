@@ -1,0 +1,188 @@
+Concurrent-serving benchmark: llama-server (llama.cpp) with -np/-cb continuous batching
+==========================================================================================
+
+Date: 2026-07-24
+Model: Qwen3.6-27B-Q4_K_M.gguf (dense, 26.90B params, 15.65 GiB per llama-bench's own size report)
+       /var/lib/ai-models/ollama-qwen3.6-27b/Qwen3.6-27B-Q4_K_M.gguf
+Engine: llama-server (llama.cpp's OpenAI-compatible server), NOT llama-bench — this is the first
+        concurrent-serving benchmark against llama.cpp on this hardware; every prior llama.cpp
+        number in this project is single-stream llama-bench.
+Image: kyuz0/amd-strix-halo-toolboxes:vulkan-radv (build: b10107-c0bc8591e / 10107)
+Backend: Vulkan (RADV) — deliberately chosen over HIP/ROCm because of a currently-open upstream bug
+        (ggml-org/llama.cpp#25992, opened 2026-07-22) causing cross-request response corruption
+        under -np N --kv-unified on the HIP/ROCm backend specifically; 4 independent reporters
+        (incl. 2 on identical Strix Halo hardware) confirm Vulkan avoids it. There is also an
+        older, unresolved (auto-closed-stale, never actually fixed) RADV concurrent-slot-hang
+        report (#20906) on this same backend — this is exactly why the correctness check below was
+        run before any throughput measurement, not skipped.
+
+Pre-flight (per BENCHMARKING.md §1):
+- Active downloads found (7 units in "activating" state): download-model-gpt-oss-120b,
+  download-model-gpt-oss-20b, download-model-llamacpp-gpt-oss-120b,
+  download-model-llamacpp-minimax-m2.7, download-model-llamacpp-nemotron-3-super-120b,
+  download-model-llamacpp-qwen3.5-122b-a10b, download-model-north-mini-code-1.0-w4a16.
+  Paused via `sudo -n systemctl stop <unit>...` for all 7 (plain `systemctl stop` without sudo
+  returned "Access denied... interactive authentication" over a non-interactive SSH session on
+  this run — passwordless `sudo -n systemctl stop/start` on these specific units worked without a
+  password prompt, so used that instead; noting the discrepancy vs. BENCHMARKING.md §0's claim
+  that no sudo is needed, since in practice a non-interactive SSH session needed it here).
+  Confirmed no units left in "activating" state before proceeding.
+- No other benchmark/harness activity found in flight (checked `ps aux` on both target machine and
+  Mac side for llama-bench / vllm bench serve / coding_benchmark.py / speed_benchmark_swap.sh).
+- vllm-primary and vllm-judge stopped (`docker compose stop vllm-primary vllm-judge`) before this
+  run to remove GPU contention, confirmed stopped, restarted after (see teardown below).
+
+Server launch command:
+  docker run -d --rm --name llama-server-qwen36-27b \
+    --device /dev/kfd --device /dev/dri --group-add 26 --group-add 303 \
+    -p 8090:8080 \
+    -v /var/lib/ai-models/ollama-qwen3.6-27b:/models:ro \
+    kyuz0/amd-strix-halo-toolboxes:vulkan-radv \
+    llama-server -m /models/Qwen3.6-27B-Q4_K_M.gguf -ngl 999 -fa 1 -lm none \
+    --host 0.0.0.0 --port 8080 -np 4 -cb -kvu -c 32768
+
+Startup log (relevant lines):
+  0.11.796.695 I srv    load_model: initializing, n_slots = 4, n_ctx_slot = 32768, kv_unified = 'true'
+  0.11.817.940 I srv  llama_server: listening on http://0.0.0.0:8080
+  /health -> {"status":"ok"}
+  /slots -> 4 slots reported (ids 0-3, n_ctx 32768 each, is_processing:false at idle)
+
+==========================================================================================
+STEP 1 — CORRECTNESS CHECK (per task instructions: must pass before any throughput measurement)
+==========================================================================================
+
+4 concurrent requests fired simultaneously (single `curl ... &` per request, `wait`), each with a
+clearly distinguishable prompt, temperature=0, max_tokens=800 (raised from an initial max_tokens=50
+trial run because the model is a reasoning model — Qwen3.6 — and the first attempt exhausted the
+50-token budget mid-<think> trace before emitting a final answer; 800 tokens was enough for the
+model to finish reasoning and emit the actual final content in every case).
+
+Command pattern (run against http://localhost:8090/v1/chat/completions):
+  curl -sS -X POST http://localhost:8090/v1/chat/completions -H 'Content-Type: application/json' \
+    -d @p<N>.json -o p<N>_response.json -w "p<N> http_code=%{http_code} time_total=%{time_total}s\n"
+  (all 4 backgrounded with & and waited on together)
+
+Prompts:
+  p1: "What is 17 * 23? Reply with ONLY the numeric answer, nothing else."
+  p2: "Name the capital of France. Reply with ONLY the city name, nothing else."
+  p3: "Write the word BANANA five times, separated by spaces, and nothing else."
+  p4: "What color is the sky on a clear day? Reply with ONLY the color name, nothing else."
+
+Wall-clock (all 4 requests overlapped, confirming concurrent — not serialized — processing):
+  p1 http_code=200 time_total=20.482234s
+  p2 http_code=200 time_total=17.263855s
+  p3 http_code=200 time_total=22.531157s
+  p4 http_code=200 time_total=21.192136s
+
+Final answer content per slot (message.content field, after the model's <think> reasoning trace):
+  p1 (17*23)              -> "391"                                     CORRECT (17*23=391)
+  p2 (capital of France)  -> "Paris"                                   CORRECT
+  p3 (BANANA x5)          -> "BANANA BANANA BANANA BANANA BANANA"      CORRECT
+  p4 (sky color)          -> "Blue"                                    CORRECT
+
+Each response's reasoning_content field was also checked and confirms the model reasoned about its
+OWN prompt in every case (e.g. p1's reasoning walks through 17*20=340, 17*3=51, 340+51=391; p2's
+reasoning explicitly discusses "capital of France... Paris"; p3's reasoning discusses "BANANA" /
+count of 5 / space-separated; p4's reasoning discusses "sky... blue"). No cross-contamination
+between slots, no garbled/mixed text, no truncation artifacts resembling another slot's content.
+
+RESULT: CORRECTNESS CHECK PASSED CLEANLY. No corruption, no cross-request contamination, no hang
+observed across 4 concurrent slots on the Vulkan (RADV) backend with -np 4 -cb -kvu. This is
+consistent with the upstream reports that Vulkan avoids the HIP/ROCm-specific corruption bug
+(#25992), and no RADV concurrent-slot hang (#20906) was observed either — all 4 requests returned
+promptly with valid, distinct, individually-correct answers.
+
+Full raw request/response JSON files preserved on the target machine at
+~/bench-results/correctness-qwen36-27b/{p1,p2,p3,p4}{.json,_response.json} and copied locally to
+this repo checkout's /tmp for this write-up; the exact response bodies are reproduced above in
+condensed form (full JSON includes usage/timings fields, omitted here for brevity — available on
+request/re-run, this .txt captures the load-bearing correctness evidence).
+
+==========================================================================================
+STEP 2 — THROUGHPUT MEASUREMENT (concurrency 1 and concurrency 4)
+==========================================================================================
+
+Since correctness passed, proceeded to throughput. Methodology: a simple concurrent-curl load test
+(no vLLM `vllm bench serve`-style tool used against llama-server — hand-rolled, per task's
+"your judgment on simplest reliable approach" instruction). Same prompt used for both concurrency
+levels for direct comparability: a long-form essay prompt designed to produce a full max_tokens
+completion (so token-count is fixed/comparable, not truncated early by a short natural response).
+
+Prompt (identical across all requests, temperature=0, max_tokens=512):
+  "Write a detailed 500-word essay about the history and cultural significance of coffee, covering
+  its origins in Ethiopia, its spread through the Ottoman Empire and Europe, and its role in modern
+  society."
+
+--- Concurrency 1 (single request, baseline) ---
+
+Command:
+  curl -sS -X POST http://localhost:8090/v1/chat/completions -H 'Content-Type: application/json' \
+    -d @longprompt.json -o c1_response.json -w 'time_total=%{time_total}s\n'
+
+Result: time_total=41.964995s
+llama.cpp's own timings block (from response JSON):
+  "prompt_n":50, "prompt_ms":450.918, "prompt_per_second":110.88
+  "predicted_n":512, "predicted_ms":40626.021, "predicted_per_second":12.60276018663014
+
+  => c1 (single-stream) generation throughput: 12.60 tok/s
+     (sanity-checks closely against the existing llama-bench tg128 baseline of 12.75 ± 0.03 tok/s
+     for this exact model/quant — see results/qwen3.6-27b--llamacpp.txt — as expected, since a
+     single request through llama-server's continuous-batching path should behave like plain
+     single-stream decode.)
+
+--- Concurrency 4 (4 simultaneous identical requests) ---
+
+Command pattern: 4x the same curl command as above, backgrounded with & and waited on together,
+each writing to its own c4_response_<N>.json.
+
+Wall-clock (all 4 requests overlapped — true concurrent processing, not serialized):
+  c4_req1 time_total=53.534439s
+  c4_req2 time_total=53.533961s
+  c4_req3 time_total=53.533902s
+  c4_req4 time_total=53.432370s
+  (total wall time for the batch: ~53.54s)
+
+Per-request llama.cpp timings (from each response JSON's "timings" block):
+  req1: predicted_n=512, predicted_per_second=9.782384176810174
+  req2: predicted_n=512, predicted_per_second=9.78245445336017
+  req3: predicted_n=512, predicted_per_second=9.782397447038825
+  req4: predicted_n=512, predicted_per_second=9.726300572132534
+
+Server-side log confirmation (docker logs), all 4 slots active simultaneously, released together
+at the end of the batch:
+  slot id 0 | task 847 | eval time = 52338.60 ms / 512 tokens (9.78 tokens per second)
+  slot id 1 | task 849 | eval time = 52338.91 ms / 512 tokens (9.78 tokens per second)
+  slot id 2 | task 848 | eval time = 52640.78 ms / 512 tokens (9.73 tokens per second)
+  slot id 3 | task 850 | eval time = 52338.98 ms / 512 tokens (9.78 tokens per second)
+  (slot ids 0-3 all show print_timing entries interleaved throughout the run, confirming genuine
+  concurrent decode across all 4 slots, not queued/serialized execution)
+
+Aggregate throughput at c4: 4 requests x 512 completion tokens = 2048 tokens generated in ~53.53s
+wall time => ~38.3 tok/s aggregate (cross-checks against summing the 4 individual per-slot rates:
+9.78+9.78+9.73+9.78 = ~39.1 tok/s, consistent within measurement noise).
+
+SUMMARY TABLE:
+  Concurrency | Aggregate tok/s | Per-request tok/s | Per-request wall time
+  c1          | 12.60           | 12.60              | ~42.0s (512 tokens)
+  c4          | ~38.3-39.1      | ~9.7-9.8 each       | ~53.5s (512 tokens each)
+
+  => ~3.0-3.1x aggregate throughput gain going from c1 to c4 concurrent slots, at the cost of each
+     individual request taking ~27% longer wall-clock (42.0s -> 53.5s) than it would running alone.
+     This is a real, working concurrent-serving win over single-stream llama.cpp on this hardware
+     -- not merely queuing -- and correctness held up cleanly across all 4 concurrent slots on the
+     Vulkan backend for both the distinguishing-prompt correctness check and the identical-prompt
+     throughput run.
+
+Full raw request/response JSON preserved on target machine at
+~/bench-results/throughput-qwen36-27b/{longprompt.json,c1_response.json,c4_response_{1,2,3,4}.json}.
+
+==========================================================================================
+Teardown
+==========================================================================================
+- llama-server-qwen36-27b container stopped (`docker stop`) and confirmed fully removed (--rm).
+- vllm-primary / vllm-judge restarted via `docker compose up -d vllm-primary vllm-judge`, confirmed
+  healthy via `/health` on both ports 8000/8001 BEFORE resuming downloads (per the mandatory
+  vLLM-first-then-downloads sequencing in BENCHMARKING.md §3, to avoid the documented OOM incident
+  from restarting both concurrently).
+- Download queue resumed via `sudo -n systemctl start` on the same 7 units paused above, confirmed
+  back to "activating".
