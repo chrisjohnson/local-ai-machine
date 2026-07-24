@@ -34,4 +34,62 @@ notes: >
 status: WORKING
 created: "2026-07-24"
 last_verified: "2026-07-24"
-benchmark_runs: []
+benchmark_runs:
+  - timestamp: '2026-07-24T22:42:22Z'
+    benchmark_id: llamacpp-bench-v1
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: c805f2e3f90479d4b7adc19d6886f84e8cf911a3
+      host_gpu_driver: Mesa 25.3.6
+      concurrent_load:
+        downloads_paused: true
+        vllm_co_resident_or_stopped: stopped_for_run
+      host_metrics_window:
+        start: '2026-07-24T22:42:22Z'
+        end: '2026-07-24T22:43:44Z'
+      image_digest: '[kyuz0/amd-strix-halo-toolboxes@sha256:e5a7e7df8c02b7aed8dfe430384aa77c8d5dfa0150809ba9b87acd2ff803a568]'
+      engine_version: 555881ebc (10121)
+    result:
+      pp512_tok_s: "344.83 \xB1 14.49"
+      tg128_tok_s: "12.77 \xB1 0.02"
+      engine_build: 555881ebc (10121)
+      raw_stdout_file: catalog/raw/qwen3.6-27b--llamacpp-vulkan-radv-v1--llamacpp-bench-v1--20260724T224222Z.txt
+
+  - timestamp: '2026-07-24T22:42:22Z'
+    benchmark_id: seven-tier-coding-v2
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: c805f2e3f90479d4b7adc19d6886f84e8cf911a3
+      host_gpu_driver: Mesa 25.3.6
+      concurrent_load:
+        downloads_paused: true
+        vllm_co_resident_or_stopped: stopped_for_run
+      host_metrics_window:
+        start: '2026-07-24T22:43:54Z'
+        end: '2026-07-24T23:26:09Z'
+      image_digest: '[kyuz0/amd-strix-halo-toolboxes@sha256:e5a7e7df8c02b7aed8dfe430384aa77c8d5dfa0150809ba9b87acd2ff803a568]'
+      engine_version: null
+    result:
+      tier_scores:
+        a:
+          pass: 2
+          total: 3
+        b:
+          pass: 4
+          total: 5
+        j:
+          pass: 7
+          total: 8
+        p:
+          pass: 2
+          total: 2
+        d:
+          pass: 1
+          total: 1
+        q:
+          pass: 2
+          total: 2
+        l:
+          pass: 1
+          total: 1
+      raw_file: catalog/raw/qwen3.6-27b--llamacpp-vulkan-radv-v1--seven-tier-coding-v2--20260724T224222Z.json
