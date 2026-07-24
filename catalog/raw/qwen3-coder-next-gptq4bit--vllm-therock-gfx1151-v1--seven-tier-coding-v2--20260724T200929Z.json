@@ -1,0 +1,236 @@
+{
+  "model": "qwen3-coder-next-gptq4bit",
+  "base_url": "http://localhost:8000",
+  "tier_a_pass": 3,
+  "tier_a_total": 3,
+  "tier_b_pass": 0,
+  "tier_b_total": 5,
+  "tier_j_pass": 8,
+  "tier_j_total": 8,
+  "tier_p_pass": 2,
+  "tier_p_total": 2,
+  "tier_d_pass": 1,
+  "tier_d_total": 1,
+  "tier_q_pass": 2,
+  "tier_q_total": 2,
+  "tier_l_pass": 1,
+  "tier_l_total": 1,
+  "results": [
+    {
+      "id": "palindrome",
+      "tier": "A",
+      "elapsed_s": 2.56,
+      "raw_content": "```python\ndef is_palindrome(s: str) -> bool:\n    filtered = ''.join(char.lower() for char in s if char.isalnum())\n    return filtered == filtered[::-1]\n```",
+      "raw_reasoning": null,
+      "extracted_code": "def is_palindrome(s: str) -> bool:\n    filtered = ''.join(char.lower() for char in s if char.isalnum())\n    return filtered == filtered[::-1]\n",
+      "passed": true
+    },
+    {
+      "id": "merge_sorted",
+      "tier": "A",
+      "elapsed_s": 5.7,
+      "raw_content": "```python\ndef merge_sorted(a: list, b: list) -> list:\n    result = []\n    i, j = 0, 0\n    while i < len(a) and j < len(b):\n        if a[i] <= b[j]:\n            result.append(a[i])\n            i += 1\n        else:\n            result.append(b[j])\n            j += 1\n    result.extend(a[i:])\n    result.extend(b[j:])\n    return result\n```",
+      "raw_reasoning": null,
+      "extracted_code": "def merge_sorted(a: list, b: list) -> list:\n    result = []\n    i, j = 0, 0\n    while i < len(a) and j < len(b):\n        if a[i] <= b[j]:\n            result.append(a[i])\n            i += 1\n        else:\n            result.append(b[j])\n            j += 1\n    result.extend(a[i:])\n    result.extend(b[j:])\n    return result\n",
+      "passed": true
+    },
+    {
+      "id": "expr_eval",
+      "tier": "A",
+      "elapsed_s": 24.68,
+      "raw_content": "```python\ndef evaluate(expr: str) -> float:\n    def parse_expression(tokens):\n        result = parse_term(tokens)\n        while tokens and tokens[0] in ('+', '-'):\n            op = tokens.pop(0)\n            right = parse_term(tokens)\n            if op == '+':\n                result += right\n            else:\n                result -= right\n        return result\n\n    def parse_term(tokens):\n        result = parse_factor(tokens)\n        while tokens and tokens[0] in ('*', '/'):\n            op = tokens.pop(0)\n            right = parse_factor(tokens)\n            if op == '*':\n                result *= right\n            else:\n                result /= right\n        return result\n\n    def parse_factor(tokens):\n        if tokens[0] == '(':\n            tokens.pop(0)  # Remove '('\n            result = parse_expression(tokens)\n            tokens.pop(0)  # Remove ')'\n            return result\n        elif tokens[0] == '-':\n            tokens.pop(0)  # Remove '-'\n            return -parse_factor(tokens)\n        elif tokens[0] == '+':\n            tokens.pop(0)  # Remove '+'\n            return parse_factor(tokens)\n        else:\n            return float(tokens.pop(0))\n\n    # Tokenize the expression\n    tokens = []\n    i = 0\n    while i < len(expr):\n        c = expr[i]\n        if c.isdigit() or (c == '.' and i+1 < len(expr) and expr[i+1].isdigit()):\n            j = i\n            has_dot = False\n            while j < len(expr) and (expr[j].isdigit() or (expr[j] == '.' and not has_dot)):\n                if expr[j] == '.':\n                    has_dot = True\n                j += 1\n            tokens.append(expr[i:j])\n            i = j\n        elif c in '+-*/()':\n            tokens.append(c)\n            i += 1\n        elif c.isspace():\n            i += 1\n        else:\n            raise ValueError(f\"Invalid character: {c}\")\n    \n    if not tokens:\n        raise ValueError(\"Empty expression\")\n    \n    return parse_expression(tokens)\n```",
+      "raw_reasoning": null,
+      "extracted_code": "def evaluate(expr: str) -> float:\n    def parse_expression(tokens):\n        result = parse_term(tokens)\n        while tokens and tokens[0] in ('+', '-'):\n            op = tokens.pop(0)\n            right = parse_term(tokens)\n            if op == '+':\n                result += right\n            else:\n                result -= right\n        return result\n\n    def parse_term(tokens):\n        result = parse_factor(tokens)\n        while tokens and tokens[0] in ('*', '/'):\n            op = tokens.pop(0)\n            right = parse_factor(tokens)\n            if op == '*':\n                result *= right\n            else:\n                result /= right\n        return result\n\n    def parse_factor(tokens):\n        if tokens[0] == '(':\n            tokens.pop(0)  # Remove '('\n            result = parse_expression(tokens)\n            tokens.pop(0)  # Remove ')'\n            return result\n        elif tokens[0] == '-':\n            tokens.pop(0)  # Remove '-'\n            return -parse_factor(tokens)\n        elif tokens[0] == '+':\n            tokens.pop(0)  # Remove '+'\n            return parse_factor(tokens)\n        else:\n            return float(tokens.pop(0))\n\n    # Tokenize the expression\n    tokens = []\n    i = 0\n    while i < len(expr):\n        c = expr[i]\n        if c.isdigit() or (c == '.' and i+1 < len(expr) and expr[i+1].isdigit()):\n            j = i\n            has_dot = False\n            while j < len(expr) and (expr[j].isdigit() or (expr[j] == '.' and not has_dot)):\n                if expr[j] == '.':\n                    has_dot = True\n                j += 1\n            tokens.append(expr[i:j])\n            i = j\n        elif c in '+-*/()':\n            tokens.append(c)\n            i += 1\n        elif c.isspace():\n            i += 1\n        else:\n            raise ValueError(f\"Invalid character: {c}\")\n    \n    if not tokens:\n        raise ValueError(\"Empty expression\")\n    \n    return parse_expression(tokens)\n",
+      "passed": true
+    },
+    {
+      "id": "single_tool_call",
+      "tier": "B",
+      "passed": false,
+      "error": "request failed: HTTP Error 400: Bad Request"
+    },
+    {
+      "id": "multi_step_tool_call",
+      "tier": "B",
+      "passed": false,
+      "error": "request failed: HTTP Error 400: Bad Request"
+    },
+    {
+      "id": "no_tool_needed",
+      "tier": "B",
+      "passed": false,
+      "error": "request failed: HTTP Error 400: Bad Request"
+    },
+    {
+      "id": "tool_selection_similar",
+      "tier": "B",
+      "passed": false,
+      "error": "request failed: HTTP Error 400: Bad Request"
+    },
+    {
+      "id": "nested_args_tool_call",
+      "tier": "B",
+      "passed": false,
+      "error": "request failed: HTTP Error 400: Bad Request"
+    },
+    {
+      "id": "judge_correct",
+      "tier": "J",
+      "elapsed_s": 2.27,
+      "raw_content": "{\"passes\": true, \"reason\": \"The function correctly filters non-alphanumeric characters, converts to lowercase, and compares the cleaned string to its reverse.\"}",
+      "raw_reasoning": null,
+      "verdict": {
+        "passes": true,
+        "reason": "The function correctly filters non-alphanumeric characters, converts to lowercase, and compares the cleaned string to its reverse."
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_incorrect",
+      "tier": "J",
+      "elapsed_s": 3.16,
+      "raw_content": "{\"passes\": false, \"reason\": \"The code incorrectly compares all but the last character of the cleaned list to all but the last character of the reversed list, which fails for odd-length palindromes and produces incorrect results.\"}",
+      "raw_reasoning": null,
+      "verdict": {
+        "passes": false,
+        "reason": "The code incorrectly compares all but the last character of the cleaned list to all but the last character of the reversed list, which fails for odd-length palindromes and produces incorrect results."
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_correct_offbyone",
+      "tier": "J",
+      "elapsed_s": 2.51,
+      "raw_content": "{\"passes\": true, \"reason\": \"The function manually iterates through the list using a for loop and accumulates the sum without using the built-in sum() function.\"}",
+      "raw_reasoning": null,
+      "verdict": {
+        "passes": true,
+        "reason": "The function manually iterates through the list using a for loop and accumulates the sum without using the built-in sum() function."
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_incorrect_offbyone",
+      "tier": "J",
+      "elapsed_s": 2.19,
+      "raw_content": "{\"passes\": false, \"reason\": \"The loop only iterates through len(nums)-1 elements, missing the last element in the list.\"}",
+      "raw_reasoning": null,
+      "verdict": {
+        "passes": false,
+        "reason": "The loop only iterates through len(nums)-1 elements, missing the last element in the list."
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_correct_security",
+      "tier": "J",
+      "elapsed_s": 2.77,
+      "raw_content": "{\"passes\": true, \"reason\": \"The function uses parameterized queries with %s placeholder and a tuple argument, which prevents SQL injection by ensuring the username is properly escaped by the database driver.\"}",
+      "raw_reasoning": null,
+      "verdict": {
+        "passes": true,
+        "reason": "The function uses parameterized queries with %s placeholder and a tuple argument, which prevents SQL injection by ensuring the username is properly escaped by the database driver."
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_incorrect_security",
+      "tier": "J",
+      "elapsed_s": 2.2,
+      "raw_content": "{\"passes\": false, \"reason\": \"The function uses string concatenation to build the SQL query, making it vulnerable to SQL injection attacks.\"}",
+      "raw_reasoning": null,
+      "verdict": {
+        "passes": false,
+        "reason": "The function uses string concatenation to build the SQL query, making it vulnerable to SQL injection attacks."
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_correct_logic",
+      "tier": "J",
+      "elapsed_s": 2.19,
+      "raw_content": "{\"passes\": true, \"reason\": \"The function correctly returns True when the total is at least $50, satisfying the eligibility requirement.\"}",
+      "raw_reasoning": null,
+      "verdict": {
+        "passes": true,
+        "reason": "The function correctly returns True when the total is at least $50, satisfying the eligibility requirement."
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_incorrect_logic",
+      "tier": "J",
+      "elapsed_s": 2.52,
+      "raw_content": "{\"passes\": false, \"reason\": \"The function uses > 50 instead of >= 50, so it incorrectly excludes $50 totals which should qualify.\"}",
+      "raw_reasoning": null,
+      "verdict": {
+        "passes": false,
+        "reason": "The function uses > 50 instead of >= 50, so it incorrectly excludes $50 totals which should qualify."
+      },
+      "passed": true
+    },
+    {
+      "id": "constrained_summary",
+      "tier": "P",
+      "elapsed_s": 5.02,
+      "raw_content": "The Bosgame M5 is a mini PC powered by AMD's Strix Halo APU, featuring a Zen 5 CPU and RDNA 3.5 integrated GPU sharing up to 128GB of unified LPDDR5X memory. This unified memory architecture allows the integrated GPU to directly access the memory pool, enabling it to run large language models for local AI inference without needing a discrete graphics card.",
+      "sentence_count": 2,
+      "passed": true
+    },
+    {
+      "id": "structured_extraction",
+      "tier": "P",
+      "elapsed_s": 2.16,
+      "raw_content": "{\"order_id\": \"A-58291\", \"total_usd\": 47.5, \"item_count\": 3}",
+      "extracted": {
+        "order_id": "A-58291",
+        "total_usd": 47.5,
+        "item_count": 3
+      },
+      "passed": true
+    },
+    {
+      "id": "debug_off_by_one",
+      "tier": "D",
+      "elapsed_s": 4.82,
+      "final_content": "```python\ndef flag_big_drops(orders):\n    results = []\n    for i in range(len(orders)):\n        if orders[i] > 100 and i + 1 < len(orders):\n            results.append(orders[i] > orders[i+1])\n        else:\n            results.append(False)\n    return results\n```",
+      "extracted_code": "def flag_big_drops(orders):\n    results = []\n    for i in range(len(orders)):\n        if orders[i] > 100 and i + 1 < len(orders):\n            results.append(orders[i] > orders[i+1])\n        else:\n            results.append(False)\n    return results\n",
+      "passed": true
+    },
+    {
+      "id": "planning_new_tool",
+      "tier": "Q",
+      "elapsed_s": 38.9,
+      "raw_content": "Absolutely! I'd be happy to help you plan your internal tool. To get started, I\u2019ll need a bit more context\u2014your answers will help me tailor a realistic, actionable plan.\n\n### \ud83e\udde9 Quick Clarifying Questions:\n1. **What\u2019s the core problem you\u2019re solving?**  \n   *(e.g., \u201cteam meetings run 30% over time because we lack structured agendas\u201d or \u201cengineering handoffs between Dev and Ops are error-prone\u201d)*\n\n2. **Who will use it?**  \n   *(e.g., product managers, engineers, support agents? How many users? Any permission levels?)*\n\n3. **What\u2019s the must-have MVP (Minimum Viable Product)?**  \n   *(What 2\u20133 core features would solve the biggest pain point\u2014even if it\u2019s crude?)*\n\n4. **What tools already exist?**  \n   *(e.g., \u201cWe use Slack + Google Sheets\u201d or \u201cJira, but not well-integrated\u201d)*\n\n5. **Constraints?**  \n   *(e.g., \u201cWe need it built in 4 weeks,\u201d \u201cmust use company AWS account,\u201d \u201cno coding allowed,\u201d etc.)*\n\n---\n\n### \ud83d\udccb Meanwhile\u2014Here\u2019s a Flexible Starting Framework (fill in as you go):\n\n#### **1. Define Goals & Success Metrics**\n| Goal | How we\u2019ll measure success |\n|------|---------------------------|\n| *e.g., reduce onboarding time* | Avg. setup time < 2 days (vs. current 1 week) |\n\n#### **2. Core Features (Prioritized)**\n| Priority | Feature | Why it matters | Effort (S/M/L) |\n|----------|---------|----------------|----------------|\n| High | *e.g., onboarding checklist* | 80% of errors happen in first week | M |\n| Medium | *e.g., knowledge base search* | Reduces\u91cd\u590d questions | L |\n| Low | *e.g., analytics dashboard* | Nice-to-have later | L |\n\n#### **3. Tech Stack (Options)**\n- **No-code/low-code (fastest):** Retool, Bubble, Airtable, Notion API\n- **Full-stack (scalable):** Next.js (React + Node) + PostgreSQL\n- **Backend-only (API-driven):** Python (FastAPI/Flask) + Supabase/Postgres\n\n#### **4. Roadmap Snippet**\n| Week | Milestone |\n|------|-----------|\n| W1 | Finalize requirements, design database schema |\n| W2 | Build MVP core (auth + 1 key workflow) |\n| W3 | Internal beta with 3 power users |\n| W4 | Iterate + docs + launch |\n\n#### **5. Risks & Mitigation**\n| Risk | Mitigation |\n|------|------------|\n| Low adoption | Co-design with 1\u20132 users from Day 1 |\n| Scope creep | \u201cNo\u201d to feature requests until post-MVP |\n| Integration complexity | Start *without* integrations, add later |\n\n---\n\nOnce you share answers to the questions above, I\u2019ll help you:\n- Draft user stories / acceptance criteria  \n- Sketch a simple wireframe flow  \n- Build a 30/60/90 day plan  \n- Suggest tools that fit your stack & skills  \n\nWhat\u2019s your #1 priority right now? \ud83c\udfaf",
+      "topics_hit": [
+        "users",
+        "tech_stack",
+        "timeline",
+        "success_criteria"
+      ],
+      "passed": true
+    },
+    {
+      "id": "planning_db_migration",
+      "tier": "Q",
+      "elapsed_s": 106.99,
+      "raw_content": "Absolutely\u2014migrating from PostgreSQL to a new database system is a significant undertaking that requires careful planning. To help you build a robust migration plan, I need a bit more context, but first, here\u2019s a **structured framework** you can adapt:\n\n---\n\n### \ud83d\udd0d Step 0: Clarify Your Goals & Constraints\n*(Answer these first\u2014they shape everything else)*\n| Category | Key Questions |\n|----------|---------------|\n| **Target System** | Why are you migrating? (Cost, scale, features, vendor lock-in, latency, cloud-native needs?) What system are you targeting? (e.g., CockroachDB, Snowflake, Amazon Aurora, Google Cloud Spanner, MongoDB, DynamoDB) |\n| **Data Profile** | Volume (GB/TB)? Tables? Complex relationships (joins, FKs)? Geographic distribution? Real-time requirements? |\n| **Critical Requirements** | Downtime tolerance? Audit/compliance (GDPR, HIPAA)? Query patterns (OLTP vs. analytics)? |\n| **Team Skills** | Do you have expertise in the target DB? |\n\n> \u26a0\ufe0f *Common pitfalls*: Underestimating schema/query rewrites, ignoring collation/index differences, overlooking sequence/identity behavior, or missing data type nuances (e.g., Postgres `JSONB` vs. others).\n\n---\n\n### \ud83d\uddfa\ufe0f Step 1: Discovery & Assessment\n1. **Inventory Postgres Assets**\n   - Run:  \n     ```sql\n     SELECT table_schema, table_name, \n            pg_size_pretty(pg_total_relation_size(table_schema||'.'||table_name)) AS size\n     FROM information_schema.tables\n     WHERE table_schema NOT IN ('information_schema', 'pg_catalog')\n     ORDER BY pg_total_relation_size(table_schema||'.'||table_name) DESC;\n     ```\n   - Capture:  \n     - All schemas, views, functions, procedures, triggers, roles, grants, extensions (e.g., `pgcrypto`, `hstore`).  \n     - Indexes (type, uniqueness, coverage).  \n     - Foreign keys, constraints, check constraints.  \n     - Large objects (binary data?).\n\n2. **Analyze Query Patterns**\n   - Use `pg_stat_statements` to find slow/critical queries.\n   - Map which queries rely on Postgres-specific features (e.g., `WITH RECURSIVE`, window functions, array types, full-text search).\n\n3. **Gap Analysis**\n   - Compare target DB\u2019s capabilities against your Postgres features:\n     - Supports JSON/Geospatial? (e.g., PostGIS \u2192 GeoJSON or native support?)\n     - Transaction model? (e.g., Spanner has strong consistency; DynamoDB doesn\u2019t support multi-row transactions)\n     - Sequence behavior? (e.g., auto-increment vs. `GENERATED AS IDENTITY`)\n\n---\n\n### \u2699\ufe0f Step 2: Choose Migration Strategy\n| Strategy | Best For | Risks | Tools |\n|----------|----------|-------|-------|\n| **Bulk Load (Export/Import)** | One-time, low-downtime, batch analytics migrations | Schema rewrites needed; no real-time sync | `pg_dump`, `AWS DMS`, `Stratosphere`, custom ETL |\n| **CDC (Change Data Capture)** | Minimal downtime; real-time sync during cutover | Complexity; latency; target must support CDC | Debezium, AWS DMS, Flyway, Liquibase (for schema) |\n| **Hybrid (Incremental)** | Large datasets with tight downtime windows | Coordination overhead | Fivetran, Talend, custom script + sync |\n| **Code Rewrite** | Target is very different (e.g., SQL \u2192 NoSQL) | High dev effort | ORM migrations, stored procedure rewrites |\n\n> \ud83d\udeab Avoid **direct SQL dump/restore** unless target is fully compatible (e.g., PostgreSQL \u2192 Aurora PG-compatible). Even then, test rigorously!\n\n---\n\n### \ud83e\uddea Step 3: Build & Validate (Phased Approach)\n#### Phase A: Schema Migration\n- Write a **schema translation layer**:\n  - Convert data types (e.g., `UUID` \u2192 `CHAR(36)` or native `UUID`; `TIMESTAMPTZ` \u2192 ISO strings).\n  - Rewrite functions/triggers (e.g., PL/pgSQL \u2192 JavaScript in Snowflake, or SQL in Spanner).\n  - Adjust indexes (e.g., Postgres B-tree \u2192 covering indexes in DynamoDB).\n- **Tools**: \n  - `pg_dump --schema-only` \u2192 manual transform \u2192 run on target.\n  - Use [AWS Schema Conversion Tool (SCT)](https://aws.amazon.com/rds/schema-conversion-tool/) (free) if targeting AWS DBs.\n\n#### Phase B: Data Migration\n1. **Dry Run**: Migrate a small subset (e.g., 1 table, 1% data). Validate integrity.\n2. **Full Load**:\n   - Use **direct dump + import** for static data:\n     ```bash\n     # Export (Postgres)\n     pg_dump -t mytable --data-only -Fc mydb > mytable.dump\n\n     # Import (Aurora PG-compatible example)\n     pg_restore -d mydb mytable.dump\n     ```\n   - Use **CDC + incremental sync** for live systems:\n     - Start CDC from Postgres WAL \u2192 stream to target.\n     - Initial bulk load \u2192 sync ongoing changes \u2192 cutover.\n3. **Validation**:\n   - Row counts per table.\n   - Checksums (e.g., `md5()` of key columns).\n   - Spot-check random records.\n\n#### Phase C: Application Integration\n- Update connection strings, connection pools, ORM configurations.\n- Test all SQL queries\u2014especially:\n  - Hardcoded schemas\n  - Implicit casts (e.g., Postgres allows `text = int` in some contexts)\n  - `now()`, `current_timestamp` differences\n  - `RETURNING` clauses in `INSERT/UPDATE`\n\n---\n\n### \ud83d\udccb Step 4: Go-Live & Post-Migration\n- **Cutover Plan**:\n  - 1. Freeze writes to Postgres (brief).\n  - 2. Apply final CDC sync.\n  - 3. Route app traffic to new DB.\n  - 4. Verify health: checks, metrics, user acceptance.\n  - 5. Rollback plan ready (keep Postgres running for 7\u201330 days).\n\n- **Post-Migration Checklist**:\n  - [ ] Run performance benchmarks (compare query plans).\n  - [ ] Rebuild indexes/stats (target DBs often need this).\n  - [ ] Audit permissions/security groups.\n  - [ ] Document new schema/query patterns.\n  - [ ] Set up monitoring (e.g., CloudWatch, Datadog, DB-specific dashboards).\n\n---\n\n### \ud83d\udee0\ufe0f Tool Recommendations\n| Need | Tools |\n|------|-------|\n| **Full Migration Suite** | AWS DMS, Azure Database Migration Service, Google DT |\n| **Open-Source CDC** | [Debezium](https://debezium.io/) (Kafka + Connectors) |\n| **Schema Validation** | [`dbmate`](https://dbmate.dev/), [`sqlboiler`](https://github.com/volatiletech/sqlboiler) |\n| **Data Comparison** | [pt-table-checksum](https://www.percona.com/doc/percona-toolkit/LATEST/pt-table-checksum.html) (with adaptors), [schemarb](https://github.com/ankane/schemarb) |\n\n---\n\n### \ud83d\udca1 Pro Tips\n- **Start with non-production**: Test in staging with realistic data volumes.\n- **Beware of \"Postgres-isms\"**:\n  - `GENERATE_SERIES()` (not in all DBs)\n  - `ON CONFLICT` upsert (rewrite as `MERGE`/`UPSERT`)\n  - Array columns \u2192 JSON or separate tables\n- **Use prepared statements** in your app to reduce rewrites.\n\n---\n\n### \ud83d\udcc5 Sample Timeline (for 10TB DB, 2 weeks downtime tolerance)\n| Week | Milestone |\n|------|-----------|\n| 1 | Discovery, schema gap analysis, staging environment setup |\n| 2 | Schema migration + initial data load in staging, validation |\n| 3 | CDC setup, dry run, full sync test |\n| 4 | Cutover window (planned 2hr downtime), validation, monitoring |\n\n---\n\n**Next step**: Tell me about your specific target system and constraints (e.g., *\"We\u2019re moving to Snowflake for analytics, with \u22641hr downtime, and use PostGIS heavily\"*), and I\u2019ll give you a tailored checklist, data type mappings, and red flags to watch for.\n\nLet\u2019s make this migration *smooth* \ud83d\ude80",
+      "topics_hit": [
+        "motivation",
+        "scale",
+        "downtime",
+        "timeline",
+        "rollback"
+      ],
+      "passed": true
+    },
+    {
+      "id": "needle_in_haystack",
+      "tier": "L",
+      "haystack_chars": 69121,
+      "elapsed_s": 15.53,
+      "raw_content": "BLUEFALCON-77",
+      "passed": true
+    }
+  ]
+}
