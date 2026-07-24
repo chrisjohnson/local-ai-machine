@@ -132,6 +132,28 @@ let
     # single-file native MXFP4 GGUF - a different artifact from the
     # vLLM-format openai/gpt-oss-120b already on disk.
     { name = "llamacpp-gpt-oss-120b"; repo = "ggml-org/gpt-oss-120b-GGUF"; }
+    # Phase 5.6 llama.cpp-direct candidates, verified real against kyuz0's
+    # raw results.json (not just trusted from a cold LLM query) and
+    # approved by Chris 2026-07-24 despite the real concern that a 120B-
+    # class model leaves less KV-cache headroom under his actual planned
+    # concurrent multi-agent + observability-stack workload than the
+    # already-proven 30-40B-active-param MoE tier. Worth having the
+    # comparison data regardless of production-choice implications.
+    #
+    # Qwen3.5-122B-A10B, UD-Q5_K_XL: 22.30 tok/s TG128 via Vulkan RADV -
+    # a DIFFERENT quantization of a model already owned (vLLM AWQ copy
+    # measured 8.14-16.28 tok/s), so this is a real same-model backend
+    # comparison, not just a new candidate.
+    { name = "llamacpp-qwen3.5-122b-a10b"; repo = "unsloth/Qwen3.5-122B-A10B-GGUF"; hfFiles = [ "UD-Q5_K_XL/Qwen3.5-122B-A10B-UD-Q5_K_XL-00001-of-00003.gguf" "UD-Q5_K_XL/Qwen3.5-122B-A10B-UD-Q5_K_XL-00002-of-00003.gguf" "UD-Q5_K_XL/Qwen3.5-122B-A10B-UD-Q5_K_XL-00003-of-00003.gguf" ]; }
+    # NVIDIA-Nemotron-3-Super-120B-A12B, UD-Q4_K_XL: 14.86 tok/s TG128 -
+    # new model, not in the existing lineup. Real hybrid Mamba-2+MoE+
+    # attention architecture (confirmed real model, not garbled).
+    { name = "llamacpp-nemotron-3-super-120b"; repo = "unsloth/NVIDIA-Nemotron-3-Super-120B-A12B-GGUF"; hfFiles = [ "UD-Q4_K_XL/NVIDIA-Nemotron-3-Super-120B-A12B-UD-Q4_K_XL-00001-of-00003.gguf" "UD-Q4_K_XL/NVIDIA-Nemotron-3-Super-120B-A12B-UD-Q4_K_XL-00002-of-00003.gguf" "UD-Q4_K_XL/NVIDIA-Nemotron-3-Super-120B-A12B-UD-Q4_K_XL-00003-of-00003.gguf" ]; }
+    # MiniMax-M2.7, UD-Q3_K_S: 31.08 tok/s TG128 - new model, 228.69B
+    # total params but confirmed single-node viable (rpc:false in the
+    # source benchmark data), unlike an earlier MiniMax variant already
+    # disqualified this session for requiring TP=2/multi-GPU.
+    { name = "llamacpp-minimax-m2.7"; repo = "unsloth/MiniMax-M2.7-GGUF"; hfFiles = [ "UD-Q3_K_S/MiniMax-M2.7-UD-Q3_K_S-00001-of-00003.gguf" "UD-Q3_K_S/MiniMax-M2.7-UD-Q3_K_S-00002-of-00003.gguf" "UD-Q3_K_S/MiniMax-M2.7-UD-Q3_K_S-00003-of-00003.gguf" ]; }
   ];
 in
 {
