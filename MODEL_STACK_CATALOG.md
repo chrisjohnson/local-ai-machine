@@ -10,6 +10,8 @@ This document exists so that a later, dedicated benchmark-comparison pass (flipp
 
 ## House rules for future entries
 
+**See `BENCHMARKING.md` for the authoritative, step-by-step benchmarking procedure** (pre-flight checks, per-engine invocation templates, teardown sequencing, recording convention) — this section only covers the catalog's own naming/entry conventions, not how to actually run a benchmark.
+
 **Every future benchmark run (speed or coding-capability) MUST save its raw captured output into `results/`.** This means the exact command run plus the full raw stdout, or the tool's own native JSON output if it produces one (e.g. `scripts/coding_benchmark.py`'s JSON). Narrative-only numbers pasted into a catalog entry, `README.md`, or `OPTIMIZATIONS.md` are not acceptable as the sole record going forward — this is exactly the gap this pass exists to close (most existing speed-benchmark numbers in this project were captured only as prose, never as a saved file, and are honestly marked as such below).
 
 - **Naming convention**: `results/<model-slug>--<engine>[-config-tag].{txt,json}` — e.g. `results/gemma-4-26b-a4b-it--llamacpp.txt`, `results/gemma-4-26b-a4b-it--ollama.txt`, `results/qwen3.6-35b-a3b--vllm.txt`.
