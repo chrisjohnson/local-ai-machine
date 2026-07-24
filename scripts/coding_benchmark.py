@@ -67,6 +67,7 @@ Stdlib only - no external dependencies required.
 """
 
 import argparse
+import http.client
 import json
 import re
 import subprocess
@@ -747,7 +748,7 @@ def run_tier_a_task(base_url, model, task):
         result["elapsed_s"] = round(elapsed, 2)
         result["raw_content"] = content
         result["raw_reasoning"] = message.get("reasoning_content") or message.get("reasoning")
-    except (urllib.error.URLError, TimeoutError, KeyError, json.JSONDecodeError) as e:
+    except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException, KeyError, json.JSONDecodeError) as e:
         # TimeoutError (not just urllib.error.URLError): a read-phase
         # socket timeout during http.client.getresponse() propagates as a
         # raw TimeoutError, not wrapped in URLError - confirmed directly,
@@ -788,7 +789,7 @@ def run_tier_b_task(base_url, model, task):
             base_url, model, task["prompt"], tools=task["tools"], max_tokens=2048
         )
         result["elapsed_s"] = round(elapsed, 2)
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as e:
+    except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException, json.JSONDecodeError) as e:
         result.update(passed=False, error=f"request failed: {e}")
         return result
 
@@ -869,22 +870,27 @@ def run_tier_b_task(base_url, model, task):
 def run_tier_j_task(base_url, model, task):
     result = {"id": task["id"], "tier": "J"}
     try:
-        # Same reasoning-budget-exhaustion pattern as Tiers A/B - a judge
-        # verdict is short, but a reasoning model can still burn a lot of
-        # its budget deliberating before emitting the JSON.
-        resp, elapsed = call_model(base_url, model, task["prompt"], max_tokens=2048)
+        # 4096, not 2048: confirmed directly (2026-07-24 smoke test) that
+        # 2048 is insufficient for at least one bug pattern - judge_incorrect
+        # ran longer than every sibling Tier J task (144.6s vs 19-88s) and
+        # returned completely empty content, the same reasoning-budget-
+        # exhaustion signature already fixed for Tiers A/B. Bumped to match
+        # Tier B's headroom; still below Tier A/D's 8192 since a judge
+        # verdict needs less generation than a full code solution.
+        resp, elapsed = call_model(base_url, model, task["prompt"], max_tokens=4096)
         message = resp["choices"][0]["message"]
         content = message.get("content") or ""
         result["elapsed_s"] = round(elapsed, 2)
         result["raw_content"] = content
-    except (urllib.error.URLError, TimeoutError, KeyError, json.JSONDecodeError) as e:
+        result["raw_reasoning"] = message.get("reasoning_content") or message.get("reasoning")
+    except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException, KeyError, json.JSONDecodeError) as e:
         result.update(passed=False, error=f"request failed: {e}")
         return result
 
     try:
         verdict = extract_json(content)
     except json.JSONDecodeError:
-        reasoning = message.get("reasoning_content") or message.get("reasoning")
+        reasoning = result["raw_reasoning"]
         if reasoning:
             try:
                 verdict = extract_json(reasoning)
@@ -914,7 +920,7 @@ def run_tier_p_task(base_url, model, task):
         content = (message.get("content") or "").strip()
         result["elapsed_s"] = round(elapsed, 2)
         result["raw_content"] = content
-    except (urllib.error.URLError, TimeoutError, KeyError, json.JSONDecodeError) as e:
+    except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException, KeyError, json.JSONDecodeError) as e:
         result.update(passed=False, error=f"request failed: {e}")
         return result
 
@@ -979,7 +985,7 @@ def run_tier_d_task(base_url, model, task):
             if is_last:
                 result["elapsed_s"] = round(elapsed, 2)
                 result["final_content"] = content
-    except (urllib.error.URLError, TimeoutError, KeyError, json.JSONDecodeError) as e:
+    except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException, KeyError, json.JSONDecodeError) as e:
         result.update(passed=False, error=f"request failed: {e}")
         return result
 
@@ -1000,7 +1006,7 @@ def run_tier_q_task(base_url, model, task):
         content = (message.get("content") or "").strip()
         result["elapsed_s"] = round(elapsed, 2)
         result["raw_content"] = content
-    except (urllib.error.URLError, TimeoutError, KeyError, json.JSONDecodeError) as e:
+    except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException, KeyError, json.JSONDecodeError) as e:
         result.update(passed=False, error=f"request failed: {e}")
         return result
 
@@ -1038,7 +1044,7 @@ def run_tier_l_task(base_url, model, task):
         content = (message.get("content") or "").strip()
         result["elapsed_s"] = round(elapsed, 2)
         result["raw_content"] = content
-    except (urllib.error.URLError, TimeoutError, KeyError, json.JSONDecodeError) as e:
+    except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException, KeyError, json.JSONDecodeError) as e:
         result.update(passed=False, error=f"request failed: {e}")
         return result
 
