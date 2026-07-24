@@ -1,0 +1,39 @@
+id: glm-4.7-flash-awq--vllm-therock-gfx1151-v1
+engine: vllm-therock-gfx1151-v1
+role: best memory footprint of any vLLM model tested — not a standing compose service
+model:
+  display_name: GLM-4.7-Flash
+  family: GLM-4.7
+  hf_repo: QuantTrio/GLM-4.7-Flash-AWQ
+  hf_revision: null
+  architecture: moe
+  total_params: 30e9
+  active_params: 3e9
+  num_experts: null
+  quantization: AWQ-4bit
+  context_length_native: 65536
+  modality: text
+  files: null
+  local_path: /var/lib/ai-models/glm-4.7-flash-awq
+  size_on_disk_gb: 20   # under 20GB
+served_model_name: glm-4.7-flash-awq
+build_specific_flags:
+  - --tool-call-parser glm47   # dedicated parser, no AWQ workaround needed (unlike the 122B tier's VLLM_USE_TRITON_AWQ)
+  - --reasoning-parser glm45
+  - --max-model-len 65536
+build_specific_env: {}
+compose_service: null
+notes: >
+  Healthy in ~190s at startup. Best concurrency headroom of any model tested
+  (28.10x @65536) until GPT-OSS-20B later beat it (30.02x). Six-tier harness
+  10/13 — Tier J loss (judge_incorrect, same recurring miss as other models),
+  Tier D loss (debug_off_by_one — used range(len(orders)-1), silently
+  dropping the last element instead of following the explicit multi-turn
+  instruction, a genuine instruction-following carelessness not a harness
+  artifact). Not a drop-in primary replacement on speed, but a real MTP
+  candidate (glm4_moe_lite_mtp.py ships a dedicated MTP variant in this
+  vLLM build — not yet attempted).
+status: WORKING
+created: "2026-07-23"
+last_verified: "2026-07-23"
+benchmark_runs: []

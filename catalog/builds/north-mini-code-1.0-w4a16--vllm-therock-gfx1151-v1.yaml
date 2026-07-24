@@ -1,0 +1,33 @@
+id: north-mini-code-1.0-w4a16--vllm-therock-gfx1151-v1
+engine: vllm-therock-gfx1151-v1
+role: UNTESTED — download in progress as of 2026-07-24, planned config only
+model:
+  display_name: North-Mini-Code-1.0
+  family: North-Mini-Code
+  hf_repo: CohereLabs/North-Mini-Code-1.0-w4a16
+  hf_revision: null
+  architecture: moe
+  total_params: 30e9
+  active_params: 3e9
+  num_experts: null
+  quantization: W4A16 (weight-only, bf16 activations)
+  context_length_native: null   # not yet confirmed
+  modality: text
+  files: null
+  local_path: /var/lib/ai-models/north-mini-code-1.0-w4a16
+  size_on_disk_gb: 19.4   # full repo size, download in progress
+served_model_name: north-mini-code-1.0
+build_specific_flags:
+  - --max-model-len <tbd>
+build_specific_env: {}
+compose_service: null
+notes: >
+  Native vLLM cohere_command4 tool-call parser expected, not yet exercised.
+  No TP requirement expected. Same "theoretical fit, needs real testing"
+  position GPT-OSS was in before it got tested — flags above are a plan,
+  not a proven config; expect this build file to need real edits once the
+  download finishes and a first serve attempt is made.
+status: UNTESTED-BUT-DOWNLOADED
+created: "2026-07-24"
+last_verified: "2026-07-24"
+benchmark_runs: []

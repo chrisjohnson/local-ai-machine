@@ -1,0 +1,36 @@
+id: gemma-4-26b-a4b-it--llamacpp-vulkan-radv-v1
+engine: llamacpp-vulkan-radv-v1
+role: same underlying weights as the vLLM build, cross-engine comparison
+model:
+  display_name: Gemma-4-26B-A4B-it
+  family: Gemma-4
+  hf_repo: unsloth/gemma-4-26B-A4B-it-GGUF
+  hf_revision: null
+  architecture: moe
+  total_params: 25.23e9
+  active_params: 4e9
+  num_experts: null
+  quantization: GGUF-Q4_K_M
+  context_length_native: null
+  modality: text
+  files: [gemma-4-26B-A4B-it-UD-Q4_K_M.gguf]
+  local_path: /var/lib/ai-models/ollama-gemma-4-26b-a4b-it
+  size_on_disk_gb: 15.77
+served_model_name: null
+build_specific_flags: []
+build_specific_env: {}
+compose_service: null
+notes: >
+  Two runs 2026-07-24: first run contaminated by a concurrent background hf
+  download — pp512 1192.75±11.10, tg128 54.50±0.29 tok/s. Clean re-run
+  (verified no download activity via ps aux/systemctl before and after):
+  pp512 1251.33±17.08, tg128 53.96±0.15 tok/s — this is the benchmark-of-
+  record. Contention cost: ~4.9% PP-only hit from a concurrent download; TG
+  statistically unaffected. Notably slower on both axes than GLM-4.7-Flash's
+  llama.cpp numbers (81.3/70.1) despite this model being the strongest
+  vLLM/coding performer tested — raw llama.cpp decode speed and vLLM-serving
+  fitness don't necessarily rank models the same way.
+status: WORKING
+created: "2026-07-24"
+last_verified: "2026-07-24"
+benchmark_runs: []

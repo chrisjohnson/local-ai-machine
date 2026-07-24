@@ -1,0 +1,23 @@
+id: llamacpp-mtp-v1
+applies_to: [llamacpp]   # specifically the llamacpp-vulkan-radv-mtp-v1 engine
+tool: llama-cli (with --spec-type draft-mtp)
+description: >
+  Multi-token-prediction speculative-decoding speed test — measures tok/s
+  with MTP draft acceptance vs the plain-decode baseline for the same model.
+  No successful run exists yet on this machine (every GGUF tried so far
+  lacks MTP head tensors) — this definition exists so a future real attempt
+  is measured consistently once an MTP-tagged GGUF is downloaded.
+methodology:
+  trials: 1
+  warm_up: none
+  requires: "GGUF file with MTP head tensors (separate HF repo from the plain quant, e.g. unsloth/<model>-MTP-GGUF)"
+metrics_schema:
+  - "tok/s with MTP enabled"
+  - "draft acceptance rate (if reported)"
+  - "speedup ratio vs the plain-decode llama-bench baseline for the identical base model"
+known_caveats:
+  - "llama-bench cannot run this test at all (no spec/draft/mtp flags exist on that tool) — must use llama-cli or llama-server."
+  - "n_parallel=1 only while using MTP — cannot combine with the concurrent-serving engine (llamacpp-vulkan-radv-server-v1)."
+  - "Community reference numbers (kyuz0's mtp.html, calebcoffie.com): 1.8x-2.5x speedup, ~72% draft acceptance at depth 3 — unverified on this hardware, cite as external reference only until reproduced."
+version_history:
+  - v1: "2026-07-24 — definition created after the Qwen3.6-27B plain-quant attempt confirmed the mechanism works but failed to load (missing MTP tensors). No successful run yet."

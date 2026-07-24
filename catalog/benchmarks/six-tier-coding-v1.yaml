@@ -1,0 +1,28 @@
+id: six-tier-coding-v1
+applies_to: [vllm]   # never run against llama.cpp/Ollama endpoints yet — real gap, not a methodology restriction
+tool: scripts/coding_benchmark.py
+description: >
+  Objective-grading, stdlib-only, no-LLM-judge-scoring coding/role-fitness
+  harness. Run from the Mac against the model's OpenAI-compatible endpoint.
+  All six tiers run against every model by default, even models only being
+  considered for non-coding roles, so judge/assistant-role data is already
+  on hand without a special-cased re-run later.
+methodology:
+  warm_up: none
+  cold_run: true   # each tier's tasks run once, cold, against the endpoint
+  timeout_s: 1500   # sized for the slowest model tested (122B tier ~7.5-8 tok/s); do not reduce for faster models
+tiers:
+  A: {name: correctness, tasks: [palindrome, merge_sorted, expr_eval], grading: sandboxed subprocess test execution}
+  B: {name: tool-calling, tasks: [single_tool_call, multi_step_tool_call], grading: structural tool_calls check}
+  J: {name: judge-role fitness, tasks: [judge_correct, judge_incorrect], grading: strict JSON verdict required}
+  P: {name: personal-assistant fitness, tasks: [constrained_summary, structured_extraction], grading: objective}
+  D: {name: multi-turn interactive debugging, tasks: [debug_off_by_one], grading: 3-turn conversation, final turn's code executed against test assertions}
+  Q: {name: planning/requirements-gathering, tasks: [planning_new_tool, planning_db_migration], grading: keyword-matched against minimum missing-dimension topics}
+metrics_schema:
+  - "tier_<x>_pass / tier_<x>_total for each of A/B/J/P/D/Q"
+  - "results array: one object per task (id, tier, elapsed_s, passed, plus tier-specific fields — raw_content, raw_reasoning, extracted_code, called_tool, called_args, verdict, topics_hit, error)"
+known_caveats:
+  - "Recurring finding: multiple models (qwen3.6-35b-a3b primary, GLM-4.7-Flash-AWQ, GPT-OSS-120B, GPT-OSS-20B) all fail Tier J's judge_incorrect task the same way — saying passes: true on a subtly-buggy palindrome check. A real, repeated judge-role weakness pattern, not model-specific noise."
+  - "Speed and coding-capability do NOT correlate — e.g. Gemma-4-31B-it is the slowest model tested but scored a perfect 5/5 on the (older) A+B-only convention."
+version_history:
+  - v1: "2026-07-23+ — all six tiers, run against every model by default. Current convention."

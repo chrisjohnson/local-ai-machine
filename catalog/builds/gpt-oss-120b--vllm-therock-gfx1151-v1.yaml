@@ -1,0 +1,48 @@
+id: gpt-oss-120b--vllm-therock-gfx1151-v1
+engine: vllm-therock-gfx1151-v1
+role: best coding-harness score of any model tested to date — not a standing compose service
+model:
+  display_name: GPT-OSS-120B
+  family: GPT-OSS
+  hf_repo: openai/gpt-oss-120b
+  hf_revision: null
+  architecture: moe
+  total_params: 120e9
+  active_params: 5.1e9
+  num_experts: 128
+  quantization: MXFP4-native (bf16 compute path)
+  context_length_native: 131072
+  modality: text
+  files: null   # NOT amd/gpt-oss-120b-w-mxfp4-a-fp8 — that quantizes activations to FP8, can't run on this hardware
+  local_path: /var/lib/ai-models/gpt-oss-120b
+  size_on_disk_gb: 65.3
+served_model_name: gpt-oss-120b
+build_specific_flags:
+  - --enable-auto-tool-choice
+  - --tool-call-parser openai
+  - --reasoning-parser openai_gptoss
+  - --max-model-len 131072
+  - --gpu-memory-utilization 0.90   # standalone swap-in
+build_specific_env: {}
+compose_service: null
+notes: >
+  First real serve/benchmark of this model in any form on this machine,
+  2026-07-24. Confirmed via --help=Frontend/--help=all inside the container
+  that `openai` and `openai_gptoss` are real registered parser names, not
+  guessed. c1 throughput (8.46 tok/s) notably slow for a ~5.1B-active MoE —
+  behind every other small-active-param MoE tested. Plausible but unconfirmed
+  cause: this build's MXFP4 MoE kernel path (MoEPrepareAndFinalizeNoDPEPMonolithic)
+  may not be a fully optimized low-bit matmul on gfx1151 (no native FP4
+  matrix-core hardware). Sibling GPT-OSS-20B (same MXFP4 format/parser stack)
+  performs completely normally for its size class, suggesting the 120B
+  slowdown is tied to its much larger expert pool (128 experts) hitting this
+  hardware's memory-bandwidth ceiling, not a blanket MXFP4 penalty.
+  Benchmark methodology deviation required (see six-tier-coding-v1/vllm-speed-c1c8-v1
+  known_caveats): --backend openai --endpoint /v1/completions, not the
+  project default chat-completions path (harmony format incompatibility).
+  A distinct GGUF repack of the same weights exists — see the
+  gpt-oss-120b--llamacpp-vulkan-radv-v1 build (not yet run locally).
+status: WORKING
+created: "2026-07-24"
+last_verified: "2026-07-24"
+benchmark_runs: []

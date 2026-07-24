@@ -1,0 +1,37 @@
+id: ollama-vulkan-0177-v1
+family: ollama
+description: >
+  Ollama plain tag (NOT -rocm), forced onto its bundled Vulkan/RADV backend
+  via env vars that hide ROCm devices from discovery. This is the WORKING
+  Ollama combination on this hardware — see ollama-rocm-0177-broken for the
+  documented non-working alternative.
+image: ollama/ollama:0.17.7
+# Pin to 0.17.7 or earlier, NOT latest/unqualified — ollama/ollama#15336
+# (open) reports a regression where 0.18.x+ broke GPU detection that
+# worked correctly on 0.17.7.
+runtime:
+  devices: ["/dev/kfd:/dev/kfd", "/dev/dri:/dev/dri"]
+  group_add: ["26", "303"]   # numeric GIDs REQUIRED — Ollama's own /etc/group doesn't define video/render names at all, unlike the kyuz0 vLLM/toolbox images
+  port_binding: "127.0.0.1:11434:11434 (loopback only, same reasoning as vLLM)"
+  volumes:
+    - "ollama_data:/root/.ollama"
+    - "/var/lib/ai-models:/gguf-source:ro"
+common_env:
+  OLLAMA_VULKAN: "1"          # necessary but NOT sufficient alone — see gotcha below
+  HIP_VISIBLE_DEVICES: "-1"
+  ROCR_VISIBLE_DEVICES: "-1"
+common_flags: []
+invocation_template: |
+  # Registration (once per model):
+  scripts/ollama_register_model.sh <model-dir-name> <gguf-filename> <ollama-model-name>
+  # Benchmark request:
+  curl -sS localhost:11434/api/generate -d '{"model":"<ollama-model-name>","prompt":"<prompt>","stream":false}'
+known_gotchas:
+  - "OLLAMA_VULKAN=1 alone is NOT sufficient — Ollama's backend picker ranks ROCm above Vulkan whenever any ROCm device is enumerable at all, regardless of this var. HIP_VISIBLE_DEVICES=-1 / ROCR_VISIBLE_DEVICES=-1 hide ROCm devices from discovery entirely, forcing fallthrough to Vulkan. Community workaround (ollama/ollama#14855), not an official documented flag combo."
+  - "Startup log confirms real Vulkan selection: library=Vulkan ... description='Radeon 8060S Graphics (RADV GFX1151)'."
+  - "Real, measured downside: even working, Ollama+Vulkan is meaningfully slower than llama.cpp direct on the identical GGUF file — Ollama's Go wrapper/scheduling layer adds real overhead on top of the same underlying Vulkan/ggml engine. Use for convenience/API-compatibility, NOT as the benchmark-of-record (llama.cpp direct is that)."
+  - "This Ollama build's bundled ggml/llama.cpp does not recognize newer GGUF architecture tags — confirmed 'gemma4' fails outright with 'unknown model architecture: gemma4', a hard blocker not a speed issue. Qwen3-family architectures are confirmed supported. Check architecture support before benchmarking a new model family."
+  - "First request after `ollama create` includes model load time in total_duration/load_duration, and reasoning-model responses include a full <think> trace that inflates eval_count — treat single-request tok/s as directionally comparable, not a precise controlled measurement, unless a second (warm) request's eval_count/eval_duration is used instead."
+  - "Ollama's overhead vs llama.cpp direct appears to cost MoE models proportionally more than dense models (~5.4-5.7x gap for GLM-4.7-Flash and Qwen3.6-35B-A3B, both MoE, vs ~17% for dense Qwen3.6-27B) — seen twice, not yet root-caused."
+status: active
+first_used: "2026-07-24"

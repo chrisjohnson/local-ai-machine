@@ -1,0 +1,36 @@
+id: llamacpp-vulkan-radv-mtp-v1
+family: llamacpp
+description: >
+  llama.cpp direct via the same Strix Halo toolbox image, using `llama-cli`
+  (not llama-bench, not llama-server) with multi-token-prediction (MTP)
+  speculative decoding flags. Mechanism confirmed real and correctly wired
+  in this toolbox build (merged upstream, llama.cpp PR #22673, 2026-05-16) —
+  but no successful benchmark run exists yet on this machine because every
+  GGUF file downloaded so far lacks MTP head tensors (see build entries).
+image: docker.io/kyuz0/amd-strix-halo-toolboxes:vulkan-radv
+runtime:
+  devices: ["/dev/kfd:/dev/kfd", "/dev/dri:/dev/dri"]
+  group_add: ["26", "303"]
+  volumes: ["/var/lib/ai-models/<model-dir>:/models:ro"]
+common_env: {}
+common_flags:
+  - -ngl 999
+  - -fa 1
+  - -lm none
+  - --spec-type draft-mtp
+  - --spec-draft-n-max 3
+invocation_template: |
+  docker run --rm --device /dev/kfd --device /dev/dri --group-add 26 --group-add 303 \
+    -v /var/lib/ai-models/<model-dir>:/models:ro \
+    kyuz0/amd-strix-halo-toolboxes:vulkan-radv \
+    llama-cli -m /models/<mtp-gguf-filename> -ngl 999 -fa 1 -lm none \
+    --spec-type draft-mtp --spec-draft-n-max 3 \
+    -p '<prompt>' -n <tokens> --no-conversation -v
+known_gotchas:
+  - "llama-bench has ZERO spec/draft/mtp flags at all (confirmed via `llama-bench --help | grep -iE 'draft|spec|mtp'` — no matches). Speculative-decoding flags exist only on llama-server/llama-cli — cannot reuse the exact llama-bench invocation from the plain-decode baseline."
+  - "n_parallel=1 only — no concurrent request serving while using MTP."
+  - "ROCm+tensor-parallel combinations reportedly crash elsewhere — Vulkan is the safer backend, consistent with the rest of this project's engine choices."
+  - "REQUIRES a GGUF with MTP head tensors specifically — a plain quant will fail to load with 'context type MTP requested but model doesn't contain MTP layers'. unsloth ships these as a SEPARATE HF repo (e.g. unsloth/Qwen3.6-27B-MTP-GGUF), not bundled as extra files alongside the plain quant. Check the HF repo listing before assuming a downloaded file has an MTP head — do not assume."
+  - "Reported community speedups (kyuz0's own mtp.html, calebcoffie.com): 1.8x-2.5x, draft acceptance ~72% at depth 3, Qwen3.6-27B Q4_K_M cited at 11.7→21.2 tok/s — NOT yet reproduced on this machine (no MTP-tagged file downloaded)."
+status: mechanism-verified-blocked-on-model-files
+first_used: "2026-07-24"

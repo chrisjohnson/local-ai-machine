@@ -1,0 +1,26 @@
+id: vllm-speed-c1c8-v1
+applies_to: [vllm]
+tool: vllm bench serve
+description: >
+  Single-run (no repeated trials/warm-up) speed benchmark at concurrency 1
+  and concurrency 8, via scripts/speed_benchmark_swap.sh or a direct
+  `docker exec` against an already-running vLLM container.
+methodology:
+  dataset: random
+  ignore_eos: true
+  c1: {random_input_len: 2048, random_output_len: 512, num_prompts: 20}
+  c8: {random_input_len: 2048, random_output_len: 256, num_prompts: 100}
+  trials: 1
+  warm_up: none
+metrics_schema:
+  - output_throughput (tok/s)
+  - total_token_throughput (tok/s)
+  - mean_ttft_ms / median_ttft_ms / p99_ttft_ms
+  - mean_tpot_ms / median_tpot_ms / p99_tpot_ms
+  - footprint: weights_gib, kv_cache_gib, kv_tokens, max_concurrency (from server startup log, not the bench tool itself)
+known_caveats:
+  - "GPT-OSS family (harmony chat format) requires --backend openai --endpoint /v1/completions instead of the default --backend openai-chat --endpoint /v1/chat/completions — --ignore-eos forces generation past the model's natural end-of-turn token, and continued generation violates harmony's token grammar (openai_harmony.HarmonyError). This is a build-level note (see gpt-oss-* builds), not a different benchmark definition — same methodology, different transport."
+  - "Client segfaults on exit right after a c8 run completes — harmless, server keeps running and result JSON is already saved before the crash. Tolerate the nonzero exit code, verify success via the result file existing."
+  - "Single run per concurrency level — not an average of repeated trials. If repeated-trial statistical confidence is ever wanted, that's a real methodology change (would become v2), not silently added to v1's numbers."
+version_history:
+  - v1: "2026-07-22 — initial convention, c1+c8 only, single run each. Every vLLM speed number in this project to date uses this exact methodology."

@@ -154,6 +154,18 @@ let
     # source benchmark data), unlike an earlier MiniMax variant already
     # disqualified this session for requiring TP=2/multi-GPU.
     { name = "llamacpp-minimax-m2.7"; repo = "unsloth/MiniMax-M2.7-GGUF"; hfFiles = [ "UD-Q3_K_S/MiniMax-M2.7-UD-Q3_K_S-00001-of-00003.gguf" "UD-Q3_K_S/MiniMax-M2.7-UD-Q3_K_S-00002-of-00003.gguf" "UD-Q3_K_S/MiniMax-M2.7-UD-Q3_K_S-00003-of-00003.gguf" ]; }
+    # MTP speculative-decoding candidate, added 2026-07-24 per Chris's
+    # go-ahead to reproduce the real, verified-but-unexercised 1.8-2.5x
+    # speedup on this project's actual standing production primary
+    # (Qwen3.6-35B-A3B) rather than the already-disqualified-as-primary
+    # dense 27B tier. Confirmed real via HF API (200 OK) before adding -
+    # same UD-Q4_K_M quant already benchmarked plain (ollama-qwen3.6-35b-a3b,
+    # llamacpp direct: pp512 1075.81/tg128 63.43 tok/s) so the MTP run is a
+    # clean apples-to-apples same-quant comparison, not confounded by a
+    # different quant too. The plain dense-27B MTP attempt already failed
+    # (unsloth/Qwen3.6-27B-GGUF lacks MTP tensors) - this is the separate,
+    # confirmed MTP-bearing repo for the model that actually matters.
+    { name = "llamacpp-qwen3.6-35b-a3b-mtp"; repo = "unsloth/Qwen3.6-35B-A3B-MTP-GGUF"; hfFiles = [ "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf" ]; }
   ];
 in
 {

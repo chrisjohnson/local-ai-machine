@@ -1,0 +1,25 @@
+id: ollama-single-request-v1
+applies_to: [ollama]
+tool: "curl against /api/generate"
+description: >
+  A single timed /api/generate request — NOT an averaged llama-bench-style
+  run. In every case run so far, this was also the first request after
+  `ollama create`, so total_duration includes model load time.
+methodology:
+  trials: 1
+  warm_up: none
+  first_request_caveat: true
+metrics_schema:
+  - eval_count
+  - eval_duration (ns)
+  - prompt_eval_count
+  - prompt_eval_duration (ns)
+  - load_duration
+  - total_duration
+  - "derived: tok/s = eval_count / (eval_duration / 1e9)"
+known_caveats:
+  - "First request after `ollama create` includes load_duration in total_duration — treat as directionally comparable, not a precise controlled measurement."
+  - "Reasoning-model responses include a full <think> trace that inflates eval_count relative to just the final answer's token count."
+  - "If a cleaner number is wanted, issue a second (warm) request and prefer its eval_count/eval_duration instead — but that's a real methodology change from every existing number in this project (all first-request), note it explicitly if done (would become v2)."
+version_history:
+  - v1: "2026-07-24 — initial convention, single first-request sample. Used for GLM-4.7-Flash, Qwen3.6-27B, Qwen3.6-35B-A3B."

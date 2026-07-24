@@ -1,0 +1,33 @@
+id: glm-4.7-flash--ollama-vulkan-0177-v1
+engine: ollama-vulkan-0177-v1
+role: WORKING (slow) — the model/file that discovered the whole ROCm-crash saga
+model:
+  display_name: GLM-4.7-Flash
+  family: GLM-4.7
+  hf_repo: unsloth/GLM-4.7-Flash-GGUF
+  hf_revision: null
+  architecture: moe
+  total_params: 30e9
+  active_params: 3e9
+  num_experts: null
+  quantization: GGUF-Q4_K_M
+  context_length_native: null
+  modality: text
+  files: [GLM-4.7-Flash-Q4_K_M.gguf]
+  local_path: /var/lib/ai-models/ollama-glm-4.7-flash
+  size_on_disk_gb: 18.31
+served_model_name: glm-4.7-flash-gguf   # ollama model tag
+build_specific_flags: []
+build_specific_env: {}
+compose_service: null   # ollama itself is a standing service, but per-GGUF registration isn't a distinct compose entry
+notes: >
+  ~13 tok/s generation (rough measurement, vllm-primary running concurrently
+  so conservative/pessimistic, not a clean isolated test), vs. llama.cpp
+  direct's clean 70.1 tok/s for the same file — roughly 5.4x slower than
+  llama.cpp direct for this exact model/file. Real chat completion
+  succeeded (full generated essay, not a crash) — this was the file/combo
+  used to discover the -rocm tag crash -> Vulkan-workaround -> wrong-tag saga.
+status: WORKING
+created: "2026-07-24"
+last_verified: "2026-07-24"
+benchmark_runs: []

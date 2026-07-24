@@ -1,0 +1,37 @@
+id: qwen3.6-35b-a3b--llamacpp-vulkan-radv-v1
+engine: llamacpp-vulkan-radv-v1
+role: fastest tg128 of any MoE GGUF tested so far via llama.cpp direct
+model:
+  display_name: Qwen3.6-35B-A3B
+  family: Qwen3.6
+  hf_repo: unsloth/Qwen3.6-35B-A3B-GGUF
+  hf_revision: null
+  architecture: moe
+  total_params: 34.66e9
+  active_params: 3e9
+  num_experts: null
+  quantization: GGUF-Q4_K_M
+  context_length_native: null
+  modality: text
+  files: [Qwen3.6-35B-A3B-UD-Q4_K_M.gguf]
+  local_path: /var/lib/ai-models/ollama-qwen3.6-35b-a3b
+  size_on_disk_gb: 20.60
+served_model_name: null
+build_specific_flags: []
+build_specific_env: {}
+compose_service: null
+notes: >
+  pp512 1075.81±21.68 tok/s, tg128 63.43±0.30 tok/s (2026-07-24, download
+  queue paused first, vllm-primary/judge already inactive). Fastest tg128
+  of any GGUF/llama.cpp-direct model tested in this project's Qwen3.6 family
+  so far, beats sibling dense Qwen3.6-27B by nearly 5x (12.75 tok/s) — the
+  clearest MoE-vs-dense active-param-count contrast measured via llama.cpp
+  direct yet. Still behind GLM-4.7-Flash's 70.1 tok/s and beats Gemma-4-26B-
+  A4B's 53.96 tok/s, consistent with the "smaller active-param-count wins"
+  pattern this hardware keeps rewarding. MTP speculative-decoding test for
+  this file remains untested (same MTP-head-missing risk as the sibling
+  27B file — unsloth ships MTP-bearing GGUFs as separate -MTP-GGUF repos).
+status: WORKING
+created: "2026-07-24"
+last_verified: "2026-07-24"
+benchmark_runs: []

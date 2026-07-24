@@ -1,0 +1,36 @@
+id: qwen3.5-122b-a10b-awq4bit--vllm-therock-gfx1151-v1
+engine: vllm-therock-gfx1151-v1
+role: 100B+ comparison tier — not a standing compose service, swap-in only
+model:
+  display_name: Qwen3.5-122B-A10B
+  family: Qwen3.5
+  hf_repo: cyankiwi/Qwen3.5-122B-A10B-AWQ-4bit
+  hf_revision: null
+  architecture: hybrid-mamba-attention-moe
+  total_params: 122e9
+  active_params: 10e9
+  num_experts: null
+  quantization: AWQ-4bit
+  context_length_native: 65536   # served at this length; bumped up from an earlier under-provisioned 32768
+  modality: text
+  files: null
+  local_path: /var/lib/ai-models/qwen3.5-122b-a10b-awq4bit
+  size_on_disk_gb: 80   # bigger than raw param math suggests — bundles a vision encoder
+notes_on_size: "~80GB on disk despite being a text-only serving target here — bundles a vision encoder not otherwise exercised."
+served_model_name: qwen3.5-122b-a10b-awq4bit
+build_specific_flags:
+  - --max-model-len 65536
+build_specific_env:
+  VLLM_USE_TRITON_AWQ: "1"   # genuine AWQ-kernel dependency, unrelated to eager mode
+compose_service: null   # swap-in-only, never a standing compose service
+notes: >
+  Swapped in via swap_model_start.sh with SWAP_ENV_VARS='VLLM_USE_TRITON_AWQ=1'.
+  Standing default (adopted 2026-07-23): do NOT pass --enforce-eager — tested
+  both ways, non-eager is a real (marginal) improvement on every metric, at
+  the cost of a slower cold start (~410s vs ~350s from CUDA graph capture).
+  --max-num-batched-tokens 16384 came out flat on throughput here (the one
+  exception in that sweep) but still worsened TTFT +12.9% — still not adopted.
+status: WORKING
+created: "2026-07-22"
+last_verified: "2026-07-23"
+benchmark_runs: []

@@ -1,0 +1,37 @@
+id: qwen3.6-27b--llamacpp-vulkan-radv-v1
+engine: llamacpp-vulkan-radv-v1
+role: plain single-stream decode baseline for this file (see also the MTP and server-concurrent builds using the same GGUF)
+model:
+  display_name: Qwen3.6-27B
+  family: Qwen3.6
+  hf_repo: unsloth/Qwen3.6-27B-GGUF
+  hf_revision: null
+  architecture: dense
+  total_params: 26.90e9
+  active_params: null
+  num_experts: null
+  quantization: GGUF-Q4_K_M
+  context_length_native: null
+  modality: text
+  files: [Qwen3.6-27B-Q4_K_M.gguf]
+  local_path: /var/lib/ai-models/ollama-qwen3.6-27b
+  size_on_disk_gb: 15.65
+served_model_name: null
+build_specific_flags: []
+build_specific_env: {}
+compose_service: null
+notes: >
+  pp512 342.55±14.41 tok/s, tg128 12.75±0.03 tok/s (2026-07-24, vllm-primary/
+  judge stopped, download queue paused first). Markedly slower generation
+  than the dense-tier comparison would suggest at a glance — Gemma-4-26B-A4B
+  (MoE) hit tg128 53.96 on the same engine; this dense 27B's generation
+  speed is roughly a quarter of that, consistent with the dense-vs-MoE gap
+  seen in the vLLM entries. Same file also has a proven Ollama build (see
+  qwen3.6-27b--ollama-vulkan-0177-v1) and an MTP attempt (see
+  qwen3.6-27b--llamacpp-vulkan-radv-mtp-v1, BROKEN — missing MTP tensors)
+  and a concurrent-serving benchmark (see
+  qwen3.6-27b--llamacpp-vulkan-radv-server-v1).
+status: WORKING
+created: "2026-07-24"
+last_verified: "2026-07-24"
+benchmark_runs: []

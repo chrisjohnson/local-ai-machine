@@ -1,0 +1,20 @@
+id: llamacpp-bench-v1
+applies_to: [llamacpp]
+tool: llama-bench (inside the toolbox container)
+description: >
+  Single-stream prompt-processing and token-generation speed benchmark.
+  This is the benchmark-of-record engine comparison point for GGUF files —
+  consistently faster than the same file served via Ollama.
+methodology:
+  trials: 1   # a single llama-bench invocation, which itself reports mean±stddev across its own internal repeated passes for pp512/tg128 — that internal variance is the tool's own behavior, not a project-level repeated-run convention layered on top
+  warm_up: none
+metrics_schema:
+  - "pp512 (prompt processing, tok/s ± stddev)"
+  - "tg128 (token generation, tok/s ± stddev)"
+  - "size / params (from the tool's own printed table)"
+  - "build: <hash> (<number>) — engine-version fingerprint, printed at the bottom of stdout"
+known_caveats:
+  - "pp512 is measurably sensitive to concurrent background load (~4.9% hit from a concurrent download in one measured case) — pause the download queue first. tg128 was statistically unaffected in the same test."
+  - "Always stop vllm-primary/vllm-judge first for a clean, contention-free number."
+version_history:
+  - v1: "2026-07-24 — initial convention. Used for GLM-4.7-Flash, Gemma-4-26B-A4B-it, Qwen3.6-27B, Qwen3.6-35B-A3B so far."

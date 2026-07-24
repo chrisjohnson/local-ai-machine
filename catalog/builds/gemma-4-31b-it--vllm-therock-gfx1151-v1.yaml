@@ -1,0 +1,36 @@
+id: gemma-4-31b-it--vllm-therock-gfx1151-v1
+engine: vllm-therock-gfx1151-v1
+role: dense comparison tier — not a standing compose service, swap-in only
+model:
+  display_name: Gemma-4-31B-it
+  family: Gemma-4
+  hf_repo: google/gemma-4-31B-it
+  hf_revision: null
+  architecture: dense
+  total_params: 31e9
+  active_params: null
+  num_experts: null
+  quantization: bf16
+  context_length_native: 65536   # bumped from the toolbox's proven-but-conservative 32768 default
+  modality: text
+  files: null
+  local_path: /var/lib/ai-models/gemma-4-31b-it
+  size_on_disk_gb: null
+served_model_name: gemma-4-31b-it
+build_specific_flags:
+  - --tool-call-parser gemma4    # NOT the Qwen parser
+  - --reasoning-parser gemma4
+  - --max-model-len 65536
+  - --gpu-memory-utilization 0.90   # standalone swap-in
+build_specific_env: {}
+compose_service: null
+notes: >
+  Slowest model tested all session, degrades hardest under concurrency
+  (near-1-minute p99 TTFT at c8) — a real architectural cost of being dense
+  at this size, not a config problem. Despite this, scored a perfect 5/5
+  coding-harness result under tier-ab-coding-v0 — speed and coding
+  capability do not correlate here.
+status: WORKING
+created: "2026-07-23"
+last_verified: "2026-07-23"
+benchmark_runs: []

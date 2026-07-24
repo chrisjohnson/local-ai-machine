@@ -1,0 +1,37 @@
+id: qwen3-coder-next-gptq4bit--vllm-therock-gfx1151-v1
+engine: vllm-therock-gfx1151-v1
+role: 80B comparison tier — not a standing compose service, swap-in only
+model:
+  display_name: Qwen3-Coder-Next
+  family: Qwen3-Coder-Next
+  hf_repo: btbtyler09/Qwen3-Coder-Next-GPTQ-4bit
+  hf_revision: null
+  architecture: moe
+  total_params: 80e9
+  active_params: 3e9
+  num_experts: null
+  quantization: GPTQ-4bit
+  context_length_native: 131072
+  modality: text
+  files: null
+  local_path: /var/lib/ai-models/qwen3-coder-next-gptq4bit
+  size_on_disk_gb: 50
+served_model_name: qwen3-coder-next-gptq4bit
+build_specific_flags:
+  - --gpu-memory-utilization 0.70-0.90   # swap-in benchmarks used this range
+  - --max-model-len 131072
+build_specific_env: {}
+compose_service: null   # swap-in-only, never a standing compose service
+notes: >
+  Swapped in via scripts/speed_benchmark_swap.sh / swap_model_start.sh, not a
+  standing service. Smaller on disk than the 35B bf16 primary despite 2.3x
+  the params — GPTQ-4bit beats bf16 for footprint. Wins single-stream (c1)
+  over the bf16 primary due to lower per-token memory-bandwidth cost of
+  4-bit weights, loses at c8 where the primary's MoE aggregate throughput
+  pulls ahead. VLLM_ROCM_USE_AITER=1 tested — crashes identically to the
+  primary (same engine-level gotcha). --max-num-batched-tokens 16384 also
+  regresses this model (-8.3% throughput, +97.6% TTFT).
+status: WORKING
+created: "2026-07-22"
+last_verified: "2026-07-22"
+benchmark_runs: []

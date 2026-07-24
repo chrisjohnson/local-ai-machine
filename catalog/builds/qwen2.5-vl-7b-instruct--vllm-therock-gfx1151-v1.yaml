@@ -1,0 +1,33 @@
+id: qwen2.5-vl-7b-instruct--vllm-therock-gfx1151-v1
+engine: vllm-therock-gfx1151-v1
+role: vision/OCR specialist — not a coding candidate, not a standing compose service
+model:
+  display_name: Qwen2.5-VL-7B-Instruct
+  family: Qwen2.5-VL
+  hf_repo: Qwen/Qwen2.5-VL-7B-Instruct
+  hf_revision: null
+  architecture: dense
+  total_params: 7e9
+  active_params: null
+  num_experts: null
+  quantization: bf16
+  context_length_native: 32768   # deliberately below the 64K requirement — role is quick OCR/vision, not long-context coding
+  modality: vision-text
+  files: null
+  local_path: /var/lib/ai-models/qwen2.5-vl-7b-instruct
+  size_on_disk_gb: 16
+served_model_name: qwen2.5-vl-7b-instruct
+build_specific_flags:
+  - --max-model-len 32768
+build_specific_env: {}
+compose_service: null
+notes: >
+  No Qwen3 tool-call parser used (older generation, different template).
+  Will need --limit-mm-per-prompt flags once actually used for real vision
+  workloads — not yet exercised. Deliberately excluded from the coding
+  harness (vision/OCR specialist, not a coding candidate). None of the
+  KV-cache/concurrency footprint figures were captured for this model.
+status: WORKING
+created: "2026-07-23"
+last_verified: "2026-07-23"
+benchmark_runs: []

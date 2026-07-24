@@ -1,0 +1,52 @@
+id: vllm-therock-gfx1151-v1
+family: vllm
+description: >
+  kyuz0's TheRock-based vLLM build for gfx1151 (Strix Halo). No ENTRYPOINT —
+  vllm is on PATH via /opt/venv, so `vllm serve ...` runs headless directly,
+  no interactive toolbox/distrobox flow needed. Requires native (safetensors)
+  format — vLLM's GGUF support is limited/experimental and not used anywhere
+  in this stack.
+image: docker.io/kyuz0/vllm-therock-gfx1151:latest
+# NOT kyuz0/amd-strix-halo-vllm — that tag doesn't exist; caught only when
+# `docker compose up` failed with a real pull-access-denied error.
+# Nominal tag only — it floats. Actual digest is captured per benchmark run
+# (build file's benchmark_runs[].fingerprint.image_digest), not here, since
+# "latest" pulled today may not be "latest" pulled next month.
+runtime:
+  devices: ["/dev/kfd:/dev/kfd", "/dev/dri:/dev/dri"]
+  group_add: [video, render]
+  security_opt: [seccomp:unconfined]
+  ipc: host
+  port_binding: loopback-only
+  port_binding_note: >
+    Bind 127.0.0.1:<port>:<port>, not 0.0.0.0. NixOS's firewall has a
+    built-in unconditional `ct status dnat accept` rule in the forward
+    chain that bypasses allowedTCPPorts entirely for any Docker-published
+    port — loopback binding is the only real fix. Reach via SSH tunnel or
+    the LiteLLM gateway on 4000.
+  volumes: ["/var/lib/ai-models:/models"]
+common_env: {}
+common_flags:
+  - --host 0.0.0.0
+  - --trust-remote-code
+  - --enable-prefix-caching
+  - --dtype auto
+  - --tensor-parallel-size 1
+invocation_template: |
+  vllm serve /models/<model-dir>
+  --served-model-name <served-name>
+  --port <port>
+  --gpu-memory-utilization <util>
+  --max-model-len <ctx>
+  --max-num-seqs <n>
+  [common_flags above]
+  [build-specific tool-call-parser / reasoning-parser / extra env vars]
+known_gotchas:
+  - "VLLM_ROCM_USE_AITER=1 crashes on this image (UnicodeDecodeError in torch._C._jit_get_operation) — confirmed across multiple models (qwen3.6-35b-a3b primary, qwen3-coder-next-gptq4bit), toolbox/hardware-level, not model-specific. Do not enable."
+  - "--max-num-batched-tokens 16384 (double default) is a universal throughput regression across every model tested (-3.8% to -9.3% throughput, +65% to +97.6% TTFT) except qwen3.5-122b-a10b-awq4bit where it came out flat on throughput but still worse on TTFT (+12.9%). Do not use."
+  - "gpu-memory-utilization is computed against total device memory, not free memory — co-resident services (primary + judge) must sum to a sane total, not each independently default to 0.90."
+  - "gfx1151 (RDNA3.5) has no FP8 matrix-core hardware at all (FP8 WMMA starts at RDNA4) — FP8 checkpoints fail to load or stall at Triton autotune on this exact toolbox+hardware. Use bf16/AWQ/GPTQ instead."
+  - "Client (`vllm bench serve`) segfaults on exit right after a c8 run completes — harmless, server keeps running and result JSON is already saved before the crash. Tolerate the nonzero exit code, verify success via the result file existing, not the exit code."
+  - "enforce_eager=False (i.e. do NOT pass --enforce-eager) is the standing default — tested both ways on the 122B AWQ tier, non-eager is a small but real improvement on every metric at the cost of slower cold start (~410s vs ~350s from CUDA graph capture)."
+status: active
+first_used: "2026-07-22"

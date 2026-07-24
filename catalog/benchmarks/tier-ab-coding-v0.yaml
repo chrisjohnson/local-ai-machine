@@ -1,0 +1,23 @@
+id: tier-ab-coding-v0
+applies_to: [vllm]
+tool: scripts/coding_benchmark.py
+description: >
+  SUPERSEDED. Earlier iteration of the coding harness before Tiers J/P/D/Q
+  existed — only Tier A (correctness) and Tier B (tool-calling) were run.
+  Kept here as a definition only so old catalog entries that predate the
+  six-tier convention can be understood as "ran a real but narrower
+  benchmark," not silently treated as equivalent to six-tier-coding-v1.
+  No historical run data is being backfilled under this definition —
+  the old numbers stay in MODEL_STACK_CATALOG.md/README.md as-is.
+methodology:
+  warm_up: none
+  cold_run: true
+tiers:
+  A: {name: correctness, tasks: [palindrome, merge_sorted, expr_eval], grading: sandboxed subprocess test execution}
+  B: {name: tool-calling, tasks: [single_tool_call, multi_step_tool_call], grading: structural tool_calls check}
+metrics_schema:
+  - "tier_a_pass / tier_a_total, tier_b_pass / tier_b_total"
+known_caveats:
+  - "Known models tested only under this narrower convention (per MODEL_STACK_CATALOG.md as of 2026-07-24): qwen3.6-35b-a3b (primary), qwen3.5-4b (judge), qwen3-coder-next-gptq4bit, qwen3.5-122b-a10b-awq4bit, qwen3.6-27b, gemma-4-31b-it, gemma-4-26b-a4b-it. These do NOT have Tier J/P/D/Q data — a real gap versus the current six-tier convention, a candidate for re-run, not something to paper over."
+version_history:
+  - v0: "2026-07-22/23 — original harness, Tier A+B only. Superseded by six-tier-coding-v1."

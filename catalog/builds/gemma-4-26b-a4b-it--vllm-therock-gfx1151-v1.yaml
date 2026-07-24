@@ -1,0 +1,40 @@
+id: gemma-4-26b-a4b-it--vllm-therock-gfx1151-v1
+engine: vllm-therock-gfx1151-v1
+role: MoE comparison tier, best-performing model overall — not promoted to production, Chris's deliberate call
+model:
+  display_name: Gemma-4-26B-A4B-it
+  family: Gemma-4
+  hf_repo: google/gemma-4-26B-A4B-it
+  hf_revision: null
+  architecture: moe
+  total_params: 26e9
+  active_params: 4e9
+  num_experts: null
+  quantization: bf16
+  context_length_native: 65536
+  modality: text
+  files: null
+  local_path: /var/lib/ai-models/gemma-4-26b-a4b-it
+  size_on_disk_gb: null
+served_model_name: gemma-4-26b-a4b-it
+build_specific_flags:
+  - --tool-call-parser gemma4
+  - --reasoning-parser gemma4
+  - --max-model-len 65536
+  - --gpu-memory-utilization 0.90   # standalone swap-in
+build_specific_env: {}
+compose_service: null
+notes: >
+  Strongest combined speed + coding result of any vLLM-served model tested —
+  not promoted to production primary (Chris's call, deliberately deferred;
+  testing/swapping is standing permission, changing the default is not).
+  Best combination of small footprint and high concurrency headroom until
+  GLM-4.7-Flash-AWQ later beat it (20.27x vs 28.10x). Same GGUF file
+  separately benchmarked via llama.cpp direct and Ollama — llama.cpp/GGUF
+  decode speed does NOT rank this model the same way vLLM does (comes out
+  slower than GLM-4.7-Flash's GGUF there) — vLLM-serving fitness and raw
+  GGUF decode speed aren't the same ranking.
+status: WORKING
+created: "2026-07-23"
+last_verified: "2026-07-23"
+benchmark_runs: []

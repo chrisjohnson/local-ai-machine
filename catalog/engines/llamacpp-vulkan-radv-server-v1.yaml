@@ -1,0 +1,38 @@
+id: llamacpp-vulkan-radv-server-v1
+family: llamacpp
+description: >
+  llama.cpp direct via the same Strix Halo toolbox image, but running
+  `llama-server` (OpenAI-compatible HTTP server, continuous batching,
+  multiple parallel slots) instead of `llama-bench`. Distinct engine from
+  llamacpp-vulkan-radv-v1 because the common parameter set is fundamentally
+  different (parallelism/serving flags vs a single-shot bench invocation) —
+  this is the concurrent-serving analogue to vLLM's c1/c8 testing.
+image: docker.io/kyuz0/amd-strix-halo-toolboxes:vulkan-radv
+runtime:
+  devices: ["/dev/kfd:/dev/kfd", "/dev/dri:/dev/dri"]
+  group_add: ["26", "303"]
+  port_binding: "-p 8090:8080 (or similar) — ad hoc, not a standing compose service"
+  volumes: ["/var/lib/ai-models/<model-dir>:/models:ro"]
+common_env: {}
+common_flags:
+  - -ngl 999
+  - -fa 1
+  - -lm none
+  - -cb          # continuous batching (default on, passed explicitly)
+  - -kvu         # unified KV cache across slots
+invocation_template: |
+  docker run -d --rm --name llama-server-<model> \
+    --device /dev/kfd --device /dev/dri --group-add 26 --group-add 303 \
+    -p <host-port>:8080 \
+    -v /var/lib/ai-models/<model-dir>:/models:ro \
+    kyuz0/amd-strix-halo-toolboxes:vulkan-radv \
+    llama-server -m /models/<gguf-filename> -ngl 999 -fa 1 -lm none \
+    --host 0.0.0.0 --port 8080 -np <N> -cb -kvu -c <context-size>
+known_gotchas:
+  - "Open upstream bug ggml-org/llama.cpp#25992 (opened 2026-07-22): cross-request response corruption under -np N --kv-unified on the HIP/ROCm backend specifically (4 independent reporters, 2 on identical Strix Halo hardware, all confirm Vulkan avoids it). Vulkan/RADV is the deliberate choice here, not HIP/ROCm."
+  - "Older, unresolved (auto-closed-stale) RADV-specific concurrent-slot-hang report exists too (#20906) on this same Vulkan/RADV backend — treated as a live risk, not dismissed."
+  - "MANDATORY: run a correctness check (multiple concurrent requests with clearly distinguishable prompts, verify each response answers its own prompt and isn't corrupted/cross-contaminated) BEFORE trusting any throughput number from this engine. Only proceed to throughput measurement after correctness passes cleanly."
+  - "-c <context-size> is shared across all -np slots (e.g. -c 32768 with -np 4 = 8192/slot) — size accordingly."
+  - "This is a hand-rolled concurrent-curl load test methodology, not a packaged tool like vllm bench serve — see benchmarks/llamacpp-server-concurrent-v1.yaml for the exact measurement approach."
+status: active
+first_used: "2026-07-24"

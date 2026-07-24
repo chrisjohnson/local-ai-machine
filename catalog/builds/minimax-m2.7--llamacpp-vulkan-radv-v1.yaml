@@ -1,0 +1,34 @@
+id: minimax-m2.7--llamacpp-vulkan-radv-v1
+engine: llamacpp-vulkan-radv-v1
+role: confirmed single-node viable (unlike an earlier MiniMax variant that needed TP=2/multi-GPU) — UNTESTED, download queued
+model:
+  display_name: MiniMax-M2.7
+  family: MiniMax
+  hf_repo: unsloth/MiniMax-M2.7-GGUF
+  hf_revision: null
+  architecture: moe
+  total_params: 228.69e9
+  active_params: null   # not recorded
+  num_experts: null
+  quantization: GGUF-Q3_K_S (UD)
+  context_length_native: null
+  modality: text
+  files:
+    - UD-Q3_K_S/MiniMax-M2.7-UD-Q3_K_S-00001-of-00003.gguf
+    - UD-Q3_K_S/MiniMax-M2.7-UD-Q3_K_S-00002-of-00003.gguf
+    - UD-Q3_K_S/MiniMax-M2.7-UD-Q3_K_S-00003-of-00003.gguf
+  local_path: /var/lib/ai-models/llamacpp-minimax-m2.7
+  size_on_disk_gb: 93.6
+served_model_name: null
+build_specific_flags: []
+build_specific_env: {}
+compose_service: null
+notes: >
+  Not yet measured locally. Reference figure from kyuz0's raw results.json:
+  31.08 tok/s TG128, confirmed single-node viable (rpc:false in the source
+  benchmark data) — an earlier MiniMax variant considered in this project
+  was disqualified for requiring TP=2/multi-GPU; this one is not.
+status: UNTESTED-BUT-DOWNLOADED
+created: "2026-07-24"
+last_verified: "2026-07-24"
+benchmark_runs: []

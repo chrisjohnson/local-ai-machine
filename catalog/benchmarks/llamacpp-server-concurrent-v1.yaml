@@ -1,0 +1,33 @@
+id: llamacpp-server-concurrent-v1
+applies_to: [llamacpp]   # specifically the llamacpp-vulkan-radv-server-v1 engine, not the plain llama-bench engine
+tool: hand-rolled concurrent curl load test against llama-server
+description: >
+  Closes the concurrency-testing gap for llama.cpp (every other llama.cpp
+  number in this project is single-stream llama-bench). Not a packaged
+  benchmark tool like vllm bench serve — simple concurrent curl requests
+  fired together and waited on, timed via `curl -w '%{time_total}'` and
+  cross-checked against llama.cpp's own per-request `timings` block and
+  server-side `print_timing` log lines.
+methodology:
+  correctness_check_required_first: true   # MANDATORY — see engine gotchas (open corruption/hang bugs on this serving mode)
+  correctness_check_method: >
+    Fire N concurrent requests with clearly distinguishable prompts (e.g.
+    arithmetic, capital-city, repeated-word, color questions). Verify each
+    response answers its own prompt correctly and shows no cross-request
+    contamination or corruption before trusting any throughput number.
+  concurrency_levels_tested_so_far: [1, 4]   # not yet c8 — real gap vs vLLM's c1/c8 convention
+  trials: 1
+  warm_up: none
+  reasoning_model_note: >
+    Models emitting a <think> trace need a generous max_tokens on the
+    correctness check (800 worked; 50 truncated mid-reasoning with empty
+    content) so the final answer actually gets graded, not a truncated stub.
+metrics_schema:
+  - "per-concurrency-level: aggregate tok/s, per-slot tok/s, per-request wall-clock time"
+  - "correctness_check: pass/fail per concurrent request, with the distinguishing prompt/response pairs"
+known_caveats:
+  - "Open upstream bug ggml-org/llama.cpp#25992: cross-request corruption on HIP/ROCm specifically — Vulkan/RADV (used here) confirmed to avoid it, but re-verify if this is ever ported to a ROCm engine."
+  - "Older stale RADV concurrent-slot-hang report (#20906) — unresolved, treated as a live risk despite being auto-closed upstream."
+  - "Individual request latency degrades under concurrency even as aggregate throughput rises (measured: ~27% longer wall-clock per request at c4 vs c1 for Qwen3.6-27B) — report both aggregate and per-request numbers, not just aggregate."
+version_history:
+  - v1: "2026-07-24 — initial convention, c1/c4 tested (Qwen3.6-27B, -np 4 -cb -kvu -c 32768). c8 not yet attempted."

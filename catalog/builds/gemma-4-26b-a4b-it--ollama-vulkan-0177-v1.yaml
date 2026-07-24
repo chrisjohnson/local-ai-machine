@@ -1,0 +1,38 @@
+id: gemma-4-26b-a4b-it--ollama-vulkan-0177-v1
+engine: ollama-vulkan-0177-v1
+role: BROKEN — architecture not supported by this Ollama build
+model:
+  display_name: Gemma-4-26B-A4B-it
+  family: Gemma-4
+  hf_repo: unsloth/gemma-4-26B-A4B-it-GGUF
+  hf_revision: null
+  architecture: moe
+  total_params: 25.23e9
+  active_params: 4e9
+  num_experts: null
+  quantization: GGUF-Q4_K_M
+  context_length_native: null
+  modality: text
+  files: [gemma-4-26B-A4B-it-UD-Q4_K_M.gguf]
+  local_path: /var/lib/ai-models/ollama-gemma-4-26b-a4b-it
+  size_on_disk_gb: 15.77
+served_model_name: gemma-4-26b-a4b-gguf
+build_specific_flags: []
+build_specific_env: {}
+compose_service: null
+notes: >
+  Registration succeeded fine (ollama create completed, ollama list shows
+  the model, 16GB) — failure is only at inference time. Exact error:
+  "llama_model_load: error loading model architecture: unknown model
+  architecture: 'gemma4'" / "llama_model_load_from_file_impl: failed to
+  load model." Confirmed via docker logs that full GGUF metadata (tensors,
+  tokenizer, chat template) parses fine — failure is specifically at the
+  architecture-dispatch step, not a corrupt download or config error. A
+  genuine version tradeoff: a newer Ollama build likely supports gemma4,
+  but jumping to 0.18.x+ reintroduces the GPU-detection regression
+  (ollama/ollama#15336) on this exact chip. llama.cpp direct is the only
+  backend that can currently serve this exact file at all on this box.
+status: BROKEN
+created: "2026-07-24"
+last_verified: "2026-07-24"
+benchmark_runs: []

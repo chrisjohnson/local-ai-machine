@@ -2,6 +2,7 @@
 
 **Target Device:** Bosgame M5 AI (AMD Ryzen AI Max+ 395 "Strix Halo", 128GB LPDDR5X Unified RAM, 2TB NVMe)
 **Host Architecture:** NixOS (Flakes) Declarative OS + Docker Compose Container Stack
+**Connecting:** `ssh local-ai-machine` (uses the `local-ai-machine` alias in `~/.ssh/config` → user `chris`, key `id_rsa`). Don't use `local-ai-machine.local` directly with the local Mac username — that alias/user combo isn't configured and will fail with a misleading `Permission denied` (looks like an outage, isn't one).
 
 This specification reflects all clarified design decisions, incorporating NixOS declarative host management, dual-vLLM static slots with parallel tool parsing, Herdr PTY multiplexing with real-time agent status tracking, Hermes multi-topic orchestration, Turnstone governance and deferred MCP tool discovery, and multi-tenant edge isolation.
 
@@ -11,6 +12,7 @@ This specification reflects all clarified design decisions, incorporating NixOS 
 3. **Headless Execution:** Desktop display managers are disabled (`multi-user.target`) to eliminate GUI VRAM overhead.
 4. **Strict Declarative State:** Do NOT issue manual `apt`, `pip`, or `systemctl` commands on the host outside `configuration.nix`/`docker-compose.yml`. Ordinary judgment calls made while bringing the box up are recorded in the roadmap below, not applied invisibly.
 5. **Secrets Hygiene:** All passwords, tokens, and keys live in `secrets/` (gitignored, `.example` templates tracked) or `.env` files — never in tracked config.
+6. **Git-Mediated Changes Only (no hand-patching the box):** As of 2026-07-24 the box's `/home/chris/local-ai-machine` checkout tracks `origin` (this repo) on branch `main`. All changes to its config/code — Nix or Docker — flow through git: edit locally → commit → push → `git pull` on the box → `sudo nixos-rebuild switch` (for `configuration.nix`/Nix changes) or `docker compose up -d` (for compose changes). Do **not** hand-edit files directly on the box over SSH anymore, even for "quick" fixes — that's exactly the drift this policy replaces (the box's checkout had silently diverged into a disconnected, remote-less repo before this policy existed). Any urgent on-box fix must be reconciled back into a real commit in this repo immediately, not left as invisible local state.
 
 ---
 

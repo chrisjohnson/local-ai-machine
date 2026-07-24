@@ -1,0 +1,29 @@
+id: llamacpp-vulkan-radv-v1
+family: llamacpp
+description: >
+  llama.cpp direct via kyuz0's Strix Halo toolbox image, Vulkan/RADV backend.
+  Single-stream benchmarking only (llama-bench) — no standing service, no
+  compose entry, invoked ad hoc per benchmark via `docker run`.
+image: docker.io/kyuz0/amd-strix-halo-toolboxes:vulkan-radv
+runtime:
+  devices: ["/dev/kfd:/dev/kfd", "/dev/dri:/dev/dri"]
+  group_add: ["26", "303"]   # numeric GIDs for video/render — this image also resolves names fine, but documented invocations use numeric for consistency
+  volumes: ["/var/lib/ai-models/<model-dir>:/models:ro"]
+common_env: {}
+common_flags:
+  - -ngl 999      # offload all layers
+  - -fa 1         # flash attention on
+  - -lm none      # NOT --no-mmap (deprecated, errors on this build) — -lm none / --load-mode none is this build's equivalent
+invocation_template: |
+  docker run --rm --device /dev/kfd --device /dev/dri --group-add 26 --group-add 303 \
+    -v /var/lib/ai-models/<model-dir>:/models:ro \
+    kyuz0/amd-strix-halo-toolboxes:vulkan-radv \
+    llama-bench -m /models/<gguf-filename> -ngl 999 -fa 1 -lm none
+known_gotchas:
+  - "GPU verified real via `llama-cli --list-devices` → 'Vulkan0: AMD Radeon 8060S Graphics (RADV GFX1151) (128000 MiB, 16389 MiB free)'."
+  - "Prompt processing (pp512) is measurably sensitive to concurrent background load — a concurrent `hf download` cost ~4.9% throughput in one directly-measured case (gemma-4-26b-a4b-it). Token generation (tg128) was statistically unaffected by the same concurrent download. Always pause the download queue before a PP-sensitive run; TG-only comparisons are more robust but pause anyway for full apples-to-apples cleanliness."
+  - "Always stop vllm-primary/vllm-judge before running — every clean benchmark-of-record number in this project was taken with both GPU-contention sources removed."
+  - "The `build: <hash> (<number>)` line at the bottom of llama-bench stdout is the engine-version fingerprint — capture it every run (e.g. build c0bc8591e (10107))."
+  - "Raw llama.cpp decode speed and vLLM-serving fitness do NOT necessarily rank models the same way — e.g. Gemma-4-26B-A4B-it is the strongest vLLM/coding performer but comes out slower than GLM-4.7-Flash here."
+status: active
+first_used: "2026-07-24"

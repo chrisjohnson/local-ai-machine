@@ -1,0 +1,23 @@
+id: ollama-rocm-0177-broken
+family: ollama
+description: >
+  Ollama's -rocm tag, using the ROCm backend directly (no Vulkan workaround).
+  Documented here as a proven-broken combination so it is never retried
+  blindly — GPU detection succeeds but real inference crashes.
+image: ollama/ollama:0.17.7-rocm
+runtime:
+  devices: ["/dev/kfd:/dev/kfd", "/dev/dri:/dev/dri"]
+  group_add: ["26", "303"]
+  port_binding: "127.0.0.1:11434:11434"
+common_env: {}
+common_flags: []
+invocation_template: |
+  # DO NOT USE — documented broken, kept only for the record.
+known_gotchas:
+  - "GPU DETECTION at startup looks correct: msg='inference compute' ... library=ROCm compute=gfx1151 ... type=iGPU total='125.0 GiB'."
+  - "Any actual chat/generate request crashes: ggml_backend_cuda_buffer_type_alloc_buffer: ... cudaMalloc failed: out of memory — despite confirmed <200MiB of 124GiB actually in use (checked directly via /sys/class/drm/card0/device/mem_info_{vram,gtt}_used, vllm-primary/vllm-judge stopped too)."
+  - "Setting OLLAMA_VULKAN=1 alone does NOT fix it on this tag — Ollama's backend picker still selects ROCm (the var makes Vulkan *available*, doesn't force it), AND this image doesn't even bundle Vulkan libraries at all (confirmed: no libvulkan/libggml-vulkan.so anywhere in it) — hiding ROCm devices on this tag just falls through to CPU, not Vulkan."
+  - "Root cause: real, upstream, chip-specific ROCm allocation bug, consistent with open issues ollama/ollama#13589 and #15336."
+  - "Use ollama-vulkan-0177-v1 instead — same Ollama version, plain (non -rocm) tag, forced onto Vulkan."
+status: broken
+first_used: "2026-07-24"

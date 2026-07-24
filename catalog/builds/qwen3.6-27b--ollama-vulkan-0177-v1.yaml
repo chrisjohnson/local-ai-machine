@@ -1,0 +1,34 @@
+id: qwen3.6-27b--ollama-vulkan-0177-v1
+engine: ollama-vulkan-0177-v1
+role: WORKING — confirms Qwen3.6 dense is a recognized architecture on this build
+model:
+  display_name: Qwen3.6-27B
+  family: Qwen3.6
+  hf_repo: unsloth/Qwen3.6-27B-GGUF
+  hf_revision: null
+  architecture: dense
+  total_params: 26.90e9
+  active_params: null
+  num_experts: null
+  quantization: GGUF-Q4_K_M
+  context_length_native: null
+  modality: text
+  files: [Qwen3.6-27B-Q4_K_M.gguf]
+  local_path: /var/lib/ai-models/ollama-qwen3.6-27b
+  size_on_disk_gb: 15.65
+served_model_name: qwen3.6-27b-gguf
+build_specific_flags: []
+build_specific_env: {}
+compose_service: null
+notes: >
+  Single /api/generate request: eval_count 613, eval_duration 57871769652ns
+  -> 10.59 tok/s. Below the llama.cpp-direct number for the same file
+  (12.75 tok/s) — a ~17% gap, much narrower than GLM-4.7-Flash's ~5.4x gap.
+  total_duration (68.18s) includes model load time (load_duration 7.81s)
+  since this was the first request after ollama create — a warm second
+  request would show much lower total latency. No architecture blocker
+  here, unlike Gemma-4.
+status: WORKING
+created: "2026-07-24"
+last_verified: "2026-07-24"
+benchmark_runs: []
