@@ -257,4 +257,34 @@ llama_server exited with code 1
 - The existing no-MTP baseline (`results/qwen3.6-27b--llamacpp.txt`: pp512 342.55 tok/s, tg128 12.75 tok/s) is **unchanged and not superseded** — there is no "after" number to compare it against yet. The ~1.8x community reference figure (11.7→21.2 tok/s) is **neither matched nor exceeded nor fallen short of** — it simply could not be tested with the files currently on this box.
 - Full raw output and investigation: `results/qwen3.6-27b--llamacpp-mtp.txt`.
 
+## Qwen3.6-35B-A3B GGUF benchmark: llama.cpp direct vs Ollama (2026-07-24) — the active-params-vs-speed pattern confirmed a third time
+
+Benchmarked the newly-completed `unsloth/Qwen3.6-35B-A3B-GGUF` Q4_K_M file (`/var/lib/ai-models/ollama-qwen3.6-35b-a3b/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`, 22.1GB on disk, 20.60 GiB / 34.66B params per `llama-bench`'s own report) — same house methodology as the GLM-4.7-Flash, Gemma-4-26B-A4B, and Qwen3.6-27B GGUF runs above. Before any timed measurement: checked for an active download queue — found the same 7 units actively "activating" behind the shared flock as the prior Qwen3.6-27B pass (gpt-oss-120b, gpt-oss-20b, llamacpp-gpt-oss-120b, llamacpp-minimax-m2.7, llamacpp-nemotron-3-super-120b, llamacpp-qwen3.5-122b-a10b, north-mini-code-1.0-w4a16). Stopped all of them in one `systemctl stop` command before the llama.cpp run. `vllm-primary`/`vllm-judge` were already inactive at the time of the llama.cpp run (no action needed there for that specific measurement).
+
+**llama.cpp direct (`kyuz0/amd-strix-halo-toolboxes:vulkan-radv`, Vulkan/RADV backend):**
+
+```
+docker run --rm --device /dev/kfd --device /dev/dri --group-add 26 --group-add 303 \
+  -v /var/lib/ai-models/ollama-qwen3.6-35b-a3b:/models:ro \
+  kyuz0/amd-strix-halo-toolboxes:vulkan-radv \
+  llama-bench -m /models/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf -ngl 999 -fa 1 -lm none
+```
+
+Result: **pp512 = 1075.81 ± 21.68 tok/s, tg128 = 63.43 ± 0.30 tok/s.** This is the fastest tg128 recorded for the Qwen3.6 family via llama.cpp direct on this hardware, and beats the sibling dense Qwen3.6-27B (12.75 tok/s) by close to **5x** — the same underlying model architecture generation, differing only in dense-vs-MoE shape, producing the starkest active-param-count contrast measured via this engine yet (the earlier vLLM-side comparison for these two models showed a similar but smaller gap — 33.19 vs 17.91 tok/s @c8, ~1.85x — llama.cpp direct's cleaner single-stream measurement makes the underlying architectural effect look even larger here). Still behind GLM-4.7-Flash's 70.1 tok/s (a smaller ~3B-active MoE, smaller total footprint) and just ahead of Gemma-4-26B-A4B's 53.96 tok/s — both entries reinforcing the same "smaller active-param-count and/or smaller total footprint wins on this memory-bandwidth-bound hardware" pattern that's shown up repeatedly across this project (Gemma-4-26B-A4B being the fastest vLLM performer, GLM-4.7-Flash being the fastest llama.cpp performer, and now this model landing in between, at roughly the active-param count its architecture would predict).
+
+**Ollama:**
+
+```
+./scripts/ollama_register_model.sh ollama-qwen3.6-35b-a3b Qwen3.6-35B-A3B-UD-Q4_K_M.gguf qwen3.6-35b-a3b-gguf
+curl -sS localhost:11434/api/generate -d '{"model":"qwen3.6-35b-a3b-gguf","prompt":"...","stream":false}'
+```
+
+Registration succeeded immediately (`ollama create` completed cleanly, `ollama list` shows `qwen3.6-35b-a3b-gguf:latest`, 22GB). Qwen3.6-35B-A3B is a recognized architecture on this Ollama build (same family tag as the already-proven dense 27B file) — the generation request succeeded and returned a full response (including a `<think>` reasoning trace). From the JSON response: `eval_count: 1511`, `eval_duration: 135177304222` ns → **1511 / 135.18 = 11.18 tok/s**. This is well below the llama.cpp-direct number for the same file (63.43 tok/s) — roughly a **5.7x gap**, much closer to GLM-4.7-Flash's ~5.4x Ollama-overhead gap than to the dense Qwen3.6-27B's comparatively narrow ~17% gap.
+
+**A real, now-repeated pattern worth flagging**: Ollama's overhead cost, relative to llama.cpp direct, looks architecture-dependent rather than a flat tax. The two MoE models measured so far (GLM-4.7-Flash ~5.4x, Qwen3.6-35B-A3B ~5.7x) both show a large gap; the one dense model measured (Qwen3.6-27B, ~17%) shows a much smaller one. One plausible explanation: Ollama's Go scheduling/wrapper layer may interact poorly with MoE expert-routing overhead specifically, in a way that a dense model's simpler per-token compute path doesn't trigger — but this is only two MoE data points and one dense data point, not a controlled ablation, so treat it as a hypothesis worth testing further (e.g. against Gemma-4-26B-A4B's Ollama numbers, if that architecture-support blocker is ever resolved) rather than a settled conclusion.
+
+**Net conclusion**: llama.cpp direct remains the benchmark-of-record for this model too — pp512 1075.81 tok/s / tg128 63.43 tok/s. Ollama works (no architecture blocker) but at roughly 1/6th the generation speed. Results saved per the house rule: `results/qwen3.6-35b-a3b--llamacpp.txt`, `results/qwen3.6-35b-a3b--ollama.txt`.
+
+**Contention/downtime note for this benchmarking pass**: after the two timed measurements above completed, the download queue and `vllm-primary`/`vllm-judge` were restarted per the standing rule. The first restart attempt of `vllm-primary`/`vllm-judge` was made concurrently with restarting all 7 download-queue units — this genuinely overloaded host memory (`free -h` showed ~92GiB used / only ~2-7GiB free against a 124GiB pool while the 66.97 GiB `vllm-primary` checkpoint was mid-load) and both vLLM engine-core processes were killed by SIGKILL (`Failed core proc(s): {'EngineCore': -9}`, consistent with OOM-killer activity, confirmed via `docker inspect --format RestartCount` showing 2 and 4 respective crash-restarts before this was caught). **Fix applied**: paused the download queue again, then cleanly restarted `vllm-primary`/`vllm-judge` on their own with no concurrent download I/O — this time `RestartCount` stayed at 0 through a full model-load cycle. **Lesson for future sessions**: don't restart the download queue and vLLM simultaneously right after a memory-heavy benchmark — sequence them (vLLM up and healthy first, download queue after), not in parallel, especially right after a 66GB+ model load.
+
 **Net conclusion**: Qwen3.6-27B works on both llama.cpp direct and Ollama — no architecture-support blocker here (Qwen3-family architectures are well-supported by this Ollama build, unlike Gemma-4's newer tag). Both numbers are the slowest GGUF-based generation speeds recorded in this project to date, reinforcing that this specific model's dense (not MoE) architecture is the dominant cost, not the serving engine. Raw results saved per the house rule: `results/qwen3.6-27b--llamacpp.txt` and `results/qwen3.6-27b--ollama.txt`.

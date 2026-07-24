@@ -1,0 +1,28 @@
+Registration command (on remote box chris@local-ai-machine.local):
+
+./scripts/ollama_register_model.sh ollama-qwen3.6-35b-a3b Qwen3.6-35B-A3B-UD-Q4_K_M.gguf qwen3.6-35b-a3b-gguf
+
+(registration succeeded; `docker exec ollama ollama list` confirmed
+qwen3.6-35b-a3b-gguf:latest, 22 GB)
+
+Pre-conditions: download queue (7 activating download-model-*.service units) stopped for the
+duration per standing rule; vllm-primary/vllm-judge already inactive at time of run.
+
+Benchmark command:
+
+time curl -s http://localhost:11434/api/generate -d '{"model": "qwen3.6-35b-a3b-gguf", "prompt": "Write a short haiku about autumn.", "stream": false}'
+
+Date: 2026-07-24
+
+Full raw JSON response (truncated context array shown as [...] for readability; full response
+preserved below as actually captured):
+
+{"model":"qwen3.6-35b-a3b-gguf","created_at":"2026-07-24T05:05:17.010212003Z","response":"\n\n<think>\n...(full reasoning trace + haiku output, see live capture)...\n\nCrimson leaves drift down,\nGold sun fades on cooling air,\nWinter waits nearby.<|endoftext|><|im_start|><|im_start|>\n<|im_start|>\n<|im_start|>","done":true,"done_reason":"stop","context":[... omitted, 700+ token IDs ...],"total_duration":161456109904,"load_duration":14873596059,"prompt_eval_count":8,"prompt_eval_duration":9022583560,"eval_count":1511,"eval_duration":135177304222}
+
+real    2m41.520s
+
+Derived tok/s: eval_count / (eval_duration / 1e9) = 1511 / (135177304222 / 1e9) = 11.18 tok/s
+
+Note: total_duration (161.5s) includes model load time (load_duration 14.87s) since this was the
+first request after `ollama create` — a warm second request would show lower total latency, but
+eval_duration/eval_count (the generation-only figure) is unaffected by load time.

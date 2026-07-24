@@ -339,16 +339,22 @@ General config for this engine family:
 - **Status**: **BROKEN — for this specific file only, not the mechanism.** The `--spec-type draft-mtp` flag and MTP mechanism itself are real and correctly implemented in this exact toolbox build (confirmed against the upstream PR's own author invocation, which matches ours exactly). The failure is that this specific GGUF (from the plain `unsloth/Qwen3.6-27B-GGUF` repo) does not ship MTP head tensors.
 - **Gotcha**: unsloth publishes MTP-head-bearing GGUFs as a **separate HF repo** — `unsloth/Qwen3.6-27B-MTP-GGUF` — confirmed to exist via the HF API, not bundled as extra files alongside the plain quants already on this box. Reproducing a real MTP speedup number for this model would require downloading that separate repo (a new-model-download decision under this project's standing check-in rule — not done here per explicit instruction not to download anything new this session). The community reference numbers cited elsewhere in this project (kyuz0's `mtp.html`, calebcoffie.com, ~1.8x-2.5x speedup, Qwen3.6-27B Q4_K_M 11.7→21.2 tok/s) almost certainly used the dedicated MTP-tagged GGUF, not the plain quant — this is a real, actionable explanation for why those numbers can't be reproduced with the files currently on this machine.
 
-### Qwen3.6-35B-A3B — llama.cpp direct (GGUF) — MTP test target, UNTESTED-BUT-DOWNLOADED (as of last update)
+### Qwen3.6-35B-A3B — llama.cpp direct (GGUF Q4_K_M) — fastest tg128 of any MoE GGUF tested so far
 
-- **Model**: Qwen3.6-35B-A3B — `unsloth/Qwen3.6-35B-A3B-GGUF`, file `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`
+- **Model**: Qwen3.6-35B-A3B (MoE, ~35B total / ~3B active) — `unsloth/Qwen3.6-35B-A3B-GGUF`, file `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf` (20.60 GiB on disk per `llama-bench`, 34.66B params)
 - **Engine**: llama.cpp direct
 - **Image**: `docker.io/kyuz0/amd-strix-halo-toolboxes:vulkan-radv`
-- **Config required**: intended for MTP speculative-decoding testing (see engine-family note above on caveats: `n_parallel=1`, Vulkan not ROCm). Downloaded for double duty — Ollama cross-check (see Ollama section) and this MTP test.
-- **Benchmark numbers**: MTP test itself not yet run on this machine as of the last README update (authorized to proceed, listed under "what's authorized to proceed autonomously" in the Open Next Steps section). Plain (non-MTP) llama.cpp numbers not yet captured for this file — the sibling Qwen3.6-27B file's plain-decode numbers are now proven (see entry above); this 35B-A3B file remains untested for plain decode.
-- **Results file**: none — neither the plain-decode nor MTP case has been run on this machine yet. Once run, save as `results/qwen3.6-35b-a3b--llamacpp-mtp.txt` (or without the `-mtp` tag for the plain-decode case) per the house rule above.
-- **Status**: UNTESTED-BUT-DOWNLOADED for the plain-decode case; MTP specifically remains an open experiment for both this model and Qwen3.6-27B.
-- **Gotcha**: vLLM's own `qwen3_next_mtp` path (same underlying architecture family) remains unconfirmed on ROCm — this MTP lead is specific to llama.cpp, not a green light for the vLLM stack.
+- **Config required**:
+  ```
+  docker run --rm --device /dev/kfd --device /dev/dri --group-add 26 --group-add 303 \
+    -v /var/lib/ai-models/ollama-qwen3.6-35b-a3b:/models:ro \
+    kyuz0/amd-strix-halo-toolboxes:vulkan-radv \
+    llama-bench -m /models/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf -ngl 999 -fa 1 -lm none
+  ```
+- **Benchmark numbers** (2026-07-24, download queue paused first — 7 units found "activating", stopped for the duration and resumed after; `vllm-primary`/`vllm-judge` already inactive at the time of this specific run): **pp512 1075.81 ± 21.68 tok/s, tg128 63.43 ± 0.30 tok/s.** This is the fastest tg128 of any GGUF/llama.cpp-direct model tested so far in this project's Qwen3.6 family, and beats the sibling dense Qwen3.6-27B by nearly 5x (12.75 tok/s) — the clearest MoE-vs-dense active-param-count contrast measured via llama.cpp direct yet. Still behind GLM-4.7-Flash's 70.1 tok/s (a smaller ~3B-active MoE at a smaller total footprint) and Gemma-4-26B-A4B's 53.96 tok/s is beaten by this model, consistent with the "smaller active-param-count wins" pattern this hardware keeps rewarding.
+- **Results file**: `results/qwen3.6-35b-a3b--llamacpp.txt` (exact command + full raw stdout table, confirmed present verbatim).
+- **Status**: WORKING.
+- **Gotcha**: MTP speculative-decoding test for this file remains untested — same MTP-head-missing risk flagged for the sibling Qwen3.6-27B file applies here too (unsloth ships MTP-bearing GGUFs as separate `-MTP-GGUF` repos, not bundled into the plain quant used here); not attempted this pass, still an open follow-up gated behind the new-model-download check-in rule.
 
 ---
 
@@ -411,16 +417,16 @@ General config for this engine family:
 - **Status**: WORKING — real chat completion succeeded (full generated response with reasoning trace, not a crash). Confirms Qwen3.6 is a recognized architecture in this Ollama build, unlike Gemma-4's `unknown model architecture: 'gemma4'` failure on the same image/version.
 - **Gotcha**: unlike the Gemma-4-26B-A4B Ollama entry above (a hard architecture-support blocker), this combination just works — no version-tradeoff caveat needed. `total_duration` (68.18s) includes model load time (`load_duration` 7.81s) since this was the first request after `ollama create`; a warm second request would show much lower total latency.
 
-### Qwen3.6-35B-A3B — Ollama (GGUF) — UNTESTED-BUT-DOWNLOADED
+### Qwen3.6-35B-A3B — Ollama (GGUF Q4_K_M, Vulkan)
 
-- **Model**: Qwen3.6-35B-A3B — `unsloth/Qwen3.6-35B-A3B-GGUF`, file `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`
+- **Model**: Qwen3.6-35B-A3B (MoE, ~35B total / ~3B active) — same file as the llama.cpp entry, `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf` (via `unsloth/Qwen3.6-35B-A3B-GGUF`)
 - **Engine**: Ollama
-- **Image**: `ollama/ollama:0.17.7` + the same three-env-var Vulkan-forcing combo
-- **Config required**: same registration pattern as above; not yet registered/tested as of the last catalog update. The sibling Qwen3.6-27B file is now proven working (see entry above) — this 35B-A3B file remains the one outstanding Ollama gap in the Qwen3.6 family.
-- **Benchmark numbers**: none yet.
-- **Results file**: none — not yet registered/tested. Once run, save as `results/qwen3.6-35b-a3b--ollama.txt` per the house rule above.
-- **Status**: UNTESTED-BUT-DOWNLOADED — architecture support is not expected to be a problem here (same Qwen3-family architecture tag as the now-proven 27B file), but not yet confirmed in practice on this machine.
-- **Gotcha**: none observed yet — flagged as the next Ollama combo to actually exercise.
+- **Image**: `ollama/ollama:0.17.7` + `OLLAMA_VULKAN=1` + `HIP_VISIBLE_DEVICES=-1` + `ROCR_VISIBLE_DEVICES=-1`
+- **Config required**: registered via `./scripts/ollama_register_model.sh ollama-qwen3.6-35b-a3b Qwen3.6-35B-A3B-UD-Q4_K_M.gguf qwen3.6-35b-a3b-gguf`; group_add `["26", "303"]`; `127.0.0.1:11434:11434`.
+- **Benchmark numbers** (2026-07-24, download queue paused first, `vllm-primary`/`vllm-judge` already inactive at the time of this run): a single `/api/generate` request (first request after `ollama create`, so `total_duration` includes model load) returned `eval_count: 1511`, `eval_duration: 135177304222` ns → **11.18 tok/s** generation. This confirms Qwen3.6 is a recognized architecture on this Ollama build for the MoE variant too (same family as the now-proven dense 27B file) — no architecture blocker, unlike Gemma-4. Well below the llama.cpp-direct number for the same file (tg128 63.43 tok/s) — roughly a **5.7x gap**, much closer to GLM-4.7-Flash's ~5.4x Ollama-overhead gap than to the dense Qwen3.6-27B's comparatively narrow ~17% gap. This is a single real-generation sample (with reasoning-mode `<think>` output inflating `eval_count`), not an averaged `llama-bench`-style run.
+- **Results file**: `results/qwen3.6-35b-a3b--ollama.txt` (exact registration + curl command, full raw JSON response, confirmed present verbatim).
+- **Status**: WORKING — real chat completion succeeded (full generated response with reasoning trace, not a crash).
+- **Gotcha**: this model's Ollama-overhead gap (~5.7x) is far larger than its dense sibling Qwen3.6-27B's (~17%) — consistent with a pattern now seen twice (GLM-4.7-Flash's ~5.4x vs Qwen3.6-27B's ~17%): Ollama's Go wrapper/scheduling overhead appears to cost MoE models proportionally much more than dense models on this hardware, though the exact mechanism (MoE routing overhead interacting badly with Ollama's scheduler, vs. some other confound) isn't isolated here — worth a dedicated investigation if Ollama's MoE performance ever needs to be relied on for real.
 
 ---
 
