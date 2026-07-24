@@ -1,4 +1,5 @@
 id: ollama-single-request-v1
+superseded_by: ollama-warm-request-v2
 applies_to: [ollama]
 tool: "curl against /api/generate"
 description: >
@@ -22,4 +23,4 @@ known_caveats:
   - "Reasoning-model responses include a full <think> trace that inflates eval_count relative to just the final answer's token count."
   - "If a cleaner number is wanted, issue a second (warm) request and prefer its eval_count/eval_duration instead — but that's a real methodology change from every existing number in this project (all first-request), note it explicitly if done (would become v2)."
 version_history:
-  - v1: "2026-07-24 — initial convention, single first-request sample. Used for GLM-4.7-Flash, Qwen3.6-27B, Qwen3.6-35B-A3B."
+  - v1: "2026-07-24 — initial convention, single first-request sample. Used for GLM-4.7-Flash, Qwen3.6-27B, Qwen3.6-35B-A3B. SUPERSEDED 2026-07-24 (same day) by ollama-warm-request-v2 — the exact deviation flagged as a known-caveat option here is now the standard going forward."

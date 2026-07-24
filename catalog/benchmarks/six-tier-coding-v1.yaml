@@ -1,4 +1,5 @@
 id: six-tier-coding-v1
+superseded_by: seven-tier-coding-v2
 applies_to: [vllm]   # never run against llama.cpp/Ollama endpoints yet — real gap, not a methodology restriction
 tool: scripts/coding_benchmark.py
 description: >
@@ -25,4 +26,4 @@ known_caveats:
   - "Recurring finding: multiple models (qwen3.6-35b-a3b primary, GLM-4.7-Flash-AWQ, GPT-OSS-120B, GPT-OSS-20B) all fail Tier J's judge_incorrect task the same way — saying passes: true on a subtly-buggy palindrome check. A real, repeated judge-role weakness pattern, not model-specific noise."
   - "Speed and coding-capability do NOT correlate — e.g. Gemma-4-31B-it is the slowest model tested but scored a perfect 5/5 on the (older) A+B-only convention."
 version_history:
-  - v1: "2026-07-23+ — all six tiers, run against every model by default. Current convention."
+  - v1: "2026-07-23+ — all six tiers, run against every model by default. SUPERSEDED 2026-07-24 by seven-tier-coding-v2 (Tier J expanded 2->8 tasks, Tier B expanded 2->5, new Tier L added, applies_to widened to llamacpp/ollama since the tool is endpoint-agnostic). Kept here so any historical result explicitly tagged six-tier-coding-v1 is understood as this narrower methodology, not silently treated as equivalent to v2."

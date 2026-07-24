@@ -1,0 +1,27 @@
+id: ollama-warm-request-v2
+supersedes: ollama-single-request-v1
+applies_to: [ollama]
+tool: "curl against /api/generate"
+description: >
+  One cold request (first after `ollama create`, kept and recorded for
+  reference since it's the real cold-start experience) followed by 3 warm
+  requests, averaged. The warm requests exclude model-load time entirely
+  (load_duration should read ~0 on all 3), giving a real steady-state
+  tok/s number instead of the v1 convention's load-time-contaminated
+  single sample.
+methodology:
+  cold_trial: 1   # recorded but NOT used for the headline tok/s figure
+  warm_trials: 3
+  warm_up: none   # the "cold" request IS the warm-up, not a discarded extra step
+  aggregation: >
+    Headline tok/s = mean of the 3 warm trials' eval_count/eval_duration.
+    Report all 3 warm raw values + mean + stddev, plus the cold trial's
+    numbers separately (labeled as cold, not folded into the average).
+metrics_schema:
+  - "cold: eval_count, eval_duration, prompt_eval_count, prompt_eval_duration, load_duration, total_duration, derived tok/s"
+  - "warm: same fields x3 raw + mean + stddev of derived tok/s (load_duration should be ~0 for all 3)"
+known_caveats:
+  - "Reasoning-model responses still include a full <think> trace inflating eval_count relative to just the final answer — unchanged from v1, applies equally to cold and warm trials."
+  - "This is a real methodology change from every existing Ollama number in this project (all v1, first-request-only) — do not treat v1 and v2 numbers as directly comparable without noting which convention produced each."
+version_history:
+  - v2: "2026-07-24 — adds cold+3-warm convention, headline number now load-time-free."

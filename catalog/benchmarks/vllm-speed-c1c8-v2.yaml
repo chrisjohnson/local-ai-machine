@@ -1,0 +1,36 @@
+id: vllm-speed-c1c8-v2
+supersedes: vllm-speed-c1c8-v1
+applies_to: [vllm]
+tool: vllm bench serve
+description: >
+  Same c1/c8 speed benchmark as v1, but run 3 times per concurrency level
+  for statistical confidence, instead of a single sample. Use this tier
+  (not v1) for any build being seriously considered as a new production
+  default or a role-replacement candidate (e.g. judge slot). v1's single-run
+  convention remains fine for wide-survey/candidate-screening passes where
+  the goal is "is this model in the right ballpark," not a production
+  decision.
+methodology:
+  dataset: random
+  ignore_eos: true
+  c1: {random_input_len: 2048, random_output_len: 512, num_prompts: 20}
+  c8: {random_input_len: 2048, random_output_len: 256, num_prompts: 100}
+  trials: 3
+  warm_up: none
+  aggregation: >
+    Report all 3 raw per-trial values plus mean and stddev for each metric
+    (output_throughput, ttft, tpot). Do not discard/average away the raw
+    values - keep them alongside the summary so run-to-run variance is
+    visible, not just hidden inside a mean.
+metrics_schema:
+  - "output_throughput (tok/s) — 3 raw values + mean + stddev"
+  - "total_token_throughput (tok/s) — 3 raw values + mean + stddev"
+  - "mean_ttft_ms / median_ttft_ms / p99_ttft_ms — per trial, plus cross-trial mean+stddev of the mean_ttft_ms figure"
+  - "mean_tpot_ms / median_tpot_ms / p99_tpot_ms — same treatment as ttft"
+  - "footprint: weights_gib, kv_cache_gib, kv_tokens, max_concurrency (from server startup log — a single capture is fine, this doesn't vary run to run)"
+known_caveats:
+  - "Same GPT-OSS harmony-format transport deviation as v1 (--backend openai --endpoint /v1/completions) — unchanged, still a build-level note."
+  - "Same segfault-on-exit-after-c8 tool quirk as v1 — unchanged."
+  - "3 trials is a judgment call, not a statistically rigorous minimum — chosen as a practical balance between real confidence and GPU-time cost across an already-large model matrix. If a specific comparison needs tighter confidence, more trials is a reasonable ad hoc extension, but note the deviation explicitly rather than silently changing the convention."
+version_history:
+  - v2: "2026-07-24 — 3 trials + mean/stddev reporting, reserved for production-candidate-grade comparisons."

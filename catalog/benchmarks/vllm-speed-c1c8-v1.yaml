@@ -1,4 +1,5 @@
 id: vllm-speed-c1c8-v1
+superseded_by: vllm-speed-c1c8-v2
 applies_to: [vllm]
 tool: vllm bench serve
 description: >
@@ -23,4 +24,4 @@ known_caveats:
   - "Client segfaults on exit right after a c8 run completes — harmless, server keeps running and result JSON is already saved before the crash. Tolerate the nonzero exit code, verify success via the result file existing."
   - "Single run per concurrency level — not an average of repeated trials. If repeated-trial statistical confidence is ever wanted, that's a real methodology change (would become v2), not silently added to v1's numbers."
 version_history:
-  - v1: "2026-07-22 — initial convention, c1+c8 only, single run each. Every vLLM speed number in this project to date uses this exact methodology."
+  - v1: "2026-07-22 — initial convention, c1+c8 only, single run each. Every vLLM speed number in this project to date uses this exact methodology. SUPERSEDED 2026-07-24 by vllm-speed-c1c8-v2 (3 trials, mean/stddev reporting) for any build seriously being considered as a new production default — single-run numbers stay valid for wide-survey/candidate-screening purposes, just don't treat them as confidence-grade."

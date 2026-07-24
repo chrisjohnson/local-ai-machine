@@ -55,3 +55,43 @@ showing 2 and 4 crash-restarts before caught).
 
 **Lesson**: vLLM restart → confirmed healthy → THEN download resume. Never simultaneously,
 especially right after a large (60GB+) model load.
+
+## Run fingerprint — capture every one of these fields on every benchmark run
+
+A build's `benchmark_runs[]` entry (see `catalog/builds/`) must record all of the following,
+captured fresh at run time — not assumed static from when the build file was written, since a
+floating image tag or host state can drift between two runs of "the same" build weeks apart:
+
+- `image_digest`: exact digest, not just tag (`docker inspect --format '{{.RepoDigests}}' <image>`).
+- `engine_version`: as reported at startup — vLLM's own version string, llama.cpp's
+  `build: <hash> (<n>)` line, or Ollama's `--version`.
+- `host_kernel`: `uname -r`.
+- `host_gpu_driver`: amdgpu/Mesa version in use.
+- `repo_commit`: `git rev-parse HEAD` of this repo at run time (so a later script/task fix can be
+  told apart from a genuine model/config difference).
+- `concurrent_load`: whether the download queue was paused, and whether vLLM was co-resident or
+  stopped.
+- `host_metrics_window`: the run's start/end UTC timestamps, so the box's own Grafana/Prometheus
+  dashboards (GPU %, GPU temp/power, memory, disk I/O — already built, see README.md's
+  observability section) can be queried for that exact time range after the fact. This is cheap
+  to capture (just note the two timestamps) and catches failure modes this project has already
+  been burned by once — e.g. the Ollama ROCm crash investigation needed exactly this kind of
+  GPU-utilization cross-check to confirm real vs. silent-CPU-fallback behavior. Not a live
+  Grafana link (dashboards aren't stable-URL-per-range in this setup) — just the timestamps
+  needed to look it up.
+
+## Build naming for config variants (e.g. different served context length)
+
+If the same model+engine pair is tested at more than one meaningfully different serving
+config (most commonly `--max-model-len`, but could be any build-specific flag that materially
+changes footprint/behavior), that's two different **builds**, not two runs of one build — a
+build's identity already includes its `build_specific_flags`, so this falls out naturally.
+
+- File naming: `<model>--<engine>--<variant-tag>.yaml` (e.g. `--ctx65536` / `--ctx131072`),
+  only when more than one variant exists for a model+engine pair — no suffix needed otherwise.
+- Add a `context_length_served: <N>` field at the top level of the build (not just buried
+  inside `build_specific_flags`), so it's queryable without string-parsing the flags list.
+- The `model:` block (repo, architecture, params, quantization) is duplicated verbatim across
+  variant files — that's intentional, not an inconsistency to fix. The point of a build file is
+  to be a single, complete, self-contained unit sufficient to reconstruct a docker-compose
+  entry on its own; splitting `model:` out into a shared reference would break that property.

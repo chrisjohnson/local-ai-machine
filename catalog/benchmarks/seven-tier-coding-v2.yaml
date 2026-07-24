@@ -1,0 +1,42 @@
+id: seven-tier-coding-v2
+supersedes: six-tier-coding-v1
+applies_to: [vllm, llamacpp, ollama]
+# Widened from v1's [vllm]-only: the tool hits a generic /v1/chat/completions
+# endpoint, which llama-server and Ollama both expose too - never actually
+# run against those engines yet, but nothing about the harness restricts it.
+# Real caveat: llama.cpp's tool-calling support is newer/less mature than
+# vLLM's parser ecosystem - Tier B results on llamacpp/ollama should be read
+# with that in mind, not assumed equivalent to vLLM's numbers.
+tool: scripts/coding_benchmark.py
+description: >
+  Objective-grading, stdlib-only, no-LLM-judge-scoring coding/role-fitness
+  harness. Run from the Mac against the model's OpenAI-compatible endpoint.
+  All seven tiers run against every model by default, even models only being
+  considered for non-coding roles, so judge/assistant-role data is already
+  on hand without a special-cased re-run later.
+methodology:
+  warm_up: none
+  cold_run: true
+  timeout_s: 1500
+tiers:
+  A: {name: correctness, tasks: [palindrome, merge_sorted, expr_eval], grading: sandboxed subprocess test execution}
+  B: {name: tool-calling, tasks: [single_tool_call, multi_step_tool_call, no_tool_needed, tool_selection_similar, nested_args_tool_call], grading: structural tool_calls check}
+  J: {name: judge-role fitness, tasks: [judge_correct, judge_incorrect, judge_correct_offbyone, judge_incorrect_offbyone, judge_correct_security, judge_incorrect_security, judge_correct_logic, judge_incorrect_logic], grading: strict JSON verdict required}
+  P: {name: personal-assistant fitness, tasks: [constrained_summary, structured_extraction], grading: objective}
+  D: {name: multi-turn interactive debugging, tasks: [debug_off_by_one], grading: 3-turn conversation, final turn's code executed against test assertions}
+  Q: {name: planning/requirements-gathering, tasks: [planning_new_tool, planning_db_migration], grading: keyword-matched against minimum missing-dimension topics}
+  L: {name: long-context recall, tasks: [needle_in_haystack], grading: exact-string retrieval check}
+what_changed_from_v1:
+  - "Tier J: 2 -> 8 tasks. v1 had only one correct/incorrect pair (palindrome-check rubric), and every model tested so far failed judge_incorrect the exact same way - a single data point, not a characterized weakness. Added 3 more correct/incorrect pairs covering distinct bug categories: off-by-one (loop boundary), security (SQL injection via string formatting vs parameterized query), and logic/comparison-operator (strict > vs >=). Directly motivated by this box's actual production judge role (vllm-judge, intended Turnstone safety judge)."
+  - "Tier B: 2 -> 5 tasks. Added no_tool_needed (tests against over-eager/hallucinated tool calls on a prompt answerable directly - a real practical agentic-pipeline failure mode, new expect_no_tool_call grading path), tool_selection_similar (choosing between two similarly-described tools, not just calling the one tool offered), and nested_args_tool_call (array/nested argument schema, every prior Tier B task used only flat string/number args - new expect_files_contains grading path)."
+  - "Tier L added (new). Needle-in-haystack long-context recall - every existing benchmark only measured footprint/theoretical-max-context, never actual quality degradation at length. Single depth (50%) and length (~220 filler paragraphs, tool reports haystack_chars in the result) - an initial signal, explicitly NOT a full depth/length sweep."
+  - "applies_to widened from [vllm] to [vllm, llamacpp, ollama] - the script was already engine-agnostic, this tier list had just never been pointed at the other two engines. Real gap this project has: llama.cpp is demonstrably 2-5x faster raw decode than vLLM for the same GGUF, but there was zero coding-quality data to know if that speed comes with a cost."
+metrics_schema:
+  - "tier_<x>_pass / tier_<x>_total for each of A/B/J/P/D/Q/L"
+  - "results array: one object per task (id, tier, elapsed_s, passed, plus tier-specific fields — raw_content, raw_reasoning, extracted_code, called_tool, called_args, verdict, topics_hit, error, haystack_chars for Tier L)"
+known_caveats:
+  - "Recurring finding carried over from v1: multiple models failed the original judge_incorrect task the same way (passes: true on a subtly-buggy palindrome check). The 3 new Tier J pairs exist specifically to tell 'every model is bad at judging' apart from 'this one hardcoded task has an artifact' — re-run the full Tier J on any model that already has v1-only data, don't assume the new pairs would go the same way."
+  - "Speed and coding-capability do NOT correlate — carried over from v1, still true."
+  - "Tier L is a single depth/length data point. A real multi-depth sweep (e.g. 10%/50%/90% depth x multiple lengths) would be a genuine v3 methodology change, not something to fake by interpolating from one sample."
+version_history:
+  - v2: "2026-07-24 — Tier J/B expansion, Tier L added, applies_to widened to all three engines. Current convention."

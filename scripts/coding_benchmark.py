@@ -3,10 +3,13 @@
 models.
 
 Runs from the Mac (has Python readily available, unlike the target's
-minimal NixOS host) against a model's OpenAI-compatible vLLM endpoint
-directly. Six objective grading tiers, no LLM-judge scoring (a model
-judging another model's open-ended output would be exactly the kind of
-unreliable circularity this harness is designed to avoid):
+minimal NixOS host) against any model's OpenAI-compatible /v1/chat/completions
+endpoint - vLLM, llama-server, and Ollama all expose this, so this same
+script (no code changes) works against any of the three engines this
+project uses, not just vLLM. Seven objective grading tiers, no LLM-judge
+scoring (a model judging another model's open-ended output would be
+exactly the kind of unreliable circularity this harness is designed to
+avoid):
 
   Tier A - correctness: extract generated code, execute it against test
   assertions in a sandboxed subprocess, pass/fail.
@@ -43,6 +46,14 @@ unreliable circularity this harness is designed to avoid):
   than diving in and inventing assumptions. Heuristic (keyword presence
   isn't a perfect proxy for "asked a good question"), but deterministic
   and directionally meaningful, same tradeoff already accepted for Tier P.
+
+  Tier L - long-context recall: a needle-in-haystack retrieval test. A
+  specific fact is planted at a fixed depth inside a long filler document,
+  and the model is asked to retrieve it verbatim after the whole document.
+  Tests real degradation at length, not just theoretical max-context
+  footprint (which every existing speed benchmark already covers). Honesty
+  note: this is a SINGLE depth/length combination, not a multi-depth sweep
+  - a real initial signal, not a full long-context characterization.
 
 All tiers run against every model by default so any model later being
 considered for the judge or assistant role (not just the coding role)
@@ -186,6 +197,119 @@ TIER_B_TASKS = [
         "expect_name": "write_file",
         "expect_args_contains": {"path": "/tmp/fizzbuzz.py"},
     },
+    {
+        "id": "no_tool_needed",
+        # Tests against over-eager/hallucinated tool calling — a real
+        # practical failure mode for agentic pipelines (wasted round-trips,
+        # or worse, a spurious side-effecting call). Tools are offered but
+        # answering directly requires none of them.
+        "prompt": "What is 12 multiplied by 7? Just answer with the number.",
+        "tools": [
+            {
+                "type": "function",
+                "function": {
+                    "name": "read_file",
+                    "description": "Read the contents of a file",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"path": {"type": "string"}},
+                        "required": ["path"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "run_calculator",
+                    "description": "Evaluate a arithmetic expression using an external calculator tool",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"expression": {"type": "string"}},
+                        "required": ["expression"],
+                    },
+                },
+            },
+        ],
+        "expect_no_tool_call": True,
+    },
+    {
+        "id": "tool_selection_similar",
+        # Two deliberately similar-sounding tools - correct selection needs
+        # actually reading both descriptions, not just pattern-matching on
+        # the word "search".
+        "prompt": "Find our internal onboarding runbook document and quote its first paragraph.",
+        "tools": [
+            {
+                "type": "function",
+                "function": {
+                    "name": "search_web",
+                    "description": "Search the public internet for external, publicly available web pages",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"query": {"type": "string"}},
+                        "required": ["query"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "search_internal_docs",
+                    "description": "Search internal company documents, runbooks, and wikis (not the public internet)",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"query": {"type": "string"}},
+                        "required": ["query"],
+                    },
+                },
+            },
+        ],
+        "expect_name": "search_internal_docs",
+    },
+    {
+        "id": "nested_args_tool_call",
+        # Requires a nested/array argument structure, not just flat
+        # string/number params like every other Tier B task so far.
+        "prompt": (
+            "Create three files: /tmp/a.txt with content 'alpha', "
+            "/tmp/b.txt with content 'beta', and /tmp/c.txt with content "
+            "'gamma'. Use a single call to create all three."
+        ),
+        "tools": [
+            {
+                "type": "function",
+                "function": {
+                    "name": "write_files",
+                    "description": "Write multiple files at once",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "files": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "path": {"type": "string"},
+                                        "content": {"type": "string"},
+                                    },
+                                    "required": ["path", "content"],
+                                },
+                            }
+                        },
+                        "required": ["files"],
+                    },
+                },
+            },
+        ],
+        "expect_name": "write_files",
+        # Graded structurally: all three expected (path, content) pairs
+        # must appear somewhere in the files array, order not required.
+        "expect_files_contains": [
+            {"path": "/tmp/a.txt", "content": "alpha"},
+            {"path": "/tmp/b.txt", "content": "beta"},
+            {"path": "/tmp/c.txt", "content": "gamma"},
+        ],
+    },
 ]
 
 TIER_J_TASKS = [
@@ -227,6 +351,121 @@ TIER_J_TASKS = [
             "def is_palindrome(s: str) -> bool:\n"
             "    cleaned = [c.lower() for c in s if c.isalnum()]\n"
             "    return cleaned[:-1] == cleaned[::-1][:-1]\n"
+        ),
+        "expect_passes": False,
+    },
+    {
+        "id": "judge_correct_offbyone",
+        "prompt": (
+            "You are a code-review judge. Given a rubric and a code "
+            "sample, decide whether the sample satisfies the rubric. "
+            "Respond with ONLY a JSON object of the form "
+            '{"passes": true or false, "reason": "one short sentence"}. '
+            "No other text.\n\n"
+            "Rubric: the function must return the sum of all elements in "
+            "the list, using a manual loop (no built-in sum()).\n\n"
+            "Code:\n"
+            "def total(nums: list[int]) -> int:\n"
+            "    result = 0\n"
+            "    for i in range(len(nums)):\n"
+            "        result += nums[i]\n"
+            "    return result\n"
+        ),
+        "expect_passes": True,
+    },
+    {
+        "id": "judge_incorrect_offbyone",
+        # Off-by-one: range(len(nums) - 1) silently drops the last element.
+        # A judge that just checks "looks like a normal summing loop"
+        # without tracing the boundary would miss this.
+        "prompt": (
+            "You are a code-review judge. Given a rubric and a code "
+            "sample, decide whether the sample satisfies the rubric. "
+            "Respond with ONLY a JSON object of the form "
+            '{"passes": true or false, "reason": "one short sentence"}. '
+            "No other text.\n\n"
+            "Rubric: the function must return the sum of all elements in "
+            "the list, using a manual loop (no built-in sum()).\n\n"
+            "Code:\n"
+            "def total(nums: list[int]) -> int:\n"
+            "    result = 0\n"
+            "    for i in range(len(nums) - 1):\n"
+            "        result += nums[i]\n"
+            "    return result\n"
+        ),
+        "expect_passes": False,
+    },
+    {
+        "id": "judge_correct_security",
+        "prompt": (
+            "You are a code-review judge. Given a rubric and a code "
+            "sample, decide whether the sample satisfies the rubric. "
+            "Respond with ONLY a JSON object of the form "
+            '{"passes": true or false, "reason": "one short sentence"}. '
+            "No other text.\n\n"
+            "Rubric: the function must look up a user by username in the "
+            "database WITHOUT being vulnerable to SQL injection.\n\n"
+            "Code:\n"
+            "def get_user(cursor, username: str):\n"
+            "    cursor.execute(\"SELECT * FROM users WHERE username = %s\", (username,))\n"
+            "    return cursor.fetchone()\n"
+        ),
+        "expect_passes": True,
+    },
+    {
+        "id": "judge_incorrect_security",
+        # Classic SQL-injection-via-string-formatting bug. Plausible/clean-
+        # looking code — tests whether the judge actually reasons about the
+        # security rubric or just pattern-matches "looks like normal DB code".
+        "prompt": (
+            "You are a code-review judge. Given a rubric and a code "
+            "sample, decide whether the sample satisfies the rubric. "
+            "Respond with ONLY a JSON object of the form "
+            '{"passes": true or false, "reason": "one short sentence"}. '
+            "No other text.\n\n"
+            "Rubric: the function must look up a user by username in the "
+            "database WITHOUT being vulnerable to SQL injection.\n\n"
+            "Code:\n"
+            "def get_user(cursor, username: str):\n"
+            "    query = f\"SELECT * FROM users WHERE username = '{username}'\"\n"
+            "    cursor.execute(query)\n"
+            "    return cursor.fetchone()\n"
+        ),
+        "expect_passes": False,
+    },
+    {
+        "id": "judge_correct_logic",
+        "prompt": (
+            "You are a code-review judge. Given a rubric and a code "
+            "sample, decide whether the sample satisfies the rubric. "
+            "Respond with ONLY a JSON object of the form "
+            '{"passes": true or false, "reason": "one short sentence"}. '
+            "No other text.\n\n"
+            "Rubric: the function must return True if a shopping cart "
+            "total is eligible for free shipping, which requires the "
+            "total to be AT LEAST $50 (50 itself qualifies).\n\n"
+            "Code:\n"
+            "def qualifies_for_free_shipping(total: float) -> bool:\n"
+            "    return total >= 50\n"
+        ),
+        "expect_passes": True,
+    },
+    {
+        "id": "judge_incorrect_logic",
+        # Wrong comparison operator: strict > excludes the boundary case
+        # (total == 50) that the rubric explicitly says should qualify.
+        "prompt": (
+            "You are a code-review judge. Given a rubric and a code "
+            "sample, decide whether the sample satisfies the rubric. "
+            "Respond with ONLY a JSON object of the form "
+            '{"passes": true or false, "reason": "one short sentence"}. '
+            "No other text.\n\n"
+            "Rubric: the function must return True if a shopping cart "
+            "total is eligible for free shipping, which requires the "
+            "total to be AT LEAST $50 (50 itself qualifies).\n\n"
+            "Code:\n"
+            "def qualifies_for_free_shipping(total: float) -> bool:\n"
+            "    return total > 50\n"
         ),
         "expect_passes": False,
     },
@@ -360,6 +599,53 @@ TIER_Q_TASKS = [
             "rollback": ["rollback", "revert", "fallback", "contingency", "roll back"],
         },
         "expect_min_topics": 3,
+    },
+]
+
+
+def _build_haystack(needle_sentence, depth_fraction=0.5, filler_paragraphs=220):
+    """Deterministic filler document (~24K-30K tokens depending on the
+    model's tokenizer) with `needle_sentence` inserted at `depth_fraction`
+    through it. Filler is repeated, varied boilerplate - deliberately NOT
+    the needle's own topic, so the model can't shortcut via topical
+    skimming. Deterministic (no randomness) so the exact same document is
+    used for every model tested."""
+    filler_sentences = [
+        "The quarterly report noted a modest increase in regional shipping volumes.",
+        "Most household plants prefer indirect sunlight rather than direct exposure.",
+        "The committee agreed to revisit the zoning proposal at the next session.",
+        "A well-seasoned cast iron pan can last for several generations if cared for.",
+        "The river's water level typically peaks in early spring after snowmelt.",
+        "Local historians have debated the exact founding date of the old mill for decades.",
+        "The orchestra's rehearsal schedule shifted to accommodate the guest conductor.",
+        "Migratory birds often follow the same routes their parents used.",
+        "The new bridge design reduces wind load through a lattice truss pattern.",
+        "Bread dough rises fastest in a warm, humid environment away from drafts.",
+    ]
+    paragraphs = []
+    for i in range(filler_paragraphs):
+        # Cycle through filler sentences with a shifting offset so no two
+        # paragraphs are identical, without needing real randomness.
+        chosen = [filler_sentences[(i + j) % len(filler_sentences)] for j in range(4)]
+        paragraphs.append(f"Paragraph {i + 1}. " + " ".join(chosen))
+
+    insert_at = int(len(paragraphs) * depth_fraction)
+    paragraphs.insert(insert_at, needle_sentence)
+    return "\n\n".join(paragraphs)
+
+
+TIER_L_TASKS = [
+    {
+        "id": "needle_in_haystack",
+        # Fixed depth (50%) and length (~220 filler paragraphs, tens of
+        # thousands of tokens depending on tokenizer) - a single data
+        # point, not a full depth/length sweep. The needle fact is
+        # arbitrary and unrelated to the filler topic space so it can't be
+        # guessed, only retrieved.
+        "needle": "The secret access code for the archive room is BLUEFALCON-77.",
+        "depth_fraction": 0.5,
+        "question": "What is the secret access code for the archive room? Answer with only the code, nothing else.",
+        "expect_contains": "BLUEFALCON-77",
     },
 ]
 
@@ -513,6 +799,16 @@ def run_tier_b_task(base_url, model, task):
         result.update(passed=False, error=f"malformed response: {e}")
         return result
 
+    if task.get("expect_no_tool_call"):
+        # Inverted grading: over-eager/hallucinated tool calling on a
+        # prompt answerable directly is the failure mode here, not the
+        # absence of a call.
+        result["called_tool"] = tool_calls[0]["function"].get("name") if tool_calls else None
+        result["passed"] = not tool_calls
+        if tool_calls:
+            result["error"] = f"expected no tool call, got '{result['called_tool']}'"
+        return result
+
     if not tool_calls:
         result.update(passed=False, error="no tool_calls in response",
                        raw_message=msg)
@@ -548,6 +844,22 @@ def run_tier_b_task(base_url, model, task):
         if missing:
             result["passed"] = False
             result["error"] = f"args missing/mismatched: {missing}, got {args}"
+            return result
+    elif "expect_files_contains" in task:
+        # Structural check on a nested/array argument: every expected
+        # (path, content) pair must appear somewhere in the array,
+        # order not required.
+        got_files = args.get("files") or []
+        missing = [
+            expected for expected in task["expect_files_contains"]
+            if not any(
+                f.get("path") == expected["path"] and f.get("content") == expected["content"]
+                for f in got_files
+            )
+        ]
+        if missing:
+            result["passed"] = False
+            result["error"] = f"missing expected file entries: {missing}, got {got_files}"
             return result
 
     result["passed"] = True
@@ -711,6 +1023,34 @@ def run_tier_q_task(base_url, model, task):
     return result
 
 
+def run_tier_l_task(base_url, model, task):
+    result = {"id": task["id"], "tier": "L"}
+    haystack = _build_haystack(task["needle"], task["depth_fraction"])
+    result["haystack_chars"] = len(haystack)
+    prompt = f"{haystack}\n\n{task['question']}"
+    try:
+        # 4096: the answer itself is short, but reasoning models may spend
+        # a real chunk of budget re-deriving/confirming the retrieval
+        # before stating it - same reasoning-budget lesson as every other
+        # tier here.
+        resp, elapsed = call_model(base_url, model, prompt, max_tokens=4096)
+        message = resp["choices"][0]["message"]
+        content = (message.get("content") or "").strip()
+        result["elapsed_s"] = round(elapsed, 2)
+        result["raw_content"] = content
+    except (urllib.error.URLError, TimeoutError, KeyError, json.JSONDecodeError) as e:
+        result.update(passed=False, error=f"request failed: {e}")
+        return result
+
+    if not content and (message.get("reasoning_content") or message.get("reasoning")):
+        content = (message.get("reasoning_content") or message.get("reasoning")).strip()
+
+    result["passed"] = task["expect_contains"] in content
+    if not result["passed"]:
+        result["error"] = f"expected content to contain '{task['expect_contains']}'"
+    return result
+
+
 def run_all(base_url, model):
     results = []
     for task in TIER_A_TASKS:
@@ -743,6 +1083,11 @@ def run_all(base_url, model):
         r = run_tier_q_task(base_url, model, task)
         print("PASS" if r.get("passed") else f"FAIL ({r.get('error', '?')[:80]})")
         results.append(r)
+    for task in TIER_L_TASKS:
+        print(f"  [Tier L] {task['id']}...", end=" ", flush=True)
+        r = run_tier_l_task(base_url, model, task)
+        print("PASS" if r.get("passed") else f"FAIL ({r.get('error', '?')[:80]})")
+        results.append(r)
     return results
 
 
@@ -762,6 +1107,7 @@ def main():
     tier_p_pass = sum(1 for r in results if r["tier"] == "P" and r.get("passed"))
     tier_d_pass = sum(1 for r in results if r["tier"] == "D" and r.get("passed"))
     tier_q_pass = sum(1 for r in results if r["tier"] == "Q" and r.get("passed"))
+    tier_l_pass = sum(1 for r in results if r["tier"] == "L" and r.get("passed"))
     summary = {
         "model": args.model,
         "base_url": args.base_url,
@@ -777,6 +1123,8 @@ def main():
         "tier_d_total": len(TIER_D_TASKS),
         "tier_q_pass": tier_q_pass,
         "tier_q_total": len(TIER_Q_TASKS),
+        "tier_l_pass": tier_l_pass,
+        "tier_l_total": len(TIER_L_TASKS),
         "results": results,
     }
 
@@ -787,7 +1135,8 @@ def main():
     print(
         f"\nTier A: {tier_a_pass}/{len(TIER_A_TASKS)}  Tier B: {tier_b_pass}/{len(TIER_B_TASKS)}  "
         f"Tier J: {tier_j_pass}/{len(TIER_J_TASKS)}  Tier P: {tier_p_pass}/{len(TIER_P_TASKS)}  "
-        f"Tier D: {tier_d_pass}/{len(TIER_D_TASKS)}  Tier Q: {tier_q_pass}/{len(TIER_Q_TASKS)}"
+        f"Tier D: {tier_d_pass}/{len(TIER_D_TASKS)}  Tier Q: {tier_q_pass}/{len(TIER_Q_TASKS)}  "
+        f"Tier L: {tier_l_pass}/{len(TIER_L_TASKS)}"
     )
     print(f"Results written to {out_path}")
 
