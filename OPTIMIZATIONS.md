@@ -181,3 +181,29 @@ llama_model_load_from_file_impl: failed to load model
 This is **Ollama 0.17.7's bundled ggml/llama.cpp build not recognizing the `gemma4` GGUF architecture tag** — Gemma-4 is architecturally newer than what that specific Ollama build's vendored inference engine supports, independent of the Vulkan/ROCm backend-selection issue this same pin was chosen to work around (see the 5.6 GLM-4.7-Flash entries above). Confirmed via `docker logs ollama` (full GGUF metadata parses fine — tensors, tokenizer, chat template all load — the failure is specifically at the architecture-dispatch step) and `/api/version` (confirms `0.17.7`, the correct/expected pin, not a stale image). **Not a config or download problem, and not something a retry or workaround fixes** — this Ollama version genuinely cannot serve this model. A newer Ollama build likely supports `gemma4` (it postdates 0.17.7's release), but jumping to 0.18.x+ reintroduces the previously-found GPU-detection regression (`ollama/ollama#15336`) on this exact chip. **This is a real, currently-unresolved version tradeoff — pin for Vulkan-and-GPU-detection correctness (0.17.7) vs pin for newer-model-architecture support (0.18.x+) — not something to solve unilaterally right now; flagged for a later decision.**
 
 **Net conclusion**: llama.cpp direct is the only backend that can currently serve this exact file at all on this box — Ollama 0.17.7 is a hard architecture-support blocker, not a speed disadvantage, for Gemma-4-26B-A4B specifically (unlike GLM-4.7-Flash, where Ollama worked but was ~5.4x slower than llama.cpp direct: 13 vs 70.1 tok/s). Benchmark-of-record for this model: **llama.cpp direct, pp512 1251.33 tok/s / tg128 53.96 tok/s**; Ollama comparison not obtainable until the architecture-support/GPU-detection version tradeoff above is resolved.
+
+## Qwen3.6-27B GGUF benchmark: llama.cpp direct vs Ollama (2026-07-24)
+
+Benchmarked the newly-completed `unsloth/Qwen3.6-27B-GGUF` Q4_K_M file (`/var/lib/ai-models/ollama-qwen3.6-27b/Qwen3.6-27B-Q4_K_M.gguf`, 16.8GB on disk, 15.65 GiB / 26.90B params per `llama-bench`'s own report) — same house methodology as the GLM-4.7-Flash and Gemma-4-26B-A4B GGUF runs above. Before any timed measurement: checked for an active download queue (`ps aux | grep -iE "hf download|nix.*download "` and `systemctl list-units 'download-model-*' --all --no-legend | grep activating`) — found **7 units actively "activating"** behind the shared flock (gpt-oss-120b, gpt-oss-20b, llamacpp-gpt-oss-120b, llamacpp-minimax-m2.7, llamacpp-nemotron-3-super-120b, llamacpp-qwen3.5-122b-a10b, north-mini-code-1.0-w4a16, plus ollama-qwen3.6-35b-a3b queued behind the flock). Stopped all of them in one `systemctl stop` command, ran both benchmarks below, then resumed all of them with `systemctl start` at the end — confirmed they went back to "activating" afterward. `vllm-primary`/`vllm-judge` were also stopped for the duration to remove GPU contention, and restarted (confirmed healthy on `/health` for both 8000 and 8001) once both benchmarks completed.
+
+**llama.cpp direct (`kyuz0/amd-strix-halo-toolboxes:vulkan-radv`, Vulkan/RADV backend):**
+
+```
+docker run --rm --device /dev/kfd --device /dev/dri --group-add 26 --group-add 303 \
+  -v /var/lib/ai-models/ollama-qwen3.6-27b:/models:ro \
+  kyuz0/amd-strix-halo-toolboxes:vulkan-radv \
+  llama-bench -m /models/Qwen3.6-27B-Q4_K_M.gguf -ngl 999 -fa 1 -lm none
+```
+
+Result: **pp512 = 342.55 ± 14.41 tok/s, tg128 = 12.75 ± 0.03 tok/s**. This is by far the slowest llama.cpp-direct generation number recorded in this project so far — well behind both GLM-4.7-Flash (70.1 tok/s) and Gemma-4-26B-A4B (53.96 tok/s), both of which are MoE models with a fraction of Qwen3.6-27B's ~27B *active* params per token. Consistent with the dense-vs-MoE gap already established via this same model's vLLM entry (`MODEL_STACK_CATALOG.md`'s "Qwen3.6-27B — vLLM" entry, dense architecture, markedly slower than the MoE 35B-A3B primary) — this is now the second independent engine (llama.cpp, not just vLLM) confirming dense-architecture cost on this hardware.
+
+**Ollama:**
+
+```
+./scripts/ollama_register_model.sh ollama-qwen3.6-27b Qwen3.6-27B-Q4_K_M.gguf qwen3.6-27b-gguf
+curl -sS localhost:11434/api/generate -d '{"model":"qwen3.6-27b-gguf","prompt":"...","stream":false}'
+```
+
+Registration succeeded immediately (`ollama create` completed cleanly, `ollama list` shows `qwen3.6-27b-gguf:latest`, 16GB). Unlike Gemma-4-26B-A4B (hard `unknown model architecture: 'gemma4'` blocker on this Ollama build), **Qwen3.6 is a recognized/supported architecture** — the generation request succeeded and returned a full response (including a `<think>` reasoning trace). From the JSON response: `eval_count: 613`, `eval_duration: 57871769652` ns → **613 / 57.87 = 10.59 tok/s**. This is somewhat below the llama.cpp-direct number for the same file (12.75 tok/s) — roughly a 17% gap, much narrower than GLM-4.7-Flash's ~5.4x Ollama-overhead gap. Caveat: this was a single real `/api/generate` sample (with reasoning-mode overhead inflating the token count), not an averaged `llama-bench`-style run, so the two numbers are directionally comparable rather than a precise controlled ablation.
+
+**Net conclusion**: Qwen3.6-27B works on both llama.cpp direct and Ollama — no architecture-support blocker here (Qwen3-family architectures are well-supported by this Ollama build, unlike Gemma-4's newer tag). Both numbers are the slowest GGUF-based generation speeds recorded in this project to date, reinforcing that this specific model's dense (not MoE) architecture is the dominant cost, not the serving engine. Raw results saved per the house rule: `results/qwen3.6-27b--llamacpp.txt` and `results/qwen3.6-27b--ollama.txt`.

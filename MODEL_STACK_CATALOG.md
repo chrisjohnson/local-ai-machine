@@ -302,15 +302,32 @@ General config for this engine family:
 - **Status**: UNTESTED-BUT-DOWNLOADED — download queued as of the last README update (`llamacpp-minimax-m2.7`).
 - **Gotcha**: none observed yet locally.
 
-### Qwen3.6-35B-A3B / Qwen3.6-27B — llama.cpp direct (GGUF) — MTP test target, UNTESTED-BUT-DOWNLOADED (as of last update)
+### Qwen3.6-27B — llama.cpp direct (GGUF Q4_K_M)
 
-- **Model**: Qwen3.6-35B-A3B (`unsloth/Qwen3.6-35B-A3B-GGUF`, file `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`) and Qwen3.6-27B (`unsloth/Qwen3.6-27B-GGUF`, file `Qwen3.6-27B-Q4_K_M.gguf`)
+- **Model**: Qwen3.6-27B (dense) — `unsloth/Qwen3.6-27B-GGUF`, file `Qwen3.6-27B-Q4_K_M.gguf` (15.65 GiB on disk, 26.90B params)
+- **Engine**: llama.cpp direct
+- **Image**: `docker.io/kyuz0/amd-strix-halo-toolboxes:vulkan-radv`
+- **Config required**:
+  ```
+  docker run --rm --device /dev/kfd --device /dev/dri --group-add 26 --group-add 303 \
+    -v /var/lib/ai-models/ollama-qwen3.6-27b:/models:ro \
+    kyuz0/amd-strix-halo-toolboxes:vulkan-radv \
+    llama-bench -m /models/Qwen3.6-27B-Q4_K_M.gguf -ngl 999 -fa 1 -lm none
+  ```
+- **Benchmark numbers** (2026-07-24, `vllm-primary`/`vllm-judge` stopped to remove GPU contention, download queue paused first): **pp512 342.55 ± 14.41 tok/s, tg128 12.75 ± 0.03 tok/s**. Markedly slower generation than the dense-tier comparison already in this catalog would suggest at a glance — Gemma-4-26B-A4B-it (an MoE model, not dense) hit tg128 53.96 tok/s on the same engine/backend; this dense 27B model's generation speed is roughly a quarter of that, consistent with the dense-vs-MoE gap already observed in the vLLM entries above.
+- **Results file**: `results/qwen3.6-27b--llamacpp.txt` (exact command + full raw stdout table, confirmed present verbatim).
+- **Status**: WORKING.
+- **Gotcha**: same underlying GGUF file also has a proven Ollama combination (see Ollama section below) and an untested MTP speculative-decoding path (see the Qwen3.6-35B-A3B / MTP entry immediately below, which now only concerns the 35B-A3B plain-decode case and the MTP experiment for both models — this 27B plain-decode number is proven above, no longer part of that placeholder).
+
+### Qwen3.6-35B-A3B — llama.cpp direct (GGUF) — MTP test target, UNTESTED-BUT-DOWNLOADED (as of last update)
+
+- **Model**: Qwen3.6-35B-A3B — `unsloth/Qwen3.6-35B-A3B-GGUF`, file `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`
 - **Engine**: llama.cpp direct
 - **Image**: `docker.io/kyuz0/amd-strix-halo-toolboxes:vulkan-radv`
 - **Config required**: intended for MTP speculative-decoding testing (see engine-family note above on caveats: `n_parallel=1`, Vulkan not ROCm). Downloaded for double duty — Ollama cross-check (see Ollama section) and this MTP test.
-- **Benchmark numbers**: MTP test itself not yet run on this machine as of the last README update (authorized to proceed, listed under "what's authorized to proceed autonomously" in the Open Next Steps section). Plain (non-MTP) llama.cpp numbers not yet captured for these two files either — only the Gemma/GLM files above have clean llama.cpp-direct numbers so far.
-- **Results file**: none — neither the plain-decode nor MTP case has been run on this machine yet. Once run, save as `results/qwen3.6-35b-a3b--llamacpp-mtp.txt` / `results/qwen3.6-27b--llamacpp-mtp.txt` (or without the `-mtp` tag for the plain-decode case) per the house rule above.
-- **Status**: UNTESTED-BUT-DOWNLOADED for the plain-decode case; MTP specifically remains an open experiment.
+- **Benchmark numbers**: MTP test itself not yet run on this machine as of the last README update (authorized to proceed, listed under "what's authorized to proceed autonomously" in the Open Next Steps section). Plain (non-MTP) llama.cpp numbers not yet captured for this file — the sibling Qwen3.6-27B file's plain-decode numbers are now proven (see entry above); this 35B-A3B file remains untested for plain decode.
+- **Results file**: none — neither the plain-decode nor MTP case has been run on this machine yet. Once run, save as `results/qwen3.6-35b-a3b--llamacpp-mtp.txt` (or without the `-mtp` tag for the plain-decode case) per the house rule above.
+- **Status**: UNTESTED-BUT-DOWNLOADED for the plain-decode case; MTP specifically remains an open experiment for both this model and Qwen3.6-27B.
 - **Gotcha**: vLLM's own `qwen3_next_mtp` path (same underlying architecture family) remains unconfirmed on ROCm — this MTP lead is specific to llama.cpp, not a green light for the vLLM stack.
 
 ---
@@ -363,16 +380,27 @@ General config for this engine family:
 - **Results file**: none — every generation request fails, there is no benchmark output to save. The exact error text above is preserved in this entry and in `OPTIMIZATIONS.md`'s narrative record.
 - **Gotcha**: this is a genuine version tradeoff, not a fixable config bug. A newer Ollama build likely supports `gemma4`, but jumping to 0.18.x+ reintroduces the GPU-detection regression (`ollama/ollama#15336`) on this exact chip. Flagged as an open, unresolved tradeoff (Vulkan/GPU-detection correctness on 0.17.7 vs newer-architecture support on 0.18.x+) rather than solved unilaterally. **llama.cpp direct is the only backend that can currently serve this exact file at all on this box** — for this specific model, Ollama isn't just slower, it's a hard blocker.
 
-### Qwen3.6-35B-A3B / Qwen3.6-27B — Ollama (GGUF) — UNTESTED-BUT-DOWNLOADED
+### Qwen3.6-27B — Ollama (GGUF Q4_K_M, Vulkan)
 
-- **Model**: Qwen3.6-35B-A3B (`unsloth/Qwen3.6-35B-A3B-GGUF`, file `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`) and Qwen3.6-27B (`unsloth/Qwen3.6-27B-GGUF`, file `Qwen3.6-27B-Q4_K_M.gguf`)
+- **Model**: Qwen3.6-27B (dense) — same file as the llama.cpp entry, `Qwen3.6-27B-Q4_K_M.gguf` (via `unsloth/Qwen3.6-27B-GGUF`)
+- **Engine**: Ollama
+- **Image**: `ollama/ollama:0.17.7` + `OLLAMA_VULKAN=1` + `HIP_VISIBLE_DEVICES=-1` + `ROCR_VISIBLE_DEVICES=-1`
+- **Config required**: registered via `./scripts/ollama_register_model.sh ollama-qwen3.6-27b Qwen3.6-27B-Q4_K_M.gguf qwen3.6-27b-gguf`; group_add `["26", "303"]`; `127.0.0.1:11434:11434`.
+- **Benchmark numbers** (2026-07-24, download queue paused first; `vllm-primary`/`vllm-judge` were stopped during this session's earlier llama.cpp run and not yet restarted when this request ran, so this was also a GPU-contention-free measurement): a single `/api/generate` request returned `eval_count: 613`, `eval_duration: 57871769652` ns → **10.59 tok/s** generation. This is well below the llama.cpp-direct number for the same file (tg128 12.75 tok/s) — consistent with this project's standing finding that Ollama's Go wrapper/scheduling layer adds real overhead over the same underlying Vulkan/ggml engine, though the gap here (~17%) is much smaller than GLM-4.7-Flash's ~5.4x gap, and this was a single real-generation sample (with reasoning-mode `<think>` output inflating `eval_count`), not an averaged `llama-bench`-style run, so treat the two numbers as directionally comparable rather than a precise apples-to-apples ratio.
+- **Results file**: `results/qwen3.6-27b--ollama.txt` (exact registration + curl command, full raw JSON response, confirmed present verbatim).
+- **Status**: WORKING — real chat completion succeeded (full generated response with reasoning trace, not a crash). Confirms Qwen3.6 is a recognized architecture in this Ollama build, unlike Gemma-4's `unknown model architecture: 'gemma4'` failure on the same image/version.
+- **Gotcha**: unlike the Gemma-4-26B-A4B Ollama entry above (a hard architecture-support blocker), this combination just works — no version-tradeoff caveat needed. `total_duration` (68.18s) includes model load time (`load_duration` 7.81s) since this was the first request after `ollama create`; a warm second request would show much lower total latency.
+
+### Qwen3.6-35B-A3B — Ollama (GGUF) — UNTESTED-BUT-DOWNLOADED
+
+- **Model**: Qwen3.6-35B-A3B — `unsloth/Qwen3.6-35B-A3B-GGUF`, file `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`
 - **Engine**: Ollama
 - **Image**: `ollama/ollama:0.17.7` + the same three-env-var Vulkan-forcing combo
-- **Config required**: same registration pattern as above; not yet registered/tested as of the last README update (downloads were in progress/queued).
+- **Config required**: same registration pattern as above; not yet registered/tested as of the last catalog update. The sibling Qwen3.6-27B file is now proven working (see entry above) — this 35B-A3B file remains the one outstanding Ollama gap in the Qwen3.6 family.
 - **Benchmark numbers**: none yet.
-- **Results file**: none — not yet registered/tested. Once run, save as `results/qwen3.6-35b-a3b--ollama.txt` / `results/qwen3.6-27b--ollama.txt` per the house rule above.
-- **Status**: UNTESTED-BUT-DOWNLOADED (download in progress/queued as of the last catalog update) — architecture support is not expected to be a problem here (both are Qwen3-family architectures, unlike Gemma-4's newer tag), but not yet confirmed in practice on this machine.
-- **Gotcha**: none observed yet — flagged as the next Ollama combos to actually exercise once downloads complete.
+- **Results file**: none — not yet registered/tested. Once run, save as `results/qwen3.6-35b-a3b--ollama.txt` per the house rule above.
+- **Status**: UNTESTED-BUT-DOWNLOADED — architecture support is not expected to be a problem here (same Qwen3-family architecture tag as the now-proven 27B file), but not yet confirmed in practice on this machine.
+- **Gotcha**: none observed yet — flagged as the next Ollama combo to actually exercise.
 
 ---
 
