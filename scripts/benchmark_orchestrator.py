@@ -330,7 +330,12 @@ def render_run_entry_yaml(entry: dict, indent: int = 2) -> str:
     """Render a single benchmark_runs[] entry as a YAML list item, indented
     to match hand-written build-file style (2-space list items under the
     top-level `benchmark_runs:` key)."""
-    body = yaml.safe_dump(entry, sort_keys=False, default_flow_style=False, width=100)
+    # allow_unicode=True — without it, real non-ASCII chars (the llama-bench
+    # "±" pp512/tg128 figures) get backslash-escaped (\xB1) in the raw YAML
+    # text. Re-parses fine either way (cosmetic only, found reviewing
+    # canary 2's committed output), but the plain "±" is much more readable
+    # for a human skimming the build file directly.
+    body = yaml.safe_dump(entry, sort_keys=False, default_flow_style=False, width=100, allow_unicode=True)
     lines = body.rstrip("\n").split("\n")
     out = []
     pad = " " * indent
