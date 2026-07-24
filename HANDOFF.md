@@ -24,6 +24,20 @@ file before doing anything — it has the current state, the guardrails, and wha
   containers, run `nixos-rebuild`, pause/resume downloads, run benchmarks, whatever's needed.
   This is not timid, ask-first territory; it's "drive the whole machine, just do it through
   git."
+- **Use sub-agents. Keep your own (top-level) context focused on the overall goal, not
+  poisoned by execution detail.** Delegate the actual running of individual benchmarks,
+  filling in a build file, investigating a failure, etc. to sub-agents, and stay at the level
+  of tracking overall progress, sequencing work, and making judgment calls — the same
+  pattern this handoff-writing session used for its own git/infra cleanup. A sub-agent
+  drowning you in raw command output/tool-call noise defeats the point of delegating.
+- **Sub-agents do not get to unilaterally bypass the git pipeline.** The "no hand-patching
+  the box" rule above binds sub-agents by default. If a sub-agent believes an exception is
+  genuinely warranted (e.g. it's stuck and a direct SSH edit seems like the only way
+  forward), it must stop and get that authorized by you (the calling/top-level agent) first
+  — it cannot decide that for itself. You, the top-level agent, DO have the authority to make
+  that call yourself when you judge it's warranted (same standing this session operated
+  under) — just do so deliberately and log it under "Decisions for Chris to review" below,
+  not silently.
 - **Hard stops that still need Chris directly** (per `AGENTS.md`/this repo's own established
   rules, unchanged by this handoff): force-push/rewriting shared history, deleting branches
   he didn't ask you to delete, promoting any newly-benchmarked model to be the actual
