@@ -687,6 +687,16 @@ in
         Type = "simple";
         User = "chris";
         WorkingDirectory = "/home/chris/local-ai-machine";
+        # Bare `docker`/`git`/`curl`/`sudo` calls inside the script rely on
+        # PATH, unlike the fully-qualified nix-store paths other services in
+        # this file use for their scripted commands — systemd's default
+        # service PATH doesn't include either of these, so the script fails
+        # immediately (confirmed: first deploy attempt errored on `docker`
+        # not found). /run/wrappers/bin carries sudo's setuid wrapper;
+        # /run/current-system/sw/bin carries everything from
+        # environment.systemPackages (docker, git, curl, systemctl, ...) —
+        # together they match the interactive chris-user PATH's essentials.
+        Environment = "PATH=/run/wrappers/bin:/run/current-system/sw/bin";
         ExecStart = "${pkgs.python3.withPackages (ps: [ ps.pyyaml ])}/bin/python3 scripts/benchmark_orchestrator.py";
         Restart = "on-failure";
         RestartSec = 180;
