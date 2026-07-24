@@ -125,6 +125,13 @@ let
     { name = "ollama-qwen3.6-35b-a3b"; repo = "unsloth/Qwen3.6-35B-A3B-GGUF"; hfFiles = [ "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf" ]; }
     { name = "ollama-qwen3.6-27b"; repo = "unsloth/Qwen3.6-27B-GGUF"; hfFiles = [ "Qwen3.6-27B-Q4_K_M.gguf" ]; }
     { name = "ollama-glm-4.7-flash"; repo = "unsloth/GLM-4.7-Flash-GGUF"; hfFiles = [ "GLM-4.7-Flash-Q4_K_M.gguf" ]; }
+    # Phase 5.6 llama.cpp-direct benchmark candidate, approved by Chris
+    # 2026-07-24 - real, reproducible 56.61 tok/s TG128 via Vulkan RADV on
+    # this exact chip family per kyuz0's own results.json (not just the
+    # rendered page). Official ggml-org (llama.cpp's own org) repack,
+    # single-file native MXFP4 GGUF - a different artifact from the
+    # vLLM-format openai/gpt-oss-120b already on disk.
+    { name = "llamacpp-gpt-oss-120b"; repo = "ggml-org/gpt-oss-120b-GGUF"; }
   ];
 in
 {
