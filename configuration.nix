@@ -664,6 +664,34 @@ in
         ${pkgs.rsync}/bin/rsync -a --delete -e "${rsh}" /home/chris/local-ai-machine/ "${remote}/repo/"
       '';
     };
+
+    # Unattended benchmark-and-record sweep across catalog/builds/*.yaml
+    # (vLLM + llama.cpp; Ollama intentionally excluded for now, see
+    # HANDOFF.md's decision log). scripts/benchmark_orchestrator.py is
+    # self-contained: it does its own per-run download-queue pause/resume
+    # and vLLM stop/restart sequencing per catalog/OPERATIONS.md, so no
+    # `after=`/`wants=` beyond docker-compose-app is needed here. Long-
+    # running (the full sweep can take the better part of a weekend), so
+    # Type=simple (active as soon as the process starts, not gated on it
+    # exiting) rather than oneshot. Timer-triggered rather than wantedBy
+    # multi-user.target directly, same reasoning as docker-compose-app
+    # below: a brand-new long-running unit's first start would otherwise
+    # block `nixos-rebuild switch`. Restart=on-failure with a real
+    # RestartSec (not disabled like the download units' infinite-retry
+    # design) so a systemic bug crash-loops slowly, not rapidly.
+    benchmark-orchestrator = {
+      description = "Unattended vLLM/llama.cpp benchmark-and-record sweep across catalog/builds";
+      after = [ "docker-compose-app.service" ];
+      restartIfChanged = false;
+      serviceConfig = {
+        Type = "simple";
+        User = "chris";
+        WorkingDirectory = "/home/chris/local-ai-machine";
+        ExecStart = "${pkgs.python3.withPackages (ps: [ ps.pyyaml ])}/bin/python3 scripts/benchmark_orchestrator.py";
+        Restart = "on-failure";
+        RestartSec = 180;
+      };
+    };
   };
 
   # Triggers for the model downloads and docker-compose-app (see
@@ -704,6 +732,11 @@ in
         OnBootSec = "10s";
         OnUnitActiveSec = "10s";
       };
+    };
+    benchmark-orchestrator = {
+      description = "Trigger for benchmark-orchestrator.service";
+      wantedBy = [ "timers.target" ];
+      timerConfig.OnBootSec = "60s";
     };
   };
 
