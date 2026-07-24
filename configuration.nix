@@ -178,8 +178,32 @@ in
           # '#' must be escaped in sudoers syntax or everything after it is
           # silently treated as a comment, dropping the rule entirely (this
           # bit us: sudo -l showed no trace of the rule despite it being
-          # textually present and unescaped in /etc/sudoers).
+          # textually present and unregistered in /etc/sudoers).
           command = "/run/current-system/sw/bin/nixos-rebuild switch --flake /etc/nixos\\#local-ai-machine";
+          options = [ "NOPASSWD" ];
+        }
+        # Added 2026-07-24, Chris's explicit request: repeated real friction
+        # this session from needing him to manually run `systemctl
+        # start/stop/restart` for download services stuck between a stopped
+        # state and a systemd one-shot timer's quirky re-fire behavior (see
+        # decision log). Scoped to start/stop/restart specifically, not a
+        # blanket `systemctl *` or `ALL` - doesn't cover `enable`/`disable`/
+        # `edit`/masking, which change unit *definitions* rather than just
+        # their runtime state. Note this isn't a real privilege escalation
+        # beyond what already exists above: the nixos-rebuild rule can
+        # already redefine any unit (including granting broader sudo) and
+        # apply it passwordlessly, so this is a friction reduction for a
+        # capability that was already reachable, not a new ceiling.
+        {
+          command = "/run/current-system/sw/bin/systemctl start *";
+          options = [ "NOPASSWD" ];
+        }
+        {
+          command = "/run/current-system/sw/bin/systemctl stop *";
+          options = [ "NOPASSWD" ];
+        }
+        {
+          command = "/run/current-system/sw/bin/systemctl restart *";
           options = [ "NOPASSWD" ];
         }
       ];
