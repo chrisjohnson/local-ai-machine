@@ -98,6 +98,17 @@ let
     # evidence yet (unlike the two GPT-OSS entries above) — genuinely
     # untested here, not just unbenchmarked. Cheap to try given the size.
     { name = "glm-4.7-flash-awq"; repo = "QuantTrio/GLM-4.7-Flash-AWQ"; }
+    # Phase 5.1 second-pass candidate, approved by Chris 2026-07-24. 30B
+    # total/3B active MoE - same winning architecture class as
+    # Qwen3.6-35B-A3B/Gemma-4-26B-A4B-it on this hardware, purpose-built
+    # for agentic coding, W4A16 weight-only quant (not the disqualifying
+    # FP8 variant), native vLLM cohere_command4 tool-call parser. Zero
+    # direct Strix-Halo evidence yet - untested-but-well-fitted, same
+    # position GPT-OSS was in before it got tested. Codified/deployed per
+    # Chris's direction but the download itself is deliberately NOT
+    # started yet - he wants the infra ready without spending bandwidth
+    # right now (see decision log).
+    { name = "north-mini-code-1.0-w4a16"; repo = "CohereLabs/North-Mini-Code-1.0-w4a16"; }
   ];
 in
 {
