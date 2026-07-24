@@ -272,6 +272,19 @@ services:
     image: ollama/ollama:0.17.7-rocm
     container_name: ollama
     restart: unless-stopped
+    # OLLAMA_VULKAN=1: real bug found 2026-07-24 - the ROCm backend
+    # crashes on this exact chip with "cudaMalloc failed: out of memory"
+    # even with GPU memory nearly empty (confirmed via sysfs - <200MiB
+    # used out of 124GiB). Confirmed llama.cpp directly (Vulkan backend,
+    # same GGUF file) loads and generates successfully where Ollama's
+    # ROCm path fails outright - this is the same class of gfx1151-on-
+    # Linux ROCm issue already flagged (ollama/ollama#13589/#15336),
+    # manifesting as an allocation failure rather than silent CPU
+    # fallback this time. Trying Ollama's own experimental Vulkan
+    # backend (real env var, confirmed in upstream source) as a
+    # workaround before concluding Ollama benchmarking is blocked here.
+    environment:
+      - OLLAMA_VULKAN=1
     devices:
       - /dev/kfd:/dev/kfd
       - /dev/dri:/dev/dri
