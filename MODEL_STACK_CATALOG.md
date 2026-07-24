@@ -4,6 +4,8 @@
 
 This document exists so that a later, dedicated benchmark-comparison pass (flipping combinations on/off, one at a time, over multiple days) can be driven from a single source of truth instead of re-deriving exact flags/images/env-vars from `README.md`'s narrative decision log each time. **It does not decide or build the on/off mechanism itself** (docker-compose profiles, standalone scripts, whatever) — that's future work. This is purely the catalog of facts.
 
+For a synthesized cross-model comparison view, see `docs/comparison-dashboard-2026-07-24.html`.
+
 **This is a living document.** Add a new entry in the same shape every time a new combination is proven (or proven broken) on this hardware. Do not paraphrase or summarize away exact flags/env-vars/image tags — the whole point is that this doc is precise enough to reproduce a combination exactly, without re-reading `README.md`/`OPTIMIZATIONS.md` in full.
 
 `README.md` and `OPTIMIZATIONS.md` remain the full narrative session history (decision logs, dead ends, reasoning-in-progress) — this doc is the distilled, structured extract of only the combinations that were actually run.

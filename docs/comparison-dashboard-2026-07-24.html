@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>local-ai-machine — Cross-Model Comparison Dashboard — 2026-07-24</title>
+<style>
+  :root {
+    --bg: #0f1216;
+    --bg-card: #171b21;
+    --bg-card-2: #1d2229;
+    --border: #2a2f38;
+    --text: #e6e9ef;
+    --text-dim: #9aa4b2;
+    --accent: #5b9dff;
+    --good: #4ade80;
+    --warn: #fbbf24;
+    --bad: #f87171;
+    --bar-vllm: #5b9dff;
+    --bar-llamacpp: #34d399;
+    --bar-ollama: #fb923c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.55;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 40px 24px 80px; }
+  header.page {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 28px;
+    margin-bottom: 36px;
+  }
+  header.page h1 {
+    font-size: 28px;
+    margin: 0 0 6px;
+    letter-spacing: -0.02em;
+  }
+  header.page .sub {
+    color: var(--text-dim);
+    font-size: 14.5px;
+  }
+  header.page .meta {
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+    margin-top: 16px;
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+  header.page .meta code {
+    background: var(--bg-card);
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: var(--accent);
+  }
+  h2 {
+    font-size: 20px;
+    margin: 48px 0 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    letter-spacing: -0.01em;
+  }
+  h3 { font-size: 15.5px; margin: 28px 0 10px; color: var(--text); }
+  h4 { font-size: 13.5px; margin: 22px 0 8px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.03em; }
+  p { color: var(--text-dim); font-size: 14.5px; }
+  a { color: var(--accent); }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.92em;
+    background: var(--bg-card);
+    padding: 1px 5px;
+    border-radius: 4px;
+    color: var(--accent);
+  }
+
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 14px;
+    margin: 20px 0;
+  }
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+  }
+  .card .label { font-size: 12px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
+  .card .value { font-size: 22px; font-weight: 600; margin-top: 4px; }
+  .card .value.good { color: var(--good); }
+  .card .value.warn { color: var(--warn); }
+  .card .sub { font-size: 12.5px; color: var(--text-dim); margin-top: 2px; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    margin: 14px 0 8px;
+  }
+  th, td {
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  th {
+    color: var(--text-dim);
+    font-weight: 600;
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  td.num { font-variant-numeric: tabular-nums; }
+  tr:last-child td { border-bottom: none; }
+  .engine-vllm { color: var(--bar-vllm); font-weight: 600; }
+  .engine-llamacpp { color: var(--bar-llamacpp); font-weight: 600; }
+  .engine-ollama { color: var(--bar-ollama); font-weight: 600; }
+
+  .group-row td { background: var(--bg-card-2); font-weight: 600; color: var(--text); padding-top: 14px; }
+  tr.group-member td { border-left: 2px solid var(--border); }
+
+  .pill {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 999px;
+    margin-left: 6px;
+    white-space: nowrap;
+  }
+  .pill.good { background: rgba(74,222,128,0.15); color: var(--good); }
+  .pill.warn { background: rgba(251,191,36,0.15); color: var(--warn); }
+  .pill.bad { background: rgba(248,113,113,0.15); color: var(--bad); }
+  .pill.dim { background: rgba(154,164,178,0.15); color: var(--text-dim); }
+
+  ul.findings { padding-left: 0; list-style: none; margin: 12px 0; }
+  ul.findings li {
+    padding: 10px 0 10px 26px;
+    position: relative;
+    font-size: 14px;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--border);
+  }
+  ul.findings li:last-child { border-bottom: none; }
+  ul.findings li::before {
+    position: absolute; left: 0; top: 10px; font-size: 13px;
+  }
+  ul.findings li.good::before { content: "✓"; color: var(--good); }
+  ul.findings li.warn::before { content: "!"; color: var(--warn); font-weight: 800; }
+  ul.findings li.bad::before { content: "✕"; color: var(--bad); }
+  ul.findings li strong { color: var(--text); }
+
+  .callout {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin: 16px 0;
+    font-size: 13.5px;
+    color: var(--text-dim);
+  }
+  .callout.warn { border-left-color: var(--warn); }
+  .callout.bad { border-left-color: var(--bad); }
+  .callout.good { border-left-color: var(--good); }
+  .callout strong { color: var(--text); }
+
+  .toc { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; margin: 18px 0 0; }
+  .toc a { color: var(--text-dim); border: 1px solid var(--border); padding: 5px 12px; border-radius: 999px; text-decoration: none; }
+  .toc a:hover { color: var(--accent); border-color: var(--accent); }
+
+  footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--text-dim); font-size: 12.5px; }
+
+  .scroll-x { overflow-x: auto; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="page">
+  <h1>local-ai-machine — Cross-Model Comparison Dashboard</h1>
+  <div class="sub">A single synthesized view of every model + engine combination benchmarked so far on this box — speed, coding capability, and resource footprint, side by side. Built from <code>MODEL_STACK_CATALOG.md</code>, <code>results/*.json</code>, <code>results/*.txt</code>, and <code>OPTIMIZATIONS.md</code>. Every number here traces to a real recorded source — see the per-row citations.</div>
+  <div class="meta">
+    <span>Generated <code>2026-07-24</code></span>
+    <span>AMD Ryzen AI Max+ 395 (Strix Halo / gfx1151)</span>
+    <span>128GB unified memory</span>
+    <span>3 engines: vLLM · llama.cpp direct · Ollama</span>
+  </div>
+  <div class="toc">
+    <a href="#findings">Biggest findings</a>
+    <a href="#speed">Speed comparison</a>
+    <a href="#coding">Coding capability</a>
+    <a href="#footprint">Resource footprint</a>
+    <a href="#quality">Data quality</a>
+  </div>
+</header>
+
+<section id="findings">
+  <h2>Biggest findings</h2>
+  <ul class="findings">
+    <li class="good"><strong>Small active-param-count MoE models dominate this memory-bandwidth-bound hardware</strong> — the single most consistent pattern across every engine tested. GLM-4.7-Flash (~3B active) hit the fastest llama.cpp generation speed measured anywhere in this project (70.1 tok/s); Gemma-4-26B-A4B-it (~4B active) was the fastest vLLM model tested (50.38 tok/s c8) <em>and</em> scored a perfect coding result; GPT-OSS-20B (~3.6B active) posted the best c8 throughput of the coding-comparison lineup (56.72 tok/s) and the best concurrency headroom (30.02×) of any model tested. Dense models of similar or smaller total size (Qwen3.6-27B, Gemma-4-31B-it) trail badly on every engine.</li>
+    <li class="good"><strong>llama.cpp direct beats Ollama substantially — and far more so for MoE models than dense ones.</strong> On the identical GGUF file, GLM-4.7-Flash is ~5.4× faster on llama.cpp direct than Ollama (70.1 vs ~13 tok/s); Qwen3.6-35B-A3B (MoE) is ~5.7× faster (63.43 vs 11.18 tok/s). But Qwen3.6-27B, a <em>dense</em> model, shows only a ~17% gap (12.75 vs 10.59 tok/s) between the same two engines. Only 3 data points (2 MoE + 1 dense), not a controlled ablation, but a real and repeated pattern worth flagging.</li>
+    <li class="good"><strong>GPT-OSS-20B has the best recorded concurrency headroom of any model tested</strong> — 30.02× max concurrency at 131072 context (95.81 GiB of KV cache from a 14.16 GiB weights footprint), edging out GLM-4.7-Flash-AWQ's previous-best 28.10×. Its sibling GPT-OSS-120B, by contrast, is the slowest c1 throughput (8.46 tok/s) of any small-active-param MoE model tested — a real, unexplained (hypothesized but unconfirmed) per-model MXFP4 kernel-path effect, not a blanket format penalty, since GPT-OSS-20B uses the identical format and performs normally.</li>
+    <li class="warn"><strong>The llama-server concurrent-serving experiment shows a real ~3× aggregate throughput gain over single-stream llama.cpp</strong> — Qwen3.6-27B via <code>llama-server -np 4 -cb -kvu</code> sustained ~38.3-39.1 tok/s aggregate at concurrency 4 vs 12.60 tok/s at concurrency 1, at the cost of ~27% longer per-request wall-clock time. This is the first concurrent-serving (not just single-stream <code>llama-bench</code>) number ever measured for llama.cpp on this hardware, and a correctness check (4 concurrent distinguishable prompts) passed cleanly first, given two known open upstream concurrency bugs on adjacent backends.</li>
+    <li class="bad"><strong>A recurring `judge_incorrect` (Tier J) failure shows up in every model that's had the six-tier harness run against it</strong> — GLM-4.7-Flash-AWQ, GPT-OSS-120B, and GPT-OSS-20B all failed this exact same subtly-buggy-palindrome-check task, and the production primary (Qwen3.6-35B-A3B) failed an equivalent spot-check too. This is a real, cross-model finding — none of the models tested so far are reliable LLM-judges without more scrutiny — not a fluke of one model.</li>
+    <li class="warn"><strong>The current production primary (Qwen3.6-35B-A3B) is not the strongest coding performer</strong> on any tier tested — four models (80B GPTQ, 122B AWQ, Gemma-4-31B, Gemma-4-26B-A4B) hit a perfect 5/5 on the original Tier A/B harness, while the primary landed at 4/5, and GPT-OSS-120B posted the best six-tier score recorded (11/12).</li>
+    <li class="good"><strong>Quantization can beat a smaller model's raw footprint</strong> — the 80B-total Qwen3-Coder-Next-GPTQ-4bit is smaller on disk (46.49 GiB) than the 35B-total bf16 primary (66.97 GiB), despite having 2.3× the parameters. Model size alone is a poor proxy for memory footprint once quantization enters the picture.</li>
+    <li class="warn"><strong>Speed and coding capability do not correlate.</strong> Gemma-4-31B-it was the slowest model tested via vLLM (3.23/11.73 tok/s c1/c8) yet scored a perfect 5/5 on the coding harness — the single starkest speed/capability mismatch recorded.</li>
+  </ul>
+</section>
+
+<section id="speed">
+  <h2>Speed comparison — every model + engine combination measured</h2>
+  <p>All vLLM numbers are from <code>vllm bench serve</code> (random dataset, <code>--ignore-eos</code>, 20 prompts @ c1 / 100 prompts @ c8, zero failed requests unless noted). All llama.cpp-direct numbers are single-stream <code>llama-bench</code> (pp512/tg128) unless marked "concurrent". All Ollama numbers are a single real <code>/api/generate</code> sample (not an averaged harness run) — see <a href="#quality">Data Quality</a>. Models with 2-3 engine measurements are grouped together so the cross-engine gap is visible at a glance.</p>
+
+  <h3>Cross-engine comparisons (same model, multiple engines)</h3>
+  <div class="scroll-x">
+  <table>
+    <tr>
+      <th>Model</th><th>Engine</th><th>Config/Quant</th><th>PP tok/s</th><th>TG / c1 out tok/s</th><th>c8 (or c4) out tok/s</th><th>TTFT (mean, c1)</th><th>Stream</th><th>Date</th><th>Source</th>
+    </tr>
+
+    <tr class="group-row"><td colspan="10">Qwen3.6-27B (dense, 26.90B params)</td></tr>
+    <tr class="group-member">
+      <td>Qwen3.6-27B</td><td class="engine-vllm">vLLM</td><td>bf16, 0.90 util</td>
+      <td class="num">—</td><td class="num">4.07</td><td class="num">17.91</td>
+      <td class="num">4664ms</td><td>single / c8</td><td class="num">2026-07-23</td><td>benchmark-report-2026-07-23.html</td>
+    </tr>
+    <tr class="group-member">
+      <td>Qwen3.6-27B</td><td class="engine-llamacpp">llama.cpp direct</td><td>GGUF Q4_K_M, Vulkan/RADV</td>
+      <td class="num">342.55 ± 14.41</td><td class="num">12.75 ± 0.03</td><td class="num">—</td>
+      <td class="num">—</td><td>single</td><td class="num">2026-07-24</td><td>results/qwen3.6-27b--llamacpp.txt</td>
+    </tr>
+    <tr class="group-member">
+      <td>Qwen3.6-27B</td><td class="engine-llamacpp">llama.cpp <code>llama-server</code></td><td>GGUF Q4_K_M, <code>-np 4 -cb -kvu</code></td>
+      <td class="num">—</td><td class="num">12.60</td><td class="num">~38.3-39.1 (c4)</td>
+      <td class="num">—</td><td>single / concurrent-4</td><td class="num">2026-07-24</td><td>results/qwen3.6-27b--llamacpp-server-concurrent.txt</td>
+    </tr>
+    <tr class="group-member">
+      <td>Qwen3.6-27B</td><td class="engine-ollama">Ollama</td><td>GGUF Q4_K_M, Vulkan (0.17.7)</td>
+      <td class="num">21.71<span class="pill dim">trivial prompt</span></td><td class="num">10.59</td><td class="num">—</td>
+      <td class="num">—</td><td>single (1 sample)</td><td class="num">2026-07-24</td><td>results/qwen3.6-27b--ollama.txt</td>
+    </tr>
+
+    <tr class="group-row"><td colspan="10">Qwen3.6-35B-A3B (MoE, ~35B total / ~3B active, 34.66B params) — production primary</td></tr>
+    <tr class="group-member">
+      <td>Qwen3.6-35B-A3B</td><td class="engine-vllm">vLLM</td><td>bf16, 0.70 util (co-resident w/ judge)</td>
+      <td class="num">—</td><td class="num">11.91</td><td class="num">33.19</td>
+      <td class="num">3812ms</td><td>single / c8</td><td class="num">2026-07-22/23</td><td>benchmark-report-2026-07-22.html</td>
+    </tr>
+    <tr class="group-member">
+      <td>Qwen3.6-35B-A3B</td><td class="engine-llamacpp">llama.cpp direct</td><td>GGUF Q4_K_M, Vulkan/RADV</td>
+      <td class="num">1075.81 ± 21.68</td><td class="num">63.43 ± 0.30</td><td class="num">—</td>
+      <td class="num">—</td><td>single</td><td class="num">2026-07-24</td><td>results/qwen3.6-35b-a3b--llamacpp.txt</td>
+    </tr>
+    <tr class="group-member">
+      <td>Qwen3.6-35B-A3B</td><td class="engine-ollama">Ollama</td><td>GGUF Q4_K_M, Vulkan (0.17.7)</td>
+      <td class="num">—</td><td class="num">11.18</td><td class="num">—</td>
+      <td class="num">—</td><td>single (1 sample)</td><td class="num">2026-07-24</td><td>results/qwen3.6-35b-a3b--ollama.txt</td>
+    </tr>
+
+    <tr class="group-row"><td colspan="10">Gemma-4-26B-A4B-it (MoE, ~26B total / ~4B active, 25.23B params)</td></tr>
+    <tr class="group-member">
+      <td>Gemma-4-26B-A4B-it</td><td class="engine-vllm">vLLM</td><td>bf16, 0.90 util, ctx 65536</td>
+      <td class="num">—</td><td class="num">20.85</td><td class="num">50.38</td>
+      <td class="num">1531ms</td><td>single / c8</td><td class="num">2026-07-23</td><td>benchmark-report-2026-07-23.html</td>
+    </tr>
+    <tr class="group-member">
+      <td>Gemma-4-26B-A4B-it</td><td class="engine-llamacpp">llama.cpp direct</td><td>GGUF Q4_K_M, Vulkan/RADV</td>
+      <td class="num">1251.33 ± 17.08</td><td class="num">53.96 ± 0.15</td><td class="num">—</td>
+      <td class="num">—</td><td>single</td><td class="num">2026-07-24</td><td>OPTIMIZATIONS.md narrative<span class="pill warn">no results file</span></td>
+    </tr>
+    <tr class="group-member">
+      <td>Gemma-4-26B-A4B-it</td><td class="engine-ollama">Ollama</td><td>GGUF Q4_K_M, Vulkan (0.17.7)</td>
+      <td class="num" colspan="6"><span class="pill bad">BROKEN — unknown architecture 'gemma4', hard blocker on this Ollama build</span></td>
+      <td class="num">2026-07-24</td><td>MODEL_STACK_CATALOG.md</td>
+    </tr>
+
+    <tr class="group-row"><td colspan="10">GLM-4.7-Flash (MoE, ~30B total / ~3B active)</td></tr>
+    <tr class="group-member">
+      <td>GLM-4.7-Flash-AWQ</td><td class="engine-vllm">vLLM</td><td>AWQ 4-bit, ctx 65536</td>
+      <td class="num">—</td><td class="num">18.95</td><td class="num">30.19</td>
+      <td class="num">1353ms</td><td>single / c8</td><td class="num">2026-07-23</td><td>MODEL_STACK_CATALOG.md<span class="pill warn">not in a results file</span></td>
+    </tr>
+    <tr class="group-member">
+      <td>GLM-4.7-Flash</td><td class="engine-llamacpp">llama.cpp direct</td><td>GGUF Q4_K_M, Vulkan/RADV</td>
+      <td class="num">81.3</td><td class="num">70.1</td><td class="num">—</td>
+      <td class="num">—</td><td>single</td><td class="num">2026-07-24</td><td>OPTIMIZATIONS.md narrative<span class="pill warn">no results file</span></td>
+    </tr>
+    <tr class="group-member">
+      <td>GLM-4.7-Flash</td><td class="engine-ollama">Ollama</td><td>GGUF Q4_K_M, Vulkan (0.17.7)</td>
+      <td class="num">—</td><td class="num">~13<span class="pill warn">rough</span></td><td class="num">—</td>
+      <td class="num">—</td><td>rough manual timing</td><td class="num">2026-07-24</td><td>OPTIMIZATIONS.md narrative<span class="pill warn">no results file</span></td>
+    </tr>
+  </table>
+  </div>
+
+  <h3>Other vLLM-only combinations (no cross-engine comparison recorded)</h3>
+  <div class="scroll-x">
+  <table>
+    <tr>
+      <th>Model</th><th>Config/Quant</th><th>c1 out tok/s</th><th>c8 out tok/s</th><th>TTFT mean/median/p99 (c1, ms)</th><th>TPOT mean/median/p99 (c1, ms)</th><th>Date</th><th>Source</th>
+    </tr>
+    <tr>
+      <td>Qwen3.5-4B (judge)</td><td>bf16, 0.20 util</td>
+      <td class="num">23.50</td><td class="num">107.17</td>
+      <td class="num">514 / 402 / 2210</td><td class="num">40.71 / 40.71 / 40.79</td>
+      <td class="num">2026-07-22</td><td>benchmark-report-2026-07-22.html</td>
+    </tr>
+    <tr>
+      <td>Qwen3-Coder-Next-GPTQ-4bit (80B/~3B active)</td><td>GPTQ 4-bit, swap-in</td>
+      <td class="num">14.34</td><td class="num">26.13</td>
+      <td class="num">2154 / 2214 / 2240</td><td class="num">65.63 / 65.63 / 65.76</td>
+      <td class="num">2026-07-22</td><td>benchmark-report-2026-07-22.html</td>
+    </tr>
+    <tr>
+      <td>Qwen3.5-122B-A10B-AWQ-4bit (enforce-eager baseline)</td><td>AWQ 4-bit, ctx 65536, eager</td>
+      <td class="num">7.87</td><td class="num">16.05</td>
+      <td class="num">3808 / 3799 / 4012</td><td class="num">119.88 / 119.88 / 120.02</td>
+      <td class="num">2026-07-22</td><td>benchmark-report-2026-07-22.html</td>
+    </tr>
+    <tr>
+      <td>Qwen3.5-122B-A10B-AWQ-4bit (non-eager re-test)</td><td>AWQ 4-bit, ctx 65536, no-eager</td>
+      <td class="num">8.14 <span class="pill good">+3.4%</span></td><td class="num">16.28 <span class="pill good">+1.4%</span></td>
+      <td class="num">3743 / 3582 / 6114</td><td class="num">115.77 / 115.78 / 115.84</td>
+      <td class="num">2026-07-23</td><td>OPTIMIZATIONS.md narrative<span class="pill warn">no results file</span></td>
+    </tr>
+    <tr>
+      <td>Gemma-4-31B-it (dense)</td><td>bf16, ctx 65536</td>
+      <td class="num">3.23</td><td class="num">11.73</td>
+      <td class="num">7601 / 7535 / 8712</td><td class="num">294.97 / 294.96 / 295.10</td>
+      <td class="num">2026-07-23</td><td>benchmark-report-2026-07-23.html</td>
+    </tr>
+    <tr>
+      <td>Qwen2.5-VL-7B-Instruct <span class="pill dim">vision/OCR, not coding</span></td><td>bf16, ctx 32768</td>
+      <td class="num">15.41</td><td class="num">79.25</td>
+      <td class="num">1218 / 1071 / 3458</td><td class="num">62.65 / 62.65 / 62.66</td>
+      <td class="num">2026-07-23</td><td>benchmark-report-2026-07-23.html</td>
+    </tr>
+    <tr>
+      <td>GPT-OSS-120B (MXFP4, ~5.1B active)</td><td>swap-in, <code>--backend openai</code> (harmony fix)</td>
+      <td class="num">8.46</td><td class="num">31.39</td>
+      <td class="num">3191 / 3159 / 3714</td><td class="num">112.24 flat</td>
+      <td class="num">2026-07-24</td><td>results/gpt-oss-120b--vllm.txt</td>
+    </tr>
+    <tr>
+      <td>GPT-OSS-20B (MXFP4, ~3.6B active)</td><td>swap-in, <code>--backend openai</code> (harmony fix)</td>
+      <td class="num">12.59</td><td class="num">56.72 <span class="pill good">best c8 in lineup</span></td>
+      <td class="num">1757 / 1684 / 2903</td><td class="num">76.16 flat</td>
+      <td class="num">2026-07-24</td><td>results/gpt-oss-20b--vllm.txt</td>
+    </tr>
+  </table>
+  </div>
+
+  <div class="callout">
+    <strong>Reading the concurrent-serving numbers side by side:</strong> vLLM's c8 convention and llama-server's <code>-np 4</code> (c4) convention are not identical concurrency levels — a future pass pushing llama-server to <code>-np 8</code> would tighten this comparison. Still, the qualitative result holds: Qwen3.6-27B goes from 12.60 tok/s (c1) to ~38.3-39.1 tok/s aggregate (c4) via llama-server — a ~3.0-3.1× gain — comparable in kind (though not directly comparable in scale) to vLLM's own c1→c8 scaling seen across the table above.
+  </div>
+</section>
+
+<section id="coding">
+  <h2>Coding-capability comparison</h2>
+  <p>Two harness generations exist: the original 5-task <strong>Tier A + Tier B</strong> harness (3 correctness tasks graded by execution, 2 tool-calling tasks graded structurally), and a newer <strong>six-tier</strong> harness that adds Tier J (LLM-judge correctness), Tier P (constrained/structured output), Tier D (multi-turn debugging), and Tier Q (agentic planning) — run against only 3 models so far (GLM-4.7-Flash-AWQ, GPT-OSS-120B, GPT-OSS-20B). Sorted by overall score percentage (pass/total) descending so top performers are immediately visible; raw fraction shown alongside since the two harness generations have different denominators (5 vs 12-13) and a straight fraction comparison would be misleading.</p>
+
+  <div class="callout bad">
+    <strong>Cross-model finding: <code>judge_incorrect</code> (Tier J) fails almost everywhere it's been tested.</strong> All three models run through the six-tier harness (GLM-4.7-Flash-AWQ, GPT-OSS-120B, GPT-OSS-20B) failed this exact same task — each said <code>passes: true</code> on a subtly-buggy palindrome check it should have caught. The production primary (Qwen3.6-35B-A3B) also failed an informal spot-check of the same failure mode (not preserved in a results file, narrative only). This is a real, repeated, cross-model finding: <strong>none of the models tested so far are reliable LLM-judges without further scrutiny</strong> — worth treating as a standing caveat for any future judge-model role assignment, not a one-off harness quirk.
+  </div>
+
+  <div class="scroll-x">
+  <table>
+    <tr>
+      <th>Model</th><th>Overall</th><th>Tier A (correctness)</th><th>Tier B (tool-calling)</th><th>Tier J (judge)</th><th>Tier P (constrained output)</th><th>Tier D (debugging)</th><th>Tier Q (planning)</th><th>Harness</th><th>Source</th>
+    </tr>
+    <tr>
+      <td>GPT-OSS-120B</td><td class="num"><strong>11/12 (91.7%)</strong> <span class="pill good">best recorded</span></td>
+      <td class="num">3/3</td><td class="num">2/2</td><td class="num">1/2 <span class="pill bad">judge_incorrect</span></td><td class="num">2/2</td><td class="num">1/1</td><td class="num">2/2</td>
+      <td>six-tier</td><td>results/gpt-oss-120b.json</td>
+    </tr>
+    <tr>
+      <td>Qwen3-Coder-Next-GPTQ-4bit (80B/~3B active)</td><td class="num"><strong>5/5 (100%)</strong> <span class="pill good">perfect</span></td>
+      <td class="num">3/3</td><td class="num">2/2</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td>
+      <td>Tier A/B</td><td>results/qwen3-coder-next-gptq4bit.json</td>
+    </tr>
+    <tr>
+      <td>Qwen3.5-122B-A10B-AWQ-4bit</td><td class="num"><strong>5/5 (100%)</strong> <span class="pill good">perfect</span></td>
+      <td class="num">3/3</td><td class="num">2/2</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td>
+      <td>Tier A/B</td><td>results/qwen3.5-122b-a10b-awq4bit.json</td>
+    </tr>
+    <tr>
+      <td>Gemma-4-31B-it (dense)</td><td class="num"><strong>5/5 (100%)</strong> <span class="pill good">perfect</span></td>
+      <td class="num">3/3</td><td class="num">2/2</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td>
+      <td>Tier A/B</td><td>results/gemma-4-31b-it.json</td>
+    </tr>
+    <tr>
+      <td>Gemma-4-26B-A4B-it</td><td class="num"><strong>5/5 (100%)</strong> <span class="pill good">perfect</span></td>
+      <td class="num">3/3</td><td class="num">2/2</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td>
+      <td>Tier A/B</td><td>results/gemma-4-26b-a4b-it.json</td>
+    </tr>
+    <tr>
+      <td>GPT-OSS-20B</td><td class="num">10/12 (83.3%)</td>
+      <td class="num">3/3</td><td class="num">1/2 <span class="pill bad">multi_step_tool_call</span></td><td class="num">1/2 <span class="pill bad">judge_incorrect</span></td><td class="num">2/2</td><td class="num">1/1</td><td class="num">2/2</td>
+      <td>six-tier</td><td>results/gpt-oss-20b.json</td>
+    </tr>
+    <tr>
+      <td>GLM-4.7-Flash-AWQ</td><td class="num">10/13 (76.9%)</td>
+      <td class="num">3/3</td><td class="num">2/2</td><td class="num">1/2 <span class="pill bad">judge_incorrect</span></td><td class="num">2/2</td><td class="num">0/1 <span class="pill bad">debug_off_by_one</span></td><td class="num">2/2</td>
+      <td>six-tier</td><td>results/glm-4.7-flash-awq.json</td>
+    </tr>
+    <tr>
+      <td>Qwen3.6-35B-A3B (primary)</td><td class="num">4/5 (80%) <span class="pill warn">predates final harness bugfix</span></td>
+      <td class="num">2/3 <span class="pill bad">palindrome</span></td><td class="num">2/2</td><td class="num">—<span class="pill bad">failed informal spot-check</span></td><td class="num">—</td><td class="num">—</td><td class="num">—</td>
+      <td>Tier A/B</td><td>results/qwen3.6-35b-a3b.json</td>
+    </tr>
+    <tr>
+      <td>Qwen3.6-27B (dense)</td><td class="num">4/5 (80%)</td>
+      <td class="num">2/3 <span class="pill bad">expr_eval</span></td><td class="num">2/2</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td>
+      <td>Tier A/B</td><td>results/qwen3.6-27b.json</td>
+    </tr>
+    <tr>
+      <td>Qwen3.5-4B (judge)</td><td class="num">4/5 (80%)</td>
+      <td class="num">2/3 <span class="pill bad">expr_eval</span></td><td class="num">2/2</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td>
+      <td>Tier A/B</td><td>results/qwen3.5-4b-judge.json</td>
+    </tr>
+  </table>
+  </div>
+
+  <div class="callout warn">
+    <strong>The primary's 4/5 predates the harness's final bugfix</strong> (a fallback for extracting code from a model's reasoning trace when the final-answer field comes back empty — the exact failure mode its <code>palindrome</code> miss hit). It was never re-run under the final harness version like the other Tier A/B models were, so 4/5 is likely a conservative floor, not a fully apples-to-apples number against the others in this table.
+  </div>
+  <div class="callout">
+    <strong>Tier B (tool-calling) was perfect across every model that ran the original 5-task harness</strong> — 2/2, no exceptions — but the six-tier harness caught a real Tier B miss in GPT-OSS-20B (<code>multi_step_tool_call</code> — it called <code>run_tests</code> instead of the expected <code>write_file</code>), showing the newer harness generation surfaces failures the older one's smaller task set didn't.
+  </div>
+</section>
+
+<section id="footprint">
+  <h2>Resource footprint (vLLM only)</h2>
+  <p>KV-cache size, weights footprint, and max-concurrency-at-full-context data only exists for vLLM-served models — llama.cpp direct and Ollama don't expose an equivalent structured metric in this project's benchmark data. Sorted by max concurrency descending.</p>
+  <div class="scroll-x">
+  <table>
+    <tr>
+      <th>Model</th><th>Weights</th><th>KV cache</th><th>KV tokens</th><th>Max concurrency @ context</th><th>Date</th><th>Source</th>
+    </tr>
+    <tr>
+      <td>GPT-OSS-20B</td><td class="num">14.16 GiB</td><td class="num">95.81 GiB</td><td class="num">3,934,445</td>
+      <td class="num"><strong>30.02× @131072</strong> <span class="pill good">best recorded</span></td>
+      <td class="num">2026-07-24</td><td>results/gpt-oss-20b--vllm.txt</td>
+    </tr>
+    <tr>
+      <td>GLM-4.7-Flash-AWQ</td><td class="num">16.94 GiB</td><td class="num">92.87 GiB</td><td class="num">—</td>
+      <td class="num">28.10× @65536</td>
+      <td class="num">2026-07-23</td><td>MODEL_STACK_CATALOG.md<span class="pill warn">no results file</span></td>
+    </tr>
+    <tr>
+      <td>Gemma-4-26B-A4B-it</td><td class="num">48.5 GiB</td><td class="num">61.02 GiB</td><td class="num">1,328,176</td>
+      <td class="num">20.27× @65536</td>
+      <td class="num">2026-07-23</td><td>benchmark-report-2026-07-23.html</td>
+    </tr>
+    <tr>
+      <td>Qwen3.5-122B-A10B-AWQ-4bit (non-eager)</td><td class="num">73.58 GiB</td><td class="num">35.21 GiB</td><td class="num">1,264,154</td>
+      <td class="num">19.29× @65536</td>
+      <td class="num">2026-07-23</td><td>OPTIMIZATIONS.md narrative<span class="pill warn">no results file</span></td>
+    </tr>
+    <tr>
+      <td>Qwen3-Coder-Next-GPTQ-4bit (80B/~3B active)</td><td class="num">46.49 GiB <span class="pill dim">smaller than the 35B bf16 primary</span></td><td class="num">40.42 GiB</td><td class="num">1,721,978</td>
+      <td class="num">13.14× @131072</td>
+      <td class="num">2026-07-22</td><td>benchmark-report-2026-07-22.html</td>
+    </tr>
+    <tr>
+      <td>GPT-OSS-120B</td><td class="num">68.7 GiB</td><td class="num">41.31 GiB</td><td class="num">1,130,744</td>
+      <td class="num">8.63× @131072</td>
+      <td class="num">2026-07-24</td><td>results/gpt-oss-120b--vllm.txt</td>
+    </tr>
+    <tr>
+      <td>Qwen3.6-35B-A3B (primary)</td><td class="num">66.97 GiB</td><td class="num">18.49 GiB</td><td class="num">918,504</td>
+      <td class="num">7.01× @131072</td>
+      <td class="num">2026-07-22/23</td><td>benchmark-report-2026-07-22.html</td>
+    </tr>
+    <tr>
+      <td>Qwen3.6-27B (dense)</td><td class="num">51.1 GiB</td><td class="num">57.65 GiB</td><td class="num">906,957</td>
+      <td class="num">6.92× @131072</td>
+      <td class="num">2026-07-23</td><td>benchmark-report-2026-07-23.html</td>
+    </tr>
+    <tr>
+      <td>Qwen3.5-4B (judge)</td><td class="num">8.68 GiB</td><td class="num">13.6 GiB</td><td class="num">433,308</td>
+      <td class="num">3.31× @131072</td>
+      <td class="num">2026-07-22</td><td>benchmark-report-2026-07-22.html</td>
+    </tr>
+    <tr>
+      <td>Gemma-4-31B-it (dense)</td><td class="num">58.9 GiB</td><td class="num">50.45 GiB</td><td class="num">274,525</td>
+      <td class="num">4.19× @65536 <span class="pill warn">lowest recorded</span></td>
+      <td class="num">2026-07-23</td><td>benchmark-report-2026-07-23.html</td>
+    </tr>
+    <tr>
+      <td>Qwen2.5-VL-7B-Instruct <span class="pill dim">vision/OCR, not coding</span></td><td class="num">16 GiB (disk only)</td><td class="num">n/a</td><td class="num">n/a</td>
+      <td class="num">n/a <span class="pill dim">excluded from footprint pass</span></td>
+      <td class="num">2026-07-23</td><td>benchmark-report-2026-07-23.html</td>
+    </tr>
+  </table>
+  </div>
+  <div class="callout">
+    <strong>GPT-OSS-20B now holds the best concurrency headroom recorded in this project</strong> (30.02× @131072), beating GLM-4.7-Flash-AWQ's previous-best 28.10× @65536 — note the different context lengths (131072 vs 65536) mean this isn't a perfectly like-for-like comparison, but GPT-OSS-20B's combination of a tiny 14.16 GiB weights footprint and a longer served context while still winning on concurrency is a genuinely strong result.
+  </div>
+</section>
+
+<section id="quality">
+  <h2>Data quality — an honest accounting</h2>
+
+  <h3>Single-sample vs. averaged measurements</h3>
+  <ul class="findings">
+    <li class="good"><strong>vLLM numbers are the most rigorous in this project</strong> — every c1/c8 figure comes from <code>vllm bench serve</code> against a fixed random dataset (20 prompts @ c1, 100 prompts @ c8), a real load-generation tool, not a single manual request. Still single-run-per-configuration, not multi-trial-averaged (matching this project's established no-repeated-trials convention).</li>
+    <li class="good"><strong>llama.cpp direct's <code>llama-bench</code> numbers are averaged across internal repeated iterations</strong> (the ± figures, e.g. <code>342.55 ± 14.41</code>) — this is the tool's own built-in repeat-and-average behavior, the closest thing to statistical rigor in this project's speed data.</li>
+    <li class="bad"><strong>Ollama's numbers are single real-generation samples, not averaged benchmark runs.</strong> Every Ollama tok/s figure in this dashboard is derived from one <code>/api/generate</code> request's <code>eval_count</code>/<code>eval_duration</code> fields — reasoning-mode <code>&lt;think&gt;</code> traces inflate the token count in ways a dedicated benchmark tool would isolate. Treat Ollama-vs-other-engine ratios as directionally comparable, not precise.</li>
+    <li class="warn"><strong>Several numbers exist only as narrative prose in <code>OPTIMIZATIONS.md</code> or an older HTML report, not as a saved <code>results/</code> file</strong> — flagged inline throughout this dashboard with a "no results file" pill. This includes: GLM-4.7-Flash-AWQ's vLLM c1/c8 speed numbers, GLM-4.7-Flash's llama.cpp and Ollama numbers, Gemma-4-26B-A4B-it's llama.cpp numbers, and the 122B AWQ non-eager re-test. These are real measurements per this project's own documentation discipline, just not yet migrated to the newer <code>results/&lt;slug&gt;--&lt;engine&gt;.txt</code> convention adopted partway through the project.</li>
+    <li class="warn"><strong>The llama-server concurrent-serving benchmark is a hand-rolled concurrent-curl load test</strong>, not <code>vllm bench serve</code>-style tooling (that tool only targets vLLM) — a single run per concurrency level (c1, c4), cross-checked against llama.cpp's own per-request <code>timings</code> block and server-side <code>print_timing</code> log lines, but not a repeated-trial average.</li>
+  </ul>
+
+  <h3>Engines / models still untested or broken</h3>
+  <ul class="findings">
+    <li class="bad"><strong>Gemma-4-26B-A4B-it cannot run on Ollama at all</strong> on the current pinned version (0.17.7) — <code>unknown model architecture: 'gemma4'</code>. This is a genuine architecture-support gap in that specific Ollama build, not a config or download problem; a newer Ollama release almost certainly supports it (per later research in <code>OPTIMIZATIONS.md</code>, <code>gemma4</code> support landed in Ollama v0.21.0), but upgrading was deliberately deferred pending a broader Ollama-version review.</li>
+    <li class="warn"><strong>MTP (multi-token-prediction) speculative decoding could not be benchmarked for Qwen3.6-27B</strong> — the locally-downloaded plain GGUF doesn't ship MTP head tensors; a separate <code>unsloth/Qwen3.6-27B-MTP-GGUF</code> repo would be needed, and no new download was made per this session's standing check-in rule. The mechanism itself is confirmed real and correctly wired in the toolbox build (matches the upstream PR author's own invocation) — this is a missing-artifact gap, not a broken feature.</li>
+    <li class="warn"><strong>North-Mini-Code-1.0-w4a16, GPT-OSS-120B llama.cpp GGUF repack, Qwen3.5-122B-A10B GGUF, NVIDIA-Nemotron-3-Super-120B-A12B, and MiniMax-M2.7 are all UNTESTED-BUT-DOWNLOADED (or not yet downloaded)</strong> on this machine — reference numbers exist only from kyuz0's own external upstream <code>results.json</code> for the llama.cpp candidates, not reproduced locally.</li>
+    <li class="warn"><strong>Six of ten coding-capability entries in this dashboard only have the original 5-task Tier A/B harness result</strong> — only GLM-4.7-Flash-AWQ, GPT-OSS-120B, and GPT-OSS-20B have been run through the newer six-tier harness (Tier J/P/D/Q). Direct overall-score comparison across the two harness generations should be read as directional, not a precise apples-to-apples ranking, since the newer harness is strictly harder (more tasks, more failure surface).</li>
+    <li class="warn"><strong>Qwen2.5-VL-7B-Instruct has no coding-harness or footprint data</strong> at all — deliberately excluded as a vision/OCR specialist, not a coding candidate.</li>
+  </ul>
+
+  <h3>Known methodology caveats worth remembering</h3>
+  <ul class="findings">
+    <li class="bad"><strong>GPT-OSS's harmony chat format requires a different <code>vllm bench serve</code> invocation than every other model in this project.</strong> The standard <code>--backend openai-chat --endpoint /v1/chat/completions --ignore-eos</code> recipe fails 100% of the time against GPT-OSS-120B/20B (<code>openai_harmony.HarmonyError: Unexpected token 200002...</code>) because forcing generation past the model's natural stop token violates harmony's token grammar. Fix used: <code>--backend openai --endpoint /v1/completions</code> (bypasses the chat template/harmony parser). Confirmed via manual curl before trusting the benchmark tool's numbers — a genuine, necessary methodology deviation for this model family, not a silent substitution.</li>
+    <li class="warn"><strong>Ollama's MoE-vs-dense overhead gap is only a 2-MoE / 1-dense sample</strong> — GLM-4.7-Flash (~5.4×) and Qwen3.6-35B-A3B (~5.7×) both show a large llama.cpp-vs-Ollama gap, while Qwen3.6-27B (dense, ~17%) shows a much smaller one. A real, repeated pattern worth flagging prominently (see Biggest Findings above), but not a controlled ablation — the mechanism (MoE routing overhead interacting with Ollama's Go scheduler) is a hypothesis, not confirmed.</li>
+    <li class="warn"><strong>GPT-OSS-120B's unusually slow c1 throughput (8.46 tok/s) has an unconfirmed root-cause hypothesis</strong> — plausibly this vLLM build's MXFP4 MoE kernel path (<code>MoEPrepareAndFinalizeNoDPEPMonolithic</code>) not being a fully optimized low-bit matmul on gfx1151 (no native FP4 matrix-core hardware on RDNA3.5). Not confirmed via kernel profiling. The sibling GPT-OSS-20B performs normally for its size class using the identical format, which argues against a blanket "MXFP4 is slow here" explanation and toward something specific to the 120B tier's much larger expert pool.</li>
+    <li class="warn"><strong>Background download-queue contention measurably affects prompt-processing (PP) speed but not generation (TG) speed</strong> on llama.cpp direct — a contaminated Gemma-4-26B-A4B-it run showed pp512 1192.75 vs a clean run's 1251.33 (~4.9% hit), while tg128 was statistically unaffected (54.50 vs 53.96, within run-to-run noise). PP-sensitive benchmarks should pause the download queue first; TG-only comparisons are more robust to background contention.</li>
+    <li class="warn"><strong>The 5-task Tier A/B harness underwent 6 real bugfixes during development</strong> (documented in <code>benchmark-report-2026-07-23.html</code>) — most relevantly, a fallback for extracting code from a model's reasoning trace when the final-answer field comes back empty. The production primary's 4/5 score predates this fix and is likely a conservative floor, not a fully comparable number against the other Tier A/B results in this dashboard's coding table.</li>
+    <li class="good"><strong>The llama-server concurrent-serving correctness check was run deliberately before any throughput number was trusted</strong>, given two real open upstream bugs: a HIP/ROCm-specific cross-request corruption bug (<code>ggml-org/llama.cpp#25992</code>, still open) and an older, unresolved (auto-closed-stale, never actually fixed) RADV concurrent-slot-hang report (<code>#20906</code>) on the same Vulkan/RADV backend this project uses. The check passed cleanly (4 distinguishable concurrent prompts, all correct, no cross-contamination) before any tok/s number was measured.</li>
+  </ul>
+</section>
+
+<footer>
+  Synthesized from <code>MODEL_STACK_CATALOG.md</code>, <code>results/*.json</code>, <code>results/*.txt</code>, <code>OPTIMIZATIONS.md</code>, and the prior <code>docs/benchmark-report-2026-07-22.html</code> / <code>docs/benchmark-report-2026-07-23.html</code> reports on <code>local-ai-machine</code>, 2026-07-24. Every number traces to one of those sources — see the per-row "Source" column throughout. This is a synthesis/index document, not a new benchmark run; no new measurements were taken to produce it.
+</footer>
+
+</div>
+</body>
+</html>
