@@ -109,6 +109,22 @@ let
     # started yet - he wants the infra ready without spending bandwidth
     # right now (see decision log).
     { name = "north-mini-code-1.0-w4a16"; repo = "CohereLabs/North-Mini-Code-1.0-w4a16"; }
+
+    # Ollama benchmark batch (Phase 5.6), approved by Chris 2026-07-24 —
+    # GGUF (via trusted unsloth conversions), single Q4_K_M file per model
+    # via hfFiles, NOT the whole GGUF repo (which bundles many redundant
+    # quant variants). Selected as the "most promising" subset of the
+    # existing lineup to re-test under Ollama/llama.cpp rather than the
+    # full 9+ model set - see the decision log for the "less promising,
+    # try later" list that didn't make this cut. Stored under
+    # /var/lib/ai-models/ollama-* alongside the vLLM-format models (own
+    # subdirectory, no collision) so the existing download/verification
+    # machinery applies unchanged; mounted read-only into the ollama
+    # container for `ollama create` registration once downloaded.
+    { name = "ollama-gemma-4-26b-a4b-it"; repo = "unsloth/gemma-4-26B-A4B-it-GGUF"; hfFiles = [ "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf" ]; }
+    { name = "ollama-qwen3.6-35b-a3b"; repo = "unsloth/Qwen3.6-35B-A3B-GGUF"; hfFiles = [ "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf" ]; }
+    { name = "ollama-qwen3.6-27b"; repo = "unsloth/Qwen3.6-27B-GGUF"; hfFiles = [ "Qwen3.6-27B-Q4_K_M.gguf" ]; }
+    { name = "ollama-glm-4.7-flash"; repo = "unsloth/GLM-4.7-Flash-GGUF"; hfFiles = [ "GLM-4.7-Flash-Q4_K_M.gguf" ]; }
   ];
 in
 {
@@ -336,8 +352,13 @@ in
   # otherwise look done on the next boot and never retry. Reuses the exact
   # HF_HUB_DISABLE_XET / timeout env vars and `nix shell ... hf download`
   # invocation already proven to work reliably on this network path.
+  #
+  # hfFiles (optional): pull specific file(s) instead of the whole repo -
+  # needed for GGUF repos, which typically bundle many quant variants as
+  # separate multi-GB files; downloading the whole repo would waste the
+  # same kind of bandwidth the hfExclude fix above was built to avoid.
   systemd.services = let
-    mkModelDownloadService = { name, repo, hfExclude ? [] }: {
+    mkModelDownloadService = { name, repo, hfExclude ? [], hfFiles ? [] }: {
       description = "Download ${repo} to /var/lib/ai-models/${name}";
       after = [ "network-online.target" ];
       wants = [ "network-online.target" ];
@@ -398,7 +419,9 @@ in
         DEST=/var/lib/ai-models/${name}
         set +e
         ${pkgs.nix}/bin/nix --extra-experimental-features "nix-command flakes" shell nixpkgs#python3Packages.huggingface-hub \
-          --command hf download ${repo} --local-dir "$DEST" \
+          --command hf download ${repo} \
+          ${lib.concatMapStringsSep " " (f: "'${f}'") hfFiles} \
+          --local-dir "$DEST" \
           ${lib.concatMapStringsSep " " (p: "--exclude '${p}'") hfExclude} &
         HF_PID=$!
 

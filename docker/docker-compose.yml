@@ -289,6 +289,11 @@ services:
       - "127.0.0.1:11434:11434"
     volumes:
       - ollama_data:/root/.ollama
+      # Read-only access to the GGUF files downloaded for the Ollama
+      # benchmark batch (ollama-* entries in configuration.nix's models
+      # list) - lets `ollama create <name> -f Modelfile` register them
+      # directly without a redundant copy into ollama_data.
+      - /var/lib/ai-models:/gguf-source:ro
 
 volumes:
   turnstone_postgres_data:
