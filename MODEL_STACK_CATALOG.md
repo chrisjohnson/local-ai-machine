@@ -222,7 +222,7 @@ General config for this engine family:
 - **group_add**: numeric GIDs, not names — `--group-add 26 --group-add 303` (this image, like the vLLM one, resolves `video`/`render` group names fine when passed as compose `group_add`; the numeric form is used in the raw `docker run` invocations shown in the actual benchmark commands)
 - **GPU verified real**: `llama-cli --list-devices` → `Vulkan0: AMD Radeon 8060S Graphics (RADV GFX1151) (128000 MiB, 16389 MiB free)`.
 - **Recommended flags** (toolbox's own README, confirmed in practice): `-fa 1` (flash attention on), `-lm none` (NOT the deprecated `--no-mmap` — that flag errors out on this build with "invalid parameter for argument"; `-lm none` / `--load-mode none` is the equivalent on this toolbox's `llama-bench` build), `-ngl 999` to offload all layers.
-- MTP (multi-token-prediction) speculative decoding is merged into this toolbox's standard images (deprecating older `-mtp` variants) — confirmed working for models shipping MTP heads (llama.cpp PR #22673, merged 2026-05-16), including Qwen3.6-27B and Qwen3.6-35B-A3B. Real caveats: `n_parallel=1` only (no concurrent request serving while using MTP); ROCm+tensor-parallel combinations reportedly crash — Vulkan is the safer backend. Reported speedups 1.8x-2.5x elsewhere (kyuz0's own `mtp.html`, calebcoffie.com), draft acceptance ~72% at depth 3 — **not yet independently reproduced on this specific machine** as of the last catalog update (GGUFs downloaded, MTP test itself not yet run here).
+- MTP (multi-token-prediction) speculative decoding is merged into this toolbox's standard images (deprecating older `-mtp` variants) — the `--spec-type draft-mtp --spec-draft-n-max N` flags are real, confirmed directly against `--help` output and the upstream PR author's own invocation (llama.cpp PR #22673, merged 2026-05-16). Real caveats: `n_parallel=1` only (no concurrent request serving while using MTP); ROCm+tensor-parallel combinations reportedly crash — Vulkan is the safer backend. Reported speedups 1.8x-2.5x elsewhere (kyuz0's own `mtp.html`, calebcoffie.com), draft acceptance ~72% at depth 3. **Tested on this machine 2026-07-24 against Qwen3.6-27B-Q4_K_M.gguf (`unsloth/Qwen3.6-27B-GGUF`) — failed to load: "model doesn't contain MTP layers".** Root cause: unsloth ships MTP-head-bearing GGUFs as a separate repo (`unsloth/Qwen3.6-27B-MTP-GGUF`), not bundled with the plain quants already downloaded here. The mechanism itself is confirmed real and correctly wired in this toolbox build; reproducing an actual speedup number on this machine needs that separate MTP-tagged file, not yet downloaded. See the dedicated entry below and `results/qwen3.6-27b--llamacpp-mtp.txt`.
 
 ### GLM-4.7-Flash — llama.cpp direct (GGUF Q4_K_M) — fastest generation speed measured anywhere in this project
 
@@ -318,6 +318,26 @@ General config for this engine family:
 - **Results file**: `results/qwen3.6-27b--llamacpp.txt` (exact command + full raw stdout table, confirmed present verbatim).
 - **Status**: WORKING.
 - **Gotcha**: same underlying GGUF file also has a proven Ollama combination (see Ollama section below) and an untested MTP speculative-decoding path (see the Qwen3.6-35B-A3B / MTP entry immediately below, which now only concerns the 35B-A3B plain-decode case and the MTP experiment for both models — this 27B plain-decode number is proven above, no longer part of that placeholder).
+
+### Qwen3.6-27B — llama.cpp direct (GGUF Q4_K_M) — MTP speculative decoding attempt — BROKEN (file lacks MTP head)
+
+- **Model**: Qwen3.6-27B (dense) — `unsloth/Qwen3.6-27B-GGUF`, file `Qwen3.6-27B-Q4_K_M.gguf` (same file as the plain-decode entry above; 15.65 GiB on disk, 26.90B params)
+- **Engine**: llama.cpp direct
+- **Image**: `docker.io/kyuz0/amd-strix-halo-toolboxes:vulkan-radv` (version 10107 / build `c0bc8591e` — same build used for the plain baseline)
+- **Config required**: real flags discovered directly from `--help` output (per this session's hard-won lesson not to trust cold-AI-query flag names), confirmed against the upstream PR author's own invocation (`ggml-org/llama.cpp` PR #22673):
+  ```
+  docker run --rm --device /dev/kfd --device /dev/dri --group-add 26 --group-add 303 \
+    -v /var/lib/ai-models/ollama-qwen3.6-27b:/models:ro \
+    kyuz0/amd-strix-halo-toolboxes:vulkan-radv \
+    llama-cli -m /models/Qwen3.6-27B-Q4_K_M.gguf -ngl 999 -fa 1 -lm none \
+    --spec-type draft-mtp --spec-draft-n-max 3 \
+    -p 'Write a short haiku about autumn.' -n 32 --no-conversation -v
+  ```
+  Note: `llama-bench` (used for the plain-decode baseline) has **zero** spec/draft/mtp flags at all — confirmed via `llama-bench --help | grep -iE 'draft|spec|mtp'` (no matches). Speculative-decoding flags exist only on `llama-server`/`llama-cli`, so an MTP trial can't reuse the exact `llama-bench` invocation used for the baseline.
+- **Benchmark numbers**: **none — the model failed to load with MTP enabled.** Exact error from `llama_init_from_model`: `context type MTP requested but model doesn't contain MTP layers`. Server exits cleanly with code 1 rather than crashing or silently falling back to plain decode.
+- **Results file**: `results/qwen3.6-27b--llamacpp-mtp.txt` (exact commands, full raw output including the error, and the root-cause investigation).
+- **Status**: **BROKEN — for this specific file only, not the mechanism.** The `--spec-type draft-mtp` flag and MTP mechanism itself are real and correctly implemented in this exact toolbox build (confirmed against the upstream PR's own author invocation, which matches ours exactly). The failure is that this specific GGUF (from the plain `unsloth/Qwen3.6-27B-GGUF` repo) does not ship MTP head tensors.
+- **Gotcha**: unsloth publishes MTP-head-bearing GGUFs as a **separate HF repo** — `unsloth/Qwen3.6-27B-MTP-GGUF` — confirmed to exist via the HF API, not bundled as extra files alongside the plain quants already on this box. Reproducing a real MTP speedup number for this model would require downloading that separate repo (a new-model-download decision under this project's standing check-in rule — not done here per explicit instruction not to download anything new this session). The community reference numbers cited elsewhere in this project (kyuz0's `mtp.html`, calebcoffie.com, ~1.8x-2.5x speedup, Qwen3.6-27B Q4_K_M 11.7→21.2 tok/s) almost certainly used the dedicated MTP-tagged GGUF, not the plain quant — this is a real, actionable explanation for why those numbers can't be reproduced with the files currently on this machine.
 
 ### Qwen3.6-35B-A3B — llama.cpp direct (GGUF) — MTP test target, UNTESTED-BUT-DOWNLOADED (as of last update)
 

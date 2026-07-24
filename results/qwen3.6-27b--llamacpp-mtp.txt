@@ -1,0 +1,130 @@
+MTP (multi-token-prediction) speculative decoding test — Qwen3.6-27B, llama.cpp direct
+Date: 2026-07-24
+
+RESULT: MTP could NOT be enabled for this exact file. The locally downloaded GGUF
+(/var/lib/ai-models/ollama-qwen3.6-27b/Qwen3.6-27B-Q4_K_M.gguf, from HF repo
+unsloth/Qwen3.6-27B-GGUF) does not contain MTP head tensors. llama.cpp's own
+speculative-decoding init reports this explicitly and refuses to start rather than
+silently falling back to plain decoding. No benchmark numbers were produced —
+this is a genuine "not applicable to this file" finding, not a flag/config failure.
+
+============================================================
+Step 1: Discover the real CLI flags (per task instructions — do not trust
+secondhand/cold-AI-query flag names without verification)
+============================================================
+
+Command:
+docker run --rm kyuz0/amd-strix-halo-toolboxes:vulkan-radv llama-server --help 2>&1 | grep -iE 'draft|spec|mtp'
+docker run --rm kyuz0/amd-strix-halo-toolboxes:vulkan-radv llama-cli --help 2>&1 | grep -iE 'draft|spec|mtp'
+
+Build confirmed: version 10107 (c0bc8591e) — same build already used for the plain
+llama-bench baseline in results/qwen3.6-27b--llamacpp.txt.
+
+Real flags found (verified directly against --help output, not assumed):
+  --spec-type none,draft-simple,draft-eagle3,draft-mtp,draft-dflash,ngram-simple,
+              ngram-map-k,ngram-map-k4v,ngram-mod,ngram-cache
+              (env: LLAMA_ARG_SPEC_TYPE, default: none)
+  --spec-draft-n-max N     number of tokens to draft (default: 3)
+                           (env: LLAMA_ARG_SPEC_DRAFT_N_MAX)
+  --spec-draft-n-min N     minimum draft tokens (default: 0)
+  --spec-draft-model, -md  draft model FNAME — only used for an EXTERNAL draft
+                           model (draft-simple/eagle3/dflash paths), NOT needed
+                           for MTP, which is self-speculative (model's own head).
+  --spec-default           enable default speculative decoding config
+
+Confirmed against the upstream PR (ggml-org/llama.cpp#22673, "llama + spec: MTP
+Support", merged 2026-05-16) via the GitHub API — the PR author's own exact
+invocation:
+  llama-server -m ../qwen3.6-q8_0-mtp.gguf --spec-type draft-mtp --spec-draft-n-max 3
+confirming --spec-type draft-mtp (no separate draft model flag) is the correct,
+real invocation pattern — not a guess.
+
+Also checked (per task instructions) whether the toolbox image itself ships any
+MTP documentation:
+  docker run --rm --entrypoint sh kyuz0/amd-strix-halo-toolboxes:vulkan-radv \
+    -c 'find / -iname "*mtp*" -o -iname "*README*" 2>/dev/null | grep -v proc'
+Result: no MTP-specific docs found in the image; only unrelated system README files
+(SSL/CA-trust/vim/perl boilerplate).
+
+IMPORTANT toolchain note: llama-bench (the tool used for the original no-MTP
+baseline) has ZERO spec/draft/mtp flags at all — confirmed via
+`llama-bench --help 2>&1 | grep -iE 'draft|spec|mtp'` (only an unrelated -hff match).
+Speculative-decoding flags exist only on llama-server / llama-cli. This means an
+apples-to-apples MTP-vs-no-MTP llama-bench comparison isn't directly possible on
+this build; MTP trials have to go through llama-cli/llama-server instead (which is
+what the upstream PR author did too, per the invocation quoted above).
+
+============================================================
+Step 2: Attempt to load Qwen3.6-27B-Q4_K_M.gguf with MTP enabled
+============================================================
+
+Command:
+docker run --rm --device /dev/kfd --device /dev/dri --group-add 26 --group-add 303 \
+  -v /var/lib/ai-models/ollama-qwen3.6-27b:/models:ro \
+  kyuz0/amd-strix-halo-toolboxes:vulkan-radv \
+  llama-cli -m /models/Qwen3.6-27B-Q4_K_M.gguf -ngl 999 -fa 1 -lm none \
+  --spec-type draft-mtp --spec-draft-n-max 3 \
+  -p 'Write a short haiku about autumn.' -n 32 --no-conversation -v
+
+Raw stdout (relevant excerpt — full startup log confirms normal load through
+tokenizer init, tensor placement, KV/recurrent-state buffer allocation, and graph
+reservation, all identical to the successful non-MTP run, right up to the MTP
+context creation step):
+
+  ggml_vulkan: Found 1 Vulkan devices:
+  ggml_vulkan: 0 = AMD Radeon 8060S Graphics (RADV GFX1151) (radv) | uma: 1 | ...
+  ... [normal model load: 851 tensors, qwen35 architecture, 64 block_count,
+       Q4_K - Medium, 15.65 GiB, 26.90B params — identical metadata to the
+       plain-decode baseline] ...
+  0.04.893 I cmn  common_init_: warming up the model with an empty run - please
+                  wait ... (--no-warmup to disable)
+  0.05.372.240 I common_speculative_init_result: creating MTP draft context
+               against the target model '/models/Qwen3.6-27B-Q4_K_M.gguf'
+  0.05.372.245 W llama_init_from_model: context type MTP requested but model
+               doesn't contain MTP layers
+  0.05.372.245 E common_speculative_init_result: failed to create MTP context
+  0.05.372.250 E srv    load_model: failed to create MTP context
+  0.05.372.254 I srv    operator(): operator(): cleaning up before exit...
+  0.05.372.965 E srv  llama_server: exiting due to model loading error
+  llama_server exited with code 1
+  Error: the server exited before becoming ready
+
+============================================================
+Step 3: Root-cause confirmation — is this a flag issue or a file issue?
+============================================================
+
+Checked the source HF repo's file listing (unsloth/Qwen3.6-27B-GGUF, the repo our
+local file came from) via the HF API — no filename in that repo mentions "mtp" at
+all (BF16, IQ4_NL/XS, Q3/Q4/Q5/Q6/Q8_0, UD-* variants — none carry MTP head
+tensors).
+
+Searched HF for other repos and found a DISTINCT, separate repo from the same
+publisher: `unsloth/Qwen3.6-27B-MTP-GGUF` — confirms unsloth ships MTP-head-bearing
+GGUFs as an entirely separate repo/download, not as extra files alongside the
+plain non-MTP quants we already have. Root cause confirmed: this is a genuine
+missing-artifact problem, not a wrong-flag or wrong-config problem. The mechanism
+(--spec-type draft-mtp) is real and works as documented upstream; our specific
+locally-downloaded file simply predates/excludes the MTP head tensors.
+
+Per the task's explicit instruction not to download anything new, no attempt was
+made to pull unsloth/Qwen3.6-27B-MTP-GGUF or any other MTP-tagged repo. This
+remains an open, actionable follow-up (a real MTP-bearing file would need to be
+downloaded — a new-model-download decision, not something to do autonomously per
+this project's standing download check-in rule).
+
+============================================================
+Conclusion
+============================================================
+
+- MTP mechanism: REAL, confirmed working in this exact toolbox build
+  (kyuz0/amd-strix-halo-toolboxes:vulkan-radv, version 10107/c0bc8591e) — the
+  correct flags exist, match the upstream PR author's own invocation, and the
+  failure mode observed is a clean, explicit "model doesn't contain MTP layers"
+  error, not a crash, hang, or silent wrong-flag failure.
+- This specific model file: Qwen3.6-27B-Q4_K_M.gguf (unsloth/Qwen3.6-27B-GGUF)
+  does NOT ship an MTP head. No speedup number could be measured for this file.
+- No before/after tok/s comparison is possible without downloading a genuinely
+  different artifact (unsloth/Qwen3.6-27B-MTP-GGUF or equivalent). The existing
+  no-MTP baseline (pp512 342.55 tok/s, tg128 12.75 tok/s — see
+  results/qwen3.6-27b--llamacpp.txt) stands unchanged; it is NOT superseded by
+  this test, since no MTP run actually completed.

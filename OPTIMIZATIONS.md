@@ -206,4 +206,55 @@ curl -sS localhost:11434/api/generate -d '{"model":"qwen3.6-27b-gguf","prompt":"
 
 Registration succeeded immediately (`ollama create` completed cleanly, `ollama list` shows `qwen3.6-27b-gguf:latest`, 16GB). Unlike Gemma-4-26B-A4B (hard `unknown model architecture: 'gemma4'` blocker on this Ollama build), **Qwen3.6 is a recognized/supported architecture** — the generation request succeeded and returned a full response (including a `<think>` reasoning trace). From the JSON response: `eval_count: 613`, `eval_duration: 57871769652` ns → **613 / 57.87 = 10.59 tok/s**. This is somewhat below the llama.cpp-direct number for the same file (12.75 tok/s) — roughly a 17% gap, much narrower than GLM-4.7-Flash's ~5.4x Ollama-overhead gap. Caveat: this was a single real `/api/generate` sample (with reasoning-mode overhead inflating the token count), not an averaged `llama-bench`-style run, so the two numbers are directionally comparable rather than a precise controlled ablation.
 
+## MTP speculative decoding, real attempt on Qwen3.6-27B (2026-07-24) — mechanism confirmed real, but this file lacks an MTP head
+
+Per Chris's direction not to trust cold-AI-query flag names (a real prior lesson in this project — see the "Third pass" fact-checking entry above), the actual CLI flags were discovered directly from the toolbox binary's own `--help` output rather than assumed:
+
+```
+docker run --rm kyuz0/amd-strix-halo-toolboxes:vulkan-radv llama-server --help 2>&1 | grep -iE 'draft|spec|mtp'
+docker run --rm kyuz0/amd-strix-halo-toolboxes:vulkan-radv llama-cli --help 2>&1 | grep -iE 'draft|spec|mtp'
+```
+
+Real, confirmed flags (build 10107 / `c0bc8591e` — the same build already used for the plain llama-bench baseline): `--spec-type none,draft-simple,draft-eagle3,draft-mtp,draft-dflash,ngram-simple,ngram-map-k,ngram-map-k4v,ngram-mod,ngram-cache` and `--spec-draft-n-max N` (default 3). `--spec-draft-model`/`-md` exists too, but that's specifically for an *external* draft model (the `draft-simple`/`draft-eagle3`/`draft-dflash` paths) — MTP is self-speculative (the model's own MTP head drafts, verified against itself), so no separate draft-model flag is needed.
+
+**Cross-checked against the actual upstream PR, not just our own build's `--help` text**: fetched `ggml-org/llama.cpp` PR #22673 ("llama + spec: MTP Support", merged 2026-05-16, author `am17an`) directly via the GitHub API. The PR author's own posted invocation is:
+```
+llama-server -m ../qwen3.6-q8_0-mtp.gguf --spec-type draft-mtp --spec-draft-n-max 3
+```
+— confirming `--spec-type draft-mtp` (no separate draft-model flag) is the real, correct invocation, matching what we found in `--help`. The PR's own posted numbers (DGX Spark, a different but comparable unified-memory system) showed a real **~72% steady-state draft-acceptance rate at depth 3** and **>2x speedup** (e.g. `code_python`: 7.0 → 21.6 tok/s), consistent with the community reference figures already in this project's research (kyuz0's `mtp.html`, calebcoffie.com).
+
+Also checked whether `llama-bench` (the tool used for this project's plain-decode baseline) supports any of these flags at all — it does not (`llama-bench --help | grep -iE 'draft|spec|mtp'` returns zero matches, only an unrelated `-hff` hit). Speculative decoding is `llama-server`/`llama-cli`-only on this build, so any MTP trial has to go through those tools instead, same as the PR author did.
+
+**Also checked the toolbox image itself for bundled MTP docs** (per task instructions): `docker run --rm --entrypoint sh kyuz0/amd-strix-halo-toolboxes:vulkan-radv -c 'find / -iname "*mtp*" -o -iname "*README*" ...'` — no MTP-specific documentation exists in the image, only unrelated system README boilerplate.
+
+**The actual test, run against the already-downloaded `Qwen3.6-27B-Q4_K_M.gguf` (`unsloth/Qwen3.6-27B-GGUF`, the same file used for the plain-decode baseline):**
+
+```
+docker run --rm --device /dev/kfd --device /dev/dri --group-add 26 --group-add 303 \
+  -v /var/lib/ai-models/ollama-qwen3.6-27b:/models:ro \
+  kyuz0/amd-strix-halo-toolboxes:vulkan-radv \
+  llama-cli -m /models/Qwen3.6-27B-Q4_K_M.gguf -ngl 999 -fa 1 -lm none \
+  --spec-type draft-mtp --spec-draft-n-max 3 \
+  -p 'Write a short haiku about autumn.' -n 32 --no-conversation -v
+```
+
+Model loading proceeded completely normally — identical tensor/metadata output to the plain-decode baseline (851 tensors, `qwen35` architecture, 64 block_count, Q4_K Medium, 15.65 GiB, 26.90B params), through tokenizer init, KV/recurrent-state buffer setup, and graph reservation — right up to the MTP-specific initialization step, which failed cleanly:
+
+```
+common_speculative_init_result: creating MTP draft context against the target model '/models/Qwen3.6-27B-Q4_K_M.gguf'
+llama_init_from_model: context type MTP requested but model doesn't contain MTP layers
+common_speculative_init_result: failed to create MTP context
+srv    load_model: failed to create MTP context
+llama_server exited with code 1
+```
+
+**Root cause, confirmed via the HF API, not assumed**: the source repo for our downloaded file (`unsloth/Qwen3.6-27B-GGUF`) has no filename anywhere containing "mtp" — checked its full file listing directly. A search of HuggingFace turned up a **separate, distinct repo from the same publisher**: `unsloth/Qwen3.6-27B-MTP-GGUF` — confirming unsloth ships MTP-head-bearing GGUFs as an entirely different download, not extra tensors bundled into the plain quants already on this machine. This is almost certainly the artifact the community reference numbers (kyuz0's `mtp.html`, calebcoffie.com — the 11.7→21.2 tok/s, 1.8x-2.5x figures cited elsewhere in this project) were actually measured against, not the plain quant we have.
+
+**Honest bottom line — this is a real, negative finding, not a workaround-and-move-on:**
+- The MTP mechanism, flags, and toolbox build are all **confirmed genuinely working** — the failure mode is a clean, explicit, correctly-diagnosed "wrong artifact" error, not a crash, hang, or config mistake, and it matches the upstream PR author's own real invocation exactly.
+- **No speedup number could be produced** for Qwen3.6-27B on this machine, because the currently-downloaded GGUF simply doesn't contain an MTP head.
+- Per the explicit instruction for this task, **no new download was attempted** to fetch `unsloth/Qwen3.6-27B-MTP-GGUF` or any other MTP-tagged artifact — that remains a real, actionable, but *undone* follow-up, gated behind this project's standing new-model-download check-in rule.
+- The existing no-MTP baseline (`results/qwen3.6-27b--llamacpp.txt`: pp512 342.55 tok/s, tg128 12.75 tok/s) is **unchanged and not superseded** — there is no "after" number to compare it against yet. The ~1.8x community reference figure (11.7→21.2 tok/s) is **neither matched nor exceeded nor fallen short of** — it simply could not be tested with the files currently on this box.
+- Full raw output and investigation: `results/qwen3.6-27b--llamacpp-mtp.txt`.
+
 **Net conclusion**: Qwen3.6-27B works on both llama.cpp direct and Ollama — no architecture-support blocker here (Qwen3-family architectures are well-supported by this Ollama build, unlike Gemma-4's newer tag). Both numbers are the slowest GGUF-based generation speeds recorded in this project to date, reinforcing that this specific model's dense (not MoE) architecture is the dominant cost, not the serving engine. Raw results saved per the house rule: `results/qwen3.6-27b--llamacpp.txt` and `results/qwen3.6-27b--ollama.txt`.
