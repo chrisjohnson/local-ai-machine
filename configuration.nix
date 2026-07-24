@@ -386,6 +386,10 @@ in
     # that's actually what's wanted. "nc" comes from netcat-gnu; "dig" from
     # dnsutils; "netstat" from net-tools.
     jq ripgrep yq zsh vim asdf-vm fzf fd netcat-gnu dnsutils curl lsof net-tools
+    # Importable-pyyaml python3, so scripts/coding_benchmark.py and
+    # scripts/benchmark_orchestrator.py can run directly on the box (no more
+    # Mac-side SSH-tunnel dependency for the coding harness).
+    (pkgs.python3.withPackages (ps: [ ps.pyyaml ]))
   ];
 
   # Herdr agent-multiplexer daemon (per-user, persists across SSH
