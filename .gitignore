@@ -2,6 +2,7 @@ secrets/*.env
 secrets/*.txt
 secrets/synology_backup_key
 secrets/synology_backup_key.pub
+secrets/chris_github_key
 !secrets/*.example
 .env
 __pycache__/

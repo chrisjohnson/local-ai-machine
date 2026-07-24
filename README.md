@@ -25,6 +25,12 @@ local-ai-machine/
 ├── hardware-configuration.nix # Auto-generated host hardware specs
 ├── secrets/
 │   ├── synology_backup_key    # SSH private key for ai_backup_svc (rsync-over-SSH)
+│   ├── chris_github_key       # Copy of Chris's personal SSH key; lets the box
+│   │                          # `git pull` from the private GitHub repo. Deployed
+│   │                          # on the box as ~/.ssh/github_deploy_key (distinct
+│   │                          # name, doesn't clobber any existing box key),
+│   │                          # referenced via a `Host github.com` block in the
+│   │                          # box's ~/.ssh/config.
 │   ├── wifi.env                # Fallback WiFi SSID/PSK (NetworkManager)
 │   ├── chris-password-hash.txt # Local console password fallback (SSH stays key-only)
 │   └── hf-token.env            # HuggingFace token, sourced at shell login for faster downloads
@@ -1364,6 +1370,12 @@ Phase 3 optimization work complete: (a) AITER — tested, crashes across 3 archi
 **Task 4.4 complete** — see Section 8 for the full writeup. Real finding: node-exporter's hwmon collector already surfaces GPU temp/power/clock for free; a new textfile-collector script (`scripts/amdgpu-metrics.sh`) + 10s systemd timer covers the amdgpu-specific values (busy %, GTT/VRAM) hwmon doesn't. Dashboard grew from 10 to 17 panels.
 
 **Explicit standing instruction from Chris**: do not start Phase 5 (or anything beyond it) without checking in first. The batching sweep and Task 4.4 were both completed and reported; work is currently paused here awaiting his go-ahead.
+
+### Decision Log — 2026-07-24: Git/infra cleanup — main fast-forwarded, box reconciliation stopped mid-way on real divergence
+
+**Mac-side git cleanup complete.** The `worktree-eventual-stirring-sunrise` branch (the one with all real project history — this repo's ~20 commits of benchmarking/catalog work) was a clean fast-forward descendant of `origin/main`'s old 2-commit tip. Fast-forwarded `origin/main` up to it (merge, not a real 3-way merge — verified `merge-base` equalled `origin/main`'s prior tip first), then fast-forwarded the primary Mac worktree to match. The now-redundant `worktree-eventual-stirring-sunrise` branch was deleted on the remote only.
+
+**Box (`ssh local-ai-machine`, `/home/chris/local-ai-machine`) reconciliation partially complete, then deliberately stopped.** Added `origin` (`git@github.com:chrisjohnson/local-ai-machine.git`) via a dedicated deploy key (see `secrets/chris_github_key` note above), fetched successfully, renamed the box's old disconnected `master` to `master-old-standalone-snapshot` (preserved, not discarded). But checking out a new `main` tracking `origin/main` was refused by git because the box's **working-tree** `README.md` and `configuration.nix` are not byte-identical to `origin/main` — unlike every other previously-diffed file (`docker/docker-compose.yml`, `docker/litellm/config.yaml`, `docker/prometheus/prometheus.yml`, the Grafana dashboard JSON), which really were pure bookkeeping drift. These two are a genuinely older *content* snapshot — missing ~30 commits' worth of real evolution (the Turnstone safety-judge redesign, docker-compose-app's systemd restructuring, the models-list hoist into a shared `let` binding, Open WebUI addition, Prometheus/Grafana real wiring, etc.). Per standing instruction, did not force-reset over this — the box is left on `master-old-standalone-snapshot` with `origin` fetched and ready, `main` not yet created. **Next step for whoever picks this up:** decide whether the box's live `configuration.nix`/`README.md` reflect any real running-state changes that need to be reconciled *into* the repo before checking out `origin/main` (unlikely given nixos-rebuild is the only thing that actually changes running state, but not yet verified), or whether it's safe to just take `origin/main`'s version wholesale. Until that's resolved, Phase 3 (nixos-rebuild switch to pick up the new `llamacpp-qwen3.6-35b-a3b-mtp` model entry) is also on hold on the box.
 
 ### Open Next Steps — resume here after context compaction
 
