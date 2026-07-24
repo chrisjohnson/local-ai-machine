@@ -269,22 +269,31 @@ services:
   # separate go-ahead per the standing download-approval rule. Bound to
   # loopback only, same reasoning as vllm-primary/judge above.
   ollama:
-    image: ollama/ollama:0.17.7-rocm
+    # Plain tag, NOT :0.17.7-rocm - real bug found 2026-07-24: the -rocm
+    # tag's ROCm backend crashes outright on this chip ("cudaMalloc
+    # failed: out of memory" despite <200MiB of 124GiB actually in use),
+    # and worse, the -rocm image doesn't even bundle Vulkan libraries at
+    # all (confirmed directly - no libvulkan/libggml-vulkan.so anywhere
+    # in that image), so hiding ROCm devices on it just falls through to
+    # CPU, not Vulkan. This plain tag DOES bundle real Vulkan libs
+    # (libvulkan_radeon.so / RADV, libggml-vulkan.so - confirmed via
+    # `find`), the same driver already proven working for llama.cpp
+    # direct on this exact hardware.
+    image: ollama/ollama:0.17.7
     container_name: ollama
     restart: unless-stopped
-    # OLLAMA_VULKAN=1: real bug found 2026-07-24 - the ROCm backend
-    # crashes on this exact chip with "cudaMalloc failed: out of memory"
-    # even with GPU memory nearly empty (confirmed via sysfs - <200MiB
-    # used out of 124GiB). Confirmed llama.cpp directly (Vulkan backend,
-    # same GGUF file) loads and generates successfully where Ollama's
-    # ROCm path fails outright - this is the same class of gfx1151-on-
-    # Linux ROCm issue already flagged (ollama/ollama#13589/#15336),
-    # manifesting as an allocation failure rather than silent CPU
-    # fallback this time. Trying Ollama's own experimental Vulkan
-    # backend (real env var, confirmed in upstream source) as a
-    # workaround before concluding Ollama benchmarking is blocked here.
+    # OLLAMA_VULKAN=1 alone doesn't select Vulkan: Ollama's backend
+    # picker ranks ROCm above Vulkan whenever a ROCm device is enumerable
+    # at all, regardless of this var. Research into ollama/ollama#14855
+    # (a community workaround, not an official documented flag combo)
+    # found the actual fix: hide ROCm devices from Ollama's discovery
+    # entirely via HIP_VISIBLE_DEVICES=-1 (and ROCR_VISIBLE_DEVICES=-1
+    # for safety across versions), forcing the picker to fall through to
+    # Vulkan since nothing ROCm-capable is visible to enumerate.
     environment:
       - OLLAMA_VULKAN=1
+      - HIP_VISIBLE_DEVICES=-1
+      - ROCR_VISIBLE_DEVICES=-1
     devices:
       - /dev/kfd:/dev/kfd
       - /dev/dri:/dev/dri
