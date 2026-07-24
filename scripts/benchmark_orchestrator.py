@@ -852,10 +852,33 @@ def process_vllm_build(build_id, build_path, build, dry_run, downloads_paused, k
 
         image_digest, engine_version = vllm_image_digest_and_version(container)
 
-        speed_result = run_vllm_speed_benchmark(
-            build_id, build, container, served_name, model_dir, backend, endpoint, timestamp, dry_run,
-        )
-        coding_result = run_coding_harness(build_id, base_url, served_name, timestamp, dry_run)
+        # Resumability: only run each leg if it doesn't already have a
+        # recorded benchmark_runs[] entry for this build. Real gap found and
+        # fixed here — both legs used to run unconditionally every time,
+        # with already_has_run() only gating whether the (already-computed)
+        # result got appended to the YAML, not whether the expensive work
+        # happened at all. Harmless for a from-scratch run, but a real
+        # ~90min wasted re-run for the exact partial-completion case this
+        # is meant to handle: qwen3-coder-next-gptq4bit already has a valid
+        # vllm-speed-c1c8-v2 entry (kept) after its contaminated
+        # seven-tier-coding-v2 entry was removed (bad tool-parser flags) —
+        # only the coding harness needs to re-run for it.
+        speed_already_done = already_has_run(build, VLLM_SPEED_BENCHMARK_ID)
+        coding_already_done = already_has_run(build, CODING_BENCHMARK_ID)
+
+        speed_result = None
+        if speed_already_done:
+            log(f"[{build_id}] {VLLM_SPEED_BENCHMARK_ID} already recorded — skipping speed trials, not re-running.")
+        else:
+            speed_result = run_vllm_speed_benchmark(
+                build_id, build, container, served_name, model_dir, backend, endpoint, timestamp, dry_run,
+            )
+
+        coding_result = None
+        if coding_already_done:
+            log(f"[{build_id}] {CODING_BENCHMARK_ID} already recorded — skipping coding harness, not re-running.")
+        else:
+            coding_result = run_coding_harness(build_id, base_url, served_name, timestamp, dry_run)
 
         window_end = utcnow_iso()
         fingerprint = build_fingerprint_base(kernel, repo_commit, gpu_driver, "n/a", window_start)
@@ -867,30 +890,33 @@ def process_vllm_build(build_id, build_path, build, dry_run, downloads_paused, k
             "vllm_co_resident_or_stopped": "stopped_for_swap" if vllm_stopped_for_run else "co_resident_standing_service",
         }
 
-        entry = {
-            "timestamp": window_start,
-            "benchmark_id": VLLM_SPEED_BENCHMARK_ID,
-            "fingerprint": fingerprint,
-            "result": speed_result,
-        }
-        entry2 = {
-            "timestamp": window_start,
-            "benchmark_id": CODING_BENCHMARK_ID,
-            "fingerprint": fingerprint,
-            "result": coding_result,
-        }
+        benchmarks_run = []
+        if not speed_already_done:
+            append_benchmark_run(build_path, {
+                "timestamp": window_start,
+                "benchmark_id": VLLM_SPEED_BENCHMARK_ID,
+                "fingerprint": fingerprint,
+                "result": speed_result,
+            })
+            benchmarks_run.append(VLLM_SPEED_BENCHMARK_ID)
+        if not coding_already_done:
+            append_benchmark_run(build_path, {
+                "timestamp": window_start,
+                "benchmark_id": CODING_BENCHMARK_ID,
+                "fingerprint": fingerprint,
+                "result": coding_result,
+            })
+            benchmarks_run.append(CODING_BENCHMARK_ID)
 
-        if not already_has_run(build, VLLM_SPEED_BENCHMARK_ID):
-            append_benchmark_run(build_path, entry)
-        if not already_has_run(build, CODING_BENCHMARK_ID):
-            append_benchmark_run(build_path, entry2)
-
-        raw_new_files = list(RAW_DIR.glob(f"{build_id}--*{timestamp}*"))
-        git_commit_and_push(
-            [build_path, *raw_new_files],
-            f"Record {VLLM_SPEED_BENCHMARK_ID}/{CODING_BENCHMARK_ID} results for {build_id}",
-            dry_run=dry_run,
-        )
+        if benchmarks_run:
+            raw_new_files = list(RAW_DIR.glob(f"{build_id}--*{timestamp}*"))
+            git_commit_and_push(
+                [build_path, *raw_new_files],
+                f"Record {'/'.join(benchmarks_run)} results for {build_id}",
+                dry_run=dry_run,
+            )
+        else:
+            log(f"[{build_id}] Both benchmarks already recorded — nothing new to commit (shouldn't normally reach here; the plan-level skip should have caught this).")
 
     finally:
         if swap_started:
@@ -915,21 +941,30 @@ def process_llamacpp_build(build_id, build_path, build, dry_run, downloads_pause
     vllm_stopped_for_run = True
     toolbox_digest = toolbox_image_digest()
 
+    # Resumability: check what's already recorded BEFORE doing any of the
+    # (potentially expensive) work, same fix as process_vllm_build — these
+    # used to run unconditionally every time regardless of prior completion.
+    bench_already_done = already_has_run(build, LLAMACPP_BENCH_ID)
+    concurrent_already_done = already_has_run(build, LLAMACPP_SERVER_CONCURRENT_ID)
+    coding_already_done = already_has_run(build, CODING_BENCHMARK_ID)
+
     try:
         entries_to_append = []
 
         # Leg 1: llama-bench (speed), every llamacpp build regardless of variant.
-        bench_result = run_llamacpp_bench(build_id, build, timestamp, dry_run)
-        window_end = utcnow_iso()
-        fp = build_fingerprint_base(kernel, repo_commit, gpu_driver, "n/a", window_start)
-        fp["host_metrics_window"]["end"] = window_end
-        fp["image_digest"] = toolbox_digest
-        fp["engine_version"] = bench_result["engine_build"]
-        fp["concurrent_load"] = {
-            "downloads_paused": bool(downloads_paused),
-            "vllm_co_resident_or_stopped": "stopped_for_run",
-        }
-        if not already_has_run(build, LLAMACPP_BENCH_ID):
+        if bench_already_done:
+            log(f"[{build_id}] {LLAMACPP_BENCH_ID} already recorded — skipping llama-bench, not re-running.")
+        else:
+            bench_result = run_llamacpp_bench(build_id, build, timestamp, dry_run)
+            window_end = utcnow_iso()
+            fp = build_fingerprint_base(kernel, repo_commit, gpu_driver, "n/a", window_start)
+            fp["host_metrics_window"]["end"] = window_end
+            fp["image_digest"] = toolbox_digest
+            fp["engine_version"] = bench_result["engine_build"]
+            fp["concurrent_load"] = {
+                "downloads_paused": bool(downloads_paused),
+                "vllm_co_resident_or_stopped": "stopped_for_run",
+            }
             entries_to_append.append({
                 "timestamp": window_start,
                 "benchmark_id": LLAMACPP_BENCH_ID,
@@ -941,55 +976,66 @@ def process_llamacpp_build(build_id, build_path, build, dry_run, downloads_pause
         # correctness-gated concurrency test; every llamacpp build (server
         # or plain) also gets the seven-tier coding harness against a
         # llama-server instance, per HANDOFF instructions.
-        model_dir = Path(build["model"]["local_path"]).name
-        served_name = build.get("served_model_name") or model_dir
-        port = 8090
-        np_slots = 4
-        ctx_size = 32768
-        for raw_flag in build.get("build_specific_flags", []):
-            flag = str(raw_flag).split("#", 1)[0].strip()
-            if flag.startswith("-np"):
-                parts = flag.split()
-                np_slots = int(parts[1]) if len(parts) > 1 else np_slots
-            if flag.startswith("-c "):
-                parts = flag.split()
-                ctx_size = int(parts[1]) if len(parts) > 1 else ctx_size
+        # Skip the whole leg-2 server lifecycle if everything it could
+        # produce is already recorded (resumability — don't pay for a real
+        # model load + GPU work just to re-derive nothing new).
+        need_concurrent = is_server_variant and not concurrent_already_done
+        need_coding = not coding_already_done
+        if not need_concurrent and not need_coding:
+            log(f"[{build_id}] All applicable leg-2 benchmarks already recorded — skipping llama-server entirely.")
+        else:
+            model_dir = Path(build["model"]["local_path"]).name
+            served_name = build.get("served_model_name") or model_dir
+            port = 8090
+            np_slots = 4
+            ctx_size = 32768
+            for raw_flag in build.get("build_specific_flags", []):
+                flag = str(raw_flag).split("#", 1)[0].strip()
+                if flag.startswith("-np"):
+                    parts = flag.split()
+                    np_slots = int(parts[1]) if len(parts) > 1 else np_slots
+                if flag.startswith("-c "):
+                    parts = flag.split()
+                    ctx_size = int(parts[1]) if len(parts) > 1 else ctx_size
 
-        container = start_llama_server(build_id, build, port, np_slots, ctx_size)
-        try:
-            base_url = f"http://localhost:{port}"
-            server_build = get_llama_server_build_fingerprint(container)
-            fp_server = build_fingerprint_base(kernel, repo_commit, gpu_driver, "n/a", utcnow_iso())
-            fp_server["image_digest"] = toolbox_digest
-            fp_server["engine_version"] = server_build
-            fp_server["concurrent_load"] = {
-                "downloads_paused": bool(downloads_paused),
-                "vllm_co_resident_or_stopped": "stopped_for_run",
-            }
+            container = start_llama_server(build_id, build, port, np_slots, ctx_size)
+            try:
+                base_url = f"http://localhost:{port}"
+                server_build = get_llama_server_build_fingerprint(container)
+                fp_server = build_fingerprint_base(kernel, repo_commit, gpu_driver, "n/a", utcnow_iso())
+                fp_server["image_digest"] = toolbox_digest
+                fp_server["engine_version"] = server_build
+                fp_server["concurrent_load"] = {
+                    "downloads_paused": bool(downloads_paused),
+                    "vllm_co_resident_or_stopped": "stopped_for_run",
+                }
 
-            if is_server_variant:
-                concurrent_result = run_llamacpp_server_concurrent(build_id, base_url, served_name, port, timestamp, dry_run)
-                fp_server["host_metrics_window"]["end"] = utcnow_iso()
-                if not already_has_run(build, LLAMACPP_SERVER_CONCURRENT_ID):
+                if need_concurrent:
+                    concurrent_result = run_llamacpp_server_concurrent(build_id, base_url, served_name, port, timestamp, dry_run)
+                    fp_server["host_metrics_window"]["end"] = utcnow_iso()
                     entries_to_append.append({
                         "timestamp": window_start,
                         "benchmark_id": LLAMACPP_SERVER_CONCURRENT_ID,
                         "fingerprint": fp_server,
                         "result": concurrent_result,
                     })
+                elif is_server_variant:
+                    log(f"[{build_id}] {LLAMACPP_SERVER_CONCURRENT_ID} already recorded — skipping correctness+concurrency test, not re-running.")
 
-            coding_result = run_coding_harness(build_id, base_url, served_name or "default", timestamp, dry_run)
-            fp_coding = dict(fp_server)
-            fp_coding["host_metrics_window"] = {"start": fp_server["host_metrics_window"]["start"], "end": utcnow_iso()}
-            if not already_has_run(build, CODING_BENCHMARK_ID):
-                entries_to_append.append({
-                    "timestamp": window_start,
-                    "benchmark_id": CODING_BENCHMARK_ID,
-                    "fingerprint": fp_coding,
-                    "result": coding_result,
-                })
-        finally:
-            stop_llama_server(container)
+                if need_coding:
+                    coding_result = run_coding_harness(build_id, base_url, served_name or "default", timestamp, dry_run)
+                    fp_coding = dict(fp_server)
+                    fp_coding["host_metrics_window"] = {"start": fp_server["host_metrics_window"]["start"], "end": utcnow_iso()}
+                    entries_to_append.append({
+                        "timestamp": window_start,
+                        "benchmark_id": CODING_BENCHMARK_ID,
+                        "fingerprint": fp_coding,
+                        "result": coding_result,
+                    })
+                else:
+                    log(f"[{build_id}] {CODING_BENCHMARK_ID} already recorded — skipping coding harness, not re-running.")
+            finally:
+                stop_llama_server(container)
 
         for entry in entries_to_append:
             append_benchmark_run(build_path, entry)
@@ -1037,11 +1083,17 @@ def main():
         vllm_done = already_has_run(build, VLLM_SPEED_BENCHMARK_ID) if family == "vllm" else True
         coding_done = already_has_run(build, CODING_BENCHMARK_ID)
         bench_done = already_has_run(build, LLAMACPP_BENCH_ID) if family == "llamacpp" else True
+        # Server-variant llamacpp builds have a third applicable leg
+        # (llamacpp-server-concurrent-v1) — must be done too before the
+        # whole build can be plan-level-skipped, or a build needing only
+        # that leg would never get picked up.
+        is_server_variant = build.get("engine") == "llamacpp-vulkan-radv-server-v1"
+        concurrent_done = already_has_run(build, LLAMACPP_SERVER_CONCURRENT_ID) if is_server_variant else True
         if family == "vllm" and vllm_done and coding_done:
             log(f"  SKIP  {build_id}  (already has {VLLM_SPEED_BENCHMARK_ID} + {CODING_BENCHMARK_ID} runs)")
             continue
-        if family == "llamacpp" and bench_done and coding_done:
-            log(f"  SKIP  {build_id}  (already has {LLAMACPP_BENCH_ID} + {CODING_BENCHMARK_ID} runs)")
+        if family == "llamacpp" and bench_done and coding_done and concurrent_done:
+            log(f"  SKIP  {build_id}  (already has {LLAMACPP_BENCH_ID} + {CODING_BENCHMARK_ID}{' + ' + LLAMACPP_SERVER_CONCURRENT_ID if is_server_variant else ''} runs)")
             continue
         log(f"  RUN   {build_id}  (engine family: {family})")
         runnable.append((build_id, path, build, family))
