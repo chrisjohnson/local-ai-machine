@@ -148,3 +148,36 @@ Chris asked a different AI (Gemini, no confirmed tool access) the same kind of r
 - **"MLX Engine ROCm backend... beating vLLM by up to 85%... simultaneous GPU+NPU execution"** (round three) — the most instructive fabrication. `lemon-mlx-engine` is a real, independent project targeting ROCm (not Apple's own MLX, which has no ROCm support beyond an open feature request), and the cited `lemonade-sdk/lemonade#1642` issue is real — but the benchmark numbers *inside that issue* trace back to a GitHub account that has since been deleted (`author_association: NONE`, ghost account) and a linked benchmark repo that returns a 404 — it doesn't exist. Gemini repeated numbers from an already-unverifiable source as established fact, with no apparent awareness the evidence chain doesn't hold. Integration into mainline Lemonade is also stalled (two unmerged PRs). Not pursued.
 
 **Takeaway for future research passes**: a cold LLM query without real tool/browsing access is a reasonable way to surface *candidate leads* (several of the real ones above were genuinely new and worth pursuing), but every specific number, benchmark claim, or "verified" framing needs independent verification against a real, checkable source before being trusted — the failure mode isn't random noise, it's confident, specific-sounding fabrication (exact tok/s figures, exact build numbers, named GitHub issues) that reads identically to real findings until checked.
+
+## Gemma-4-26B-A4B GGUF benchmark: llama.cpp direct vs Ollama (2026-07-24)
+
+Benchmarked the already-downloaded `unsloth/gemma-4-26B-A4B-it-GGUF` Q4_K_M file (`/var/lib/ai-models/ollama-gemma-4-26b-a4b-it/gemma-4-26B-A4B-it-UD-Q4_K_M.gguf`, 15.77 GiB on disk, 25.23B total params) — same file used for both backends, so this is a clean backend-only comparison (no quant-format confound, unlike the earlier GLM-4.7-Flash AWQ-vs-GGUF comparison). `vllm-primary`/`vllm-judge` stopped throughout to remove GPU contention; restarted at the end.
+
+**llama.cpp direct (`kyuz0/amd-strix-halo-toolboxes:vulkan-radv`, Vulkan/RADV backend), two runs — one contaminated by a concurrent background download, one clean:**
+
+```
+docker run --rm --device /dev/kfd --device /dev/dri --group-add 26 --group-add 303 \
+  -v /var/lib/ai-models/ollama-gemma-4-26b-a4b-it:/models:ro \
+  kyuz0/amd-strix-halo-toolboxes:vulkan-radv \
+  llama-bench -m /models/gemma-4-26B-A4B-it-UD-Q4_K_M.gguf -ngl 999 -fa 1 -lm none
+```
+
+(Note: this image's `llama-bench` build uses `-lm none`/`--load-mode none` rather than the deprecated `--no-mmap` flag documented elsewhere — `--no-mmap` errors out on this build with "invalid parameter for argument.")
+
+- **First run — contaminated**: an `hf download` process (`download-model-ollama-qwen3.6-35b-a3b.service`, pulling `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`) was actively running in the background, discovered only after the fact. Result: **pp512 = 1192.75 ± 11.10 tok/s, tg128 = 54.50 ± 0.29 tok/s**.
+- **Second run — clean**, confirmed via `ps aux` (no `hf`/huggingface process) and `systemctl list-units 'download-model-*'` (no "activating" units) both immediately before and after the run: **pp512 = 1251.33 ± 17.08 tok/s, tg128 = 53.96 ± 0.15 tok/s**.
+- **Contention delta**: PP dropped ~4.9% under concurrent download load (1251.33 → 1192.75) — a real, measurable cost, plausibly the download's disk/network I/O competing for unified-memory bandwidth during prefill's higher-throughput phase. TG was statistically unaffected (53.96 vs 54.50, well within the ±0.15-0.29 run-to-run noise band) — consistent with TG being bottlenecked purely on GPU-side memory bandwidth per-token, a regime a background CPU-side download doesn't meaningfully compete in. **Practical takeaway: PP-sensitive benchmarks (prefill-heavy workloads, RAG-style long-context ingestion) should have the download queue paused first; TG-only comparisons are robust to it.**
+- **Clean numbers are the benchmark-of-record for this model**: pp512 1251.33 tok/s / tg128 53.96 tok/s.
+
+**Comparison to GLM-4.7-Flash's benchmark-of-record (81.3 PP / 70.1 TG, same toolbox/methodology)**: Gemma-4-26B-A4B is markedly *slower* on both axes despite being the model that previously posted the best vLLM concurrency/coding-benchmark results of anything tested (see 5.3/5.6 in `README.md`) — a reminder that vLLM-serving fitness and raw llama.cpp/GGUF decode speed don't necessarily rank models the same way. Plausible factor: Gemma-4-26B-A4B is a larger total-param model (25.23B vs GLM-4.7-Flash's ~30B-total/~3B-active — comparable MoE shape, but Gemma-4-26B-A4B's own vLLM footprint numbers elsewhere in this doc show larger KV cache/less concurrency headroom) — not a controlled ablation, just an observed correlation worth noting for future model comparisons.
+
+**Ollama — real, version-specific incompatibility found; not benchmarked.** Registered the same GGUF via `scripts/ollama_register_model.sh ollama-gemma-4-26b-a4b-it gemma-4-26B-A4B-it-UD-Q4_K_M.gguf gemma-4-26b-a4b-gguf` (succeeded — `ollama create` completed, `ollama list` shows `gemma-4-26b-a4b-gguf:latest`, 16GB). A real chat/generate request against it failed outright:
+
+```
+llama_model_load: error loading model architecture: unknown model architecture: 'gemma4'
+llama_model_load_from_file_impl: failed to load model
+```
+
+This is **Ollama 0.17.7's bundled ggml/llama.cpp build not recognizing the `gemma4` GGUF architecture tag** — Gemma-4 is architecturally newer than what that specific Ollama build's vendored inference engine supports, independent of the Vulkan/ROCm backend-selection issue this same pin was chosen to work around (see the 5.6 GLM-4.7-Flash entries above). Confirmed via `docker logs ollama` (full GGUF metadata parses fine — tensors, tokenizer, chat template all load — the failure is specifically at the architecture-dispatch step) and `/api/version` (confirms `0.17.7`, the correct/expected pin, not a stale image). **Not a config or download problem, and not something a retry or workaround fixes** — this Ollama version genuinely cannot serve this model. A newer Ollama build likely supports `gemma4` (it postdates 0.17.7's release), but jumping to 0.18.x+ reintroduces the previously-found GPU-detection regression (`ollama/ollama#15336`) on this exact chip. **This is a real, currently-unresolved version tradeoff — pin for Vulkan-and-GPU-detection correctness (0.17.7) vs pin for newer-model-architecture support (0.18.x+) — not something to solve unilaterally right now; flagged for a later decision.**
+
+**Net conclusion**: llama.cpp direct is the only backend that can currently serve this exact file at all on this box — Ollama 0.17.7 is a hard architecture-support blocker, not a speed disadvantage, for Gemma-4-26B-A4B specifically (unlike GLM-4.7-Flash, where Ollama worked but was ~5.4x slower than llama.cpp direct: 13 vs 70.1 tok/s). Benchmark-of-record for this model: **llama.cpp direct, pp512 1251.33 tok/s / tg128 53.96 tok/s**; Ollama comparison not obtainable until the architecture-support/GPU-detection version tradeoff above is resolved.
