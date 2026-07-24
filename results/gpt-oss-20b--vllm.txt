@@ -1,0 +1,72 @@
+Command (server start, via scripts/swap_model_start.sh):
+./scripts/swap_model_start.sh gpt-oss-20b gpt-oss-20b 131072 \
+  --enable-auto-tool-choice --tool-call-parser openai --reasoning-parser openai_gptoss
+
+Date: 2026-07-24
+First-ever serve/benchmark of this model in any form on this machine (previously
+UNTESTED-BUT-DOWNLOADED in MODEL_STACK_CATALOG.md). Run immediately after GPT-OSS-120B in the
+same session -- vllm-primary/vllm-judge were NOT restored between the two GPT-OSS models
+(both benchmarked back-to-back with the standard stack down the whole time), only restored
+after both were fully done.
+
+Pre-flight: same download-queue pause as GPT-OSS-120B (see results/gpt-oss-120b--vllm.txt for
+full detail) -- kept paused for this entire session, resumed only after both models were done.
+
+Server startup log excerpts (footprint):
+  Model loading took 14.16 GiB memory and 9.019422 seconds
+  Available KV cache memory: 95.81 GiB
+  GPU KV cache size: 3,934,445 tokens
+  Maximum concurrency for 131,072 tokens per request: 30.02x
+Healthy in under 2 minutes (much faster cold start than the 120B tier, as expected for a
+~13GB model vs 61GB).
+
+Same methodology deviation as GPT-OSS-120B, required for this whole model family:
+--backend openai --endpoint /v1/completions instead of the project's default
+--backend openai-chat --endpoint /v1/chat/completions, because --ignore-eos forces generation
+past the model's harmony-format natural stop point and this vllm build's harmony parser throws
+openai_harmony.HarmonyError: Unexpected token 200002 while expecting start token 200006 on the
+chat-completions path. Full investigation in results/gpt-oss-120b--vllm.txt -- same root cause,
+same fix, applies identically to this model (same architecture family, same tool-call/reasoning
+parser pair).
+
+Command (c1):
+docker exec vllm-bench-swap vllm bench serve \
+  --backend openai --base-url http://localhost:8000 --endpoint /v1/completions \
+  --model gpt-oss-20b --tokenizer /models/gpt-oss-20b \
+  --dataset-name random --random-input-len 2048 --random-output-len 512 \
+  --max-concurrency 1 --num-prompts 20 --ignore-eos \
+  --save-result --result-dir /tmp --result-filename gpt-oss-20b-c1.json
+
+Raw result (c1):
+{"date": "20260724-075507", "endpoint_type": "openai", "backend": "openai", "model_id": "gpt-oss-20b", "num_prompts": 20, "max_concurrency": 1, "duration": 813.50, "completed": 20, "failed": 0, "total_input_tokens": 40960, "total_output_tokens": 10240, "output_throughput": 12.588, "total_token_throughput": 62.94, "mean_ttft_ms": 1756.71, "median_ttft_ms": 1684.05, "p99_ttft_ms": 2903.43, "mean_tpot_ms": 76.16, "median_tpot_ms": 76.17, "p99_tpot_ms": 76.18}
+
+Command (c8):
+docker exec vllm-bench-swap vllm bench serve \
+  --backend openai --base-url http://localhost:8000 --endpoint /v1/completions \
+  --model gpt-oss-20b --tokenizer /models/gpt-oss-20b \
+  --dataset-name random --random-input-len 2048 --random-output-len 256 \
+  --max-concurrency 8 --num-prompts 100 --ignore-eos \
+  --save-result --result-dir /tmp --result-filename gpt-oss-20b-c8.json
+
+Raw result (c8):
+{"date": "20260724-080300", "endpoint_type": "openai", "backend": "openai", "model_id": "gpt-oss-20b", "num_prompts": 100, "max_concurrency": 8, "duration": 451.34, "completed": 100, "failed": 0, "total_input_tokens": 204800, "total_output_tokens": 25600, "output_throughput": 56.72, "total_token_throughput": 510.48, "mean_ttft_ms": 6876.53, "median_ttft_ms": 6675.42, "p99_ttft_ms": 14185.67, "mean_tpot_ms": 107.75, "median_tpot_ms": 104.16, "p99_tpot_ms": 152.29}
+
+Summary:
+  c1: 12.59 tok/s output. TTFT 1757/1684/2903ms (mean/median/p99). TPOT 76.16ms flat (single-stream).
+  c8: 56.72 tok/s output -- the fastest c8 throughput of any coding-comparison-lineup model
+      tested to date (beats Gemma-4-26B-A4B-it's 50.38 tok/s, GLM-4.7-Flash-AWQ's 30.19 tok/s,
+      the primary Qwen3.6-35B-A3B's 33.19 tok/s -- only Qwen2.5-VL-7B-Instruct's 79.25 tok/s is
+      higher, and that's a much smaller 7B vision/OCR specialist, not a fair coding-model
+      comparison). TTFT 6877/6675/14186ms. TPOT 107.75/104.16/152.29ms.
+  Footprint: 14.16 GiB weights, 95.81 GiB KV cache, 3,934,445 KV tokens, 30.02x max concurrency
+      @131072 -- the best concurrency headroom of any model tested in this project to date,
+      beating GLM-4.7-Flash-AWQ's previous-best 28.10x.
+
+Notes: unlike the 120B tier, this smaller GPT-OSS checkpoint's speed numbers look completely
+normal/competitive for a small-active-param MoE model on this hardware -- no sign of the same
+per-token slowdown seen at the 120B tier. This suggests the 120B tier's relatively weak c1
+throughput (8.46 tok/s) is not simply "MXFP4 is slow on this hardware" as a blanket statement --
+this 20B model uses the identical MXFP4 format and tool/reasoning parser stack and performs
+well, so the 120B-specific slowdown is more likely tied to that model's much larger total
+parameter count (128 experts vs 20B's smaller expert pool) interacting with this hardware's
+memory-bandwidth ceiling, not a quant-format-level MXFP4 penalty per se.

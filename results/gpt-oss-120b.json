@@ -1,0 +1,145 @@
+{
+  "model": "gpt-oss-120b",
+  "base_url": "http://localhost:18000",
+  "tier_a_pass": 3,
+  "tier_a_total": 3,
+  "tier_b_pass": 2,
+  "tier_b_total": 2,
+  "tier_j_pass": 1,
+  "tier_j_total": 2,
+  "tier_p_pass": 2,
+  "tier_p_total": 2,
+  "tier_d_pass": 1,
+  "tier_d_total": 1,
+  "tier_q_pass": 2,
+  "tier_q_total": 2,
+  "results": [
+    {
+      "id": "palindrome",
+      "tier": "A",
+      "elapsed_s": 11.58,
+      "raw_content": "```python\nimport re\n\ndef is_palindrome(s: str) -> bool:\n    cleaned = re.sub(r'[^a-z0-9]', '', s.lower())\n    return cleaned == cleaned[::-1]\n```",
+      "raw_reasoning": "We need to output only the function, no extra text. Provide Python code. Ensure ignoring case and non-alphanumeric. Use regex or filter. Provide type hints. Provide docstring? Not required but okay. Output only the function.",
+      "extracted_code": "import re\n\ndef is_palindrome(s: str) -> bool:\n    cleaned = re.sub(r'[^a-z0-9]', '', s.lower())\n    return cleaned == cleaned[::-1]\n",
+      "passed": true
+    },
+    {
+      "id": "merge_sorted",
+      "tier": "A",
+      "elapsed_s": 19.87,
+      "raw_content": "```python\ndef merge_sorted(a: list[int], b: list[int]) -> list[int]:\n    i = j = 0\n    merged = []\n    while i < len(a) and j < len(b):\n        if a[i] <= b[j]:\n            merged.append(a[i])\n            i += 1\n        else:\n            merged.append(b[j])\n            j += 1\n    if i < len(a):\n        merged.extend(a[i:])\n    if j < len(b):\n        merged.extend(b[j:])\n    return merged\n```",
+      "raw_reasoning": "We need to output a Python function only, no extra text. Should merge sorted lists. Use two pointers. Edge cases empty lists. Return merged list. Provide type hints. Provide docstring? Not needed but okay. No explanation or usage. Just function.",
+      "extracted_code": "def merge_sorted(a: list[int], b: list[int]) -> list[int]:\n    i = j = 0\n    merged = []\n    while i < len(a) and j < len(b):\n        if a[i] <= b[j]:\n            merged.append(a[i])\n            i += 1\n        else:\n            merged.append(b[j])\n            j += 1\n    if i < len(a):\n        merged.extend(a[i:])\n    if j < len(b):\n        merged.extend(b[j:])\n    return merged\n",
+      "passed": true
+    },
+    {
+      "id": "expr_eval",
+      "tier": "A",
+      "elapsed_s": 49.54,
+      "raw_content": "```python\ndef evaluate(expr: str) -> float:\n    import re\n\n    tokens = re.findall(r'\\d+|\\S', expr.replace(' ', ''))\n    pos = 0\n\n    def peek():\n        return tokens[pos] if pos < len(tokens) else None\n\n    def consume(expected=None):\n        nonlocal pos\n        cur = peek()\n        if cur is None:\n            raise SyntaxError(\"Unexpected end of input\")\n        if expected and cur != expected:\n            raise SyntaxError(f\"Expected '{expected}' but found '{cur}'\")\n        pos += 1\n        return cur\n\n    def parse_number():\n        return float(consume())\n\n    def parse_factor():\n        if peek() == '(':\n            consume('(')\n            val = parse_expr()\n            consume(')')\n            return val\n        return parse_number()\n\n    def parse_term():\n        val = parse_factor()\n        while peek() in ('*', '/'):\n            op = consume()\n            right = parse_factor()\n            if op == '*':\n                val *= right\n            else:\n                val /= right\n        return val\n\n    def parse_expr():\n        val = parse_term()\n        while peek() in ('+', '-'):\n            op = consume()\n            right = parse_term()\n            if op == '+':\n                val += right\n            else:\n                val -= right\n        return val\n\n    result = parse_expr()\n    if pos != len(tokens):\n        raise SyntaxError(\"Unexpected token after end of expression\")\n    return result\n```",
+      "raw_reasoning": "We need to output just a Python function evaluate(expr: str) -> float that parses simple arithmetic expression with + - * / parentheses and integers. No eval, exec. Should handle spaces. Use Shunting-yard algorithm or recursive descent. Provide function only, no extra text.\n\nWe'll write code with tokenization, then recursive descent: expr -> term ((+|-) term)*, term -> factor ((*|/) factor)*, factor -> number | '(' expr ')'.\n\nReturn float. Use int conversion but return float division results.\n\nEdge cases: divide by zero? Not needed.\n\nLet's produce function.\n\n",
+      "extracted_code": "def evaluate(expr: str) -> float:\n    import re\n\n    tokens = re.findall(r'\\d+|\\S', expr.replace(' ', ''))\n    pos = 0\n\n    def peek():\n        return tokens[pos] if pos < len(tokens) else None\n\n    def consume(expected=None):\n        nonlocal pos\n        cur = peek()\n        if cur is None:\n            raise SyntaxError(\"Unexpected end of input\")\n        if expected and cur != expected:\n            raise SyntaxError(f\"Expected '{expected}' but found '{cur}'\")\n        pos += 1\n        return cur\n\n    def parse_number():\n        return float(consume())\n\n    def parse_factor():\n        if peek() == '(':\n            consume('(')\n            val = parse_expr()\n            consume(')')\n            return val\n        return parse_number()\n\n    def parse_term():\n        val = parse_factor()\n        while peek() in ('*', '/'):\n            op = consume()\n            right = parse_factor()\n            if op == '*':\n                val *= right\n            else:\n                val /= right\n        return val\n\n    def parse_expr():\n        val = parse_term()\n        while peek() in ('+', '-'):\n            op = consume()\n            right = parse_term()\n            if op == '+':\n                val += right\n            else:\n                val -= right\n        return val\n\n    result = parse_expr()\n    if pos != len(tokens):\n        raise SyntaxError(\"Unexpected token after end of expression\")\n    return result\n",
+      "passed": true
+    },
+    {
+      "id": "single_tool_call",
+      "tier": "B",
+      "elapsed_s": 6.37,
+      "called_tool": "read_file",
+      "called_args": {
+        "path": "/tmp/data.txt"
+      },
+      "passed": true
+    },
+    {
+      "id": "multi_step_tool_call",
+      "tier": "B",
+      "elapsed_s": 90.02,
+      "called_tool": "write_file",
+      "called_args": {
+        "path": "/tmp/fizzbuzz.py",
+        "content": "# fizzbuzz.py\n\"\"\"\nImplementation of the classic FizzBuzz problem.\n\nThe module provides a single function `fizzbuzz` which returns a list of strings\nrepresenting the sequence from 1 to `n` inclusive, applying the following rules:\n\n* For numbers divisible by 3, the string \"Fizz\" is used.\n* For numbers divisible by 5, the string \"Buzz\" is used.\n* For numbers divisible by both 3 and 5, the string \"FizzBuzz\" is used.\n* For all other numbers, their decimal representation is used.\n\nThe function raises a `ValueError` if `n` is not a positive integer.\n\"\"\"\n\nfrom typing import List\n\n\ndef fizzbuzz(n: int) -> List[str]:\n    \"\"\"Return the FizzBuzz sequence up to ``n``.\n\n    Parameters\n    ----------\n    n: int\n        The inclusive upper bound of the sequence. Must be a positive integer.\n\n    Returns\n    -------\n    List[str]\n        A list where each element corresponds to the appropriate FizzBuzz\n        representation for the numbers 1 through ``n``.\n\n    Raises\n    ------\n    ValueError\n        If ``n`` is not a positive integer.\n    \"\"\"\n    if not isinstance(n, int) or n < 1:\n        raise ValueError(\"n must be a positive integer\")\n\n    result: List[str] = []\n    for i in range(1, n + 1):\n        if i % 15 == 0:\n            result.append(\"FizzBuzz\")\n        elif i % 3 == 0:\n            result.append(\"Fizz\")\n        elif i % 5 == 0:\n            result.append(\"Buzz\")\n        else:\n            result.append(str(i))\n    return result\n\n\nif __name__ == \"__main__\":\n    # Simple demo when run as a script.\n    import sys\n    try:\n        limit = int(sys.argv[1]) if len(sys.argv) > 1 else 100\n    except ValueError:\n        print(\"Please provide an integer argument.\")\n        sys.exit(1)\n    for line in fizzbuzz(limit):\n        print(line)\n"
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_correct",
+      "tier": "J",
+      "elapsed_s": 18.47,
+      "raw_content": "{\"passes\": true, \"reason\": \"Correct implementation\"}",
+      "verdict": {
+        "passes": true,
+        "reason": "Correct implementation"
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_incorrect",
+      "tier": "J",
+      "elapsed_s": 152.22,
+      "raw_content": "{\"passes\": true, \"reason\": \"The function correctly checks palindromes ignoring case and non-alphanumeric characters\"}",
+      "verdict": {
+        "passes": true,
+        "reason": "The function correctly checks palindromes ignoring case and non-alphanumeric characters"
+      },
+      "passed": false,
+      "error": "expected passes=False, got True"
+    },
+    {
+      "id": "constrained_summary",
+      "tier": "P",
+      "elapsed_s": 26.72,
+      "raw_content": "The Bosgame M5 is a mini PC that uses AMD's Strix Halo APU, combining a Zen\u202f5 CPU with an RDNA\u202f3.5 integrated GPU and up to 128\u202fGB of shared LPDDR5X memory. This unified memory architecture lets the integrated GPU load large language models that normally need a discrete GPU with substantial VRAM, making the M5 unusually capable for local AI inference despite lacking a separate graphics card.",
+      "sentence_count": 2,
+      "passed": true
+    },
+    {
+      "id": "structured_extraction",
+      "tier": "P",
+      "elapsed_s": 13.52,
+      "raw_content": "{\n  \"order_id\": \"A-58291\",\n  \"total_usd\": 47.5,\n  \"item_count\": 3\n}",
+      "extracted": {
+        "order_id": "A-58291",
+        "total_usd": 47.5,
+        "item_count": 3
+      },
+      "passed": true
+    },
+    {
+      "id": "debug_off_by_one",
+      "tier": "D",
+      "elapsed_s": 20.43,
+      "final_content": "```python\ndef flag_big_drops(orders):\n    \"\"\"Return a list of bools: True if an element >100 is immediately followed by a smaller one.\"\"\"\n    n = len(orders)\n    results = []\n    for i in range(n):\n        if i == n - 1:               # last element has no successor\n            results.append(False)\n        elif orders[i] > 100:\n            results.append(orders[i] > orders[i + 1])\n        else:\n            results.append(False)\n    return results\n```",
+      "extracted_code": "def flag_big_drops(orders):\n    \"\"\"Return a list of bools: True if an element >100 is immediately followed by a smaller one.\"\"\"\n    n = len(orders)\n    results = []\n    for i in range(n):\n        if i == n - 1:               # last element has no successor\n            results.append(False)\n        elif orders[i] > 100:\n            results.append(orders[i] > orders[i + 1])\n        else:\n            results.append(False)\n    return results\n",
+      "passed": true
+    },
+    {
+      "id": "planning_new_tool",
+      "tier": "Q",
+      "elapsed_s": 229.75,
+      "raw_content": "Below is a **step\u2011by\u2011step planning framework** you can use to get a solid, actionable blueprint for your new internal tool.  \nI\u2019ll walk you through the key questions you should answer, the typical deliverables that come out of each phase, and some quick\u2011start recommendations for common tech choices.  \n\n---\n\n## 1\ufe0f\u20e3 Define the Problem & Success Criteria\n\n| Question | Why it matters | How to answer it |\n|----------|----------------|-----------------|\n| **What is the core business problem you\u2019re trying to solve?** | Keeps the scope focused and justifies the investment. | One\u2011sentence \u201cproblem statement\u201d (e.g., \u201cOur support team spends\u202f\u2248\u202f30\u202fmin per ticket manually copying data from CRM to Slack, leading to errors and delays\u201d). |\n| **Who will use the tool?** | Determines UI/UX, permissions, and onboarding. | List user personas (e.g., *Support Agent*, *Team Lead*, *Ops Analyst*). |\n| **What does \u201csuccess\u201d look like?** | Gives you measurable KPI\u2019s for launch and later iterations. | Define 2\u20113 quantitative metrics (e.g., *reduce manual data\u2011copy time by 80\u202f%*, *cut ticket\u2011resolution time from 45\u202fmin to 25\u202fmin*, *\u2265\u202f90\u202f% user adoption after 4 weeks*). |\n| **What are the \u201cmust\u2011have\u201d vs. \u201cnice\u2011to\u2011have\u201d features?** | Helps you scope the MVP and avoid feature creep. | Write a short feature list with \u2605 = mandatory, \u2606 = optional. |\n\n> **Your turn:** Could you give me a brief answer to each of those four questions? Even a sketch will let me tailor the rest of the plan to your exact situation.\n\n---\n\n## 2\ufe0f\u20e3 Outline the MVP (Minimum Viable Product)\n\n1. **Core workflow diagram** \u2013 Sketch (paper or a tool like Lucidchart/Figma) of the end\u2011to\u2011end user flow for the MVP.  \n2. **Feature buckets** \u2013 Group related features; label each bucket *MVP* or *Phase\u202f2+*.  \n3. **Data model basics** \u2013 Identify the main entities (e.g., *Ticket*, *User*, *Log*, *External Reference*).  \n4. **Integration points** \u2013 List any existing systems you\u2019ll need to talk to (CRM, Slack, LDAP, internal DB, etc.).  \n\n**Deliverable:** A one\u2011page \u201cMVP charter\u201d that includes:\n\n| Item | Example |\n|------|---------|\n| Goal | Reduce manual copy\u2011paste between CRM and Slack |\n| Users | Support agents (40), Team leads (5) |\n| Core flow | 1\ufe0f\u20e3 Agent opens CRM \u2192 2\ufe0f\u20e3 Click \u201cSend to Slack\u201d button \u2192 3\ufe0f\u20e3 Message composed automatically \u2192 4\ufe0f\u20e3 Agent adds optional comment \u2192 5\ufe0f\u20e3 Sent |\n| Must\u2011have features | \u2022 Chrome extension/button in CRM <br> \u2022 Slack message formatting <br> \u2022 Simple audit log |\n| Nice\u2011to\u2011have | \u2022 Auto\u2011suggest tags <br> \u2022 Analytics dashboard |\n| Success metrics | \u2022 80\u202f% time reduction <br> \u2022 90\u202f% adoption in 30\u202fdays |\n\n---\n\n## 3\ufe0f\u20e3 Choose the Architecture & Tech Stack\n\nBelow is a **starter matrix** you can adapt based on your company\u2019s policies, existing skill set, and hosting preferences.\n\n| Layer | Typical Options | Pros | Cons | Good Fit For |\n|-------|----------------|------|------|--------------|\n| **Front\u2011end** | \u2022 **React** (CRA/Vite) <br> \u2022 **SvelteKit** <br> \u2022 **Vanilla JS + Web Components** | \u2022 Rich UI, ecosystem <br> \u2022 Very fast dev builds | \u2022 Bundle size (React) <br> \u2022 Learning curve (Svelte) | Teams with JS expertise; want interactive UI |\n| **Back\u2011end / API** | \u2022 **Node.js (Express/Fastify)** <br> \u2022 **Python (FastAPI)** <br> \u2022 **Go (Gin)** | \u2022 Rapid prototyping (Node/Python) <br> \u2022 High performance (Go) | \u2022 Need for type safety? (Node + TypeScript) <br> \u2022 Language familiarity | Choose the language your team already codes in. |\n| **Auth & Permissions** | \u2022 **OAuth2 / OpenID Connect** with corporate IdP (Okta, Azure AD) <br> \u2022 **JWT** for internal services | \u2022 Leverages existing SSO <br> \u2022 Centralized user management | \u2022 Requires proper token handling | Most internal tools should use corporate SSO. |\n| **Data store** | \u2022 **PostgreSQL** (relational) <br> \u2022 **MongoDB** (document) <br> \u2022 **SQLite** (if only a few GB and low concurrency) | \u2022 Strong ACID guarantees (Postgres) <br> \u2022 Flexible schema (Mongo) | \u2022 Operational overhead (managed Postgres) | For audit logs + simple reference tables, Postgres is a safe default. |\n| **Integrations** | \u2022 **Webhooks** (Slack, Teams) <br> \u2022 **REST API** (CRM) <br> \u2022 **GraphQL** (if the source offers) | \u2022 Real\u2011time push (webhooks) <br> \u2022 Pull for data sync | \u2022 Rate limiting, auth handling | Pick the method exposed by the existing tools. |\n| **Hosting / CI\u2011CD** | \u2022 **Docker** + **Kubernetes** (if you have a cluster) <br> \u2022 **AWS ECS/Fargate**, **Azure Container Apps**, **Google Cloud Run** <br> \u2022 **Heroku / Railway** for quick prototypes | \u2022 Portability (Docker) <br> \u2022 Serverless scaling (Cloud Run) | \u2022 Cost & ops overhead | If you have a cloud\u2011native infra, go with Cloud Run/ECS; otherwise a simple Docker compose on a VM works for MVP. |\n| **Observability** | \u2022 **Sentry** (error tracking) <br> \u2022 **Prometheus + Grafana** (metrics) <br> \u2022 **LogDNA / Loki** (logs) | \u2022 Fast bug triage <br> \u2022 Visibility into latency | \u2022 Need to instrument code | Add at least Sentry for MVP; metrics can be added later. |\n\n**Tip:** Start with *the simplest thing that could possibly work*\u2014e.g., a single FastAPI service, a React frontend, and a PostgreSQL instance on a managed cloud DB. Add complexity only when the need becomes clear.\n\n---\n\n## 4\ufe0f\u20e3 Create a Project Roadmap (time\u2011boxed phases)\n\n| Phase | Duration (typical) | Main Deliverables | Checklist |\n|-------|-------------------|-------------------|-----------|\n| **Discovery & Design** | 1\u20112\u202fweeks | - Problem statement<br>- User personas<br>- Flow diagrams<br>- UI wireframes (low\u2011fi) | \u2705 Stakeholder sign\u2011off |\n| **MVP Build** | 3\u20115\u202fweeks | - Front\u2011end UI (basic screens)<br>- API endpoints<br>- Auth integration<br>- Persistence layer<br>- Basic Slack/CRM webhook integration | \u2705 Unit tests \u2265\u202f70\u202f%<br>\u2705 End\u2011to\u2011end test for core flow |\n| **Internal Alpha** | 1\u20112\u202fweeks | - Deploy to a test namespace<br>- Invite a small pilot group (3\u20115 power users)<br>- Collect feedback (Google Form / Confluence) | \u2705 Fix critical bugs<br>\u2705 Validate success metrics |\n| **Iterate & Polish** | 2\u20113\u202fweeks | - UI refinements<br>- Error handling / retries<br>- Auditing & basic analytics dashboard<br>- Documentation (README, runbooks) | \u2705 Security review (token handling, least\u2011privilege) |\n| **Production Launch** | 1\u202fweek | - Deploy to prod env<br>- Training session / quick\u2011start guide<br>- Support channel (Slack #tool\u2011support) | \u2705 Roll\u2011back plan<br>\u2705 Success\u2011metric monitoring set up |\n| **Post\u2011Launch & Ops** | Ongoing | - Weekly health checks<br>- Feature backlog grooming<br>- Periodic security patching | \u2705 SLA defined (e.g., 99.5\u202f% uptime) |\n\n> **Your turn:** Which of these phases aligns with your team\u2019s cadence? Do you have any hard deadlines (e.g., \u201cmust be live before Q4\u201d) that would compress the timeline?\n\n---\n\n## 5\ufe0f\u20e3 Risk & Mitigation Checklist\n\n| Risk | Likelihood | Impact | Mitigation |\n|------|-----------|--------|------------|\n| **Scope creep** | Medium | Delays, budget overrun | Freeze MVP before dev starts; use the must\u2011have / nice\u2011to\u2011have matrix. |\n| **Integration limits** (CRM API throttling) | Medium | Partial functionality | Build a **rate\u2011limit wrapper** and a simple **retry queue**; negotiate higher quota if needed. |\n| **Security/compliance** (PII exposure) | Low\u2011Medium (depends on data) | Legal/ reputational | Use corporate SSO, encrypt DB at rest, run a quick security review with your security team.",
+      "topics_hit": [
+        "users",
+        "tech_stack",
+        "timeline",
+        "budget",
+        "success_criteria"
+      ],
+      "passed": true
+    },
+    {
+      "id": "planning_db_migration",
+      "tier": "Q",
+      "elapsed_s": 229.75,
+      "raw_content": "Below is a **complete migration\u2011playbook** you can adapt to any \u201cnew system\u201d (MySQL, MariaDB, Oracle, SQL\u202fServer, Snowflake, etc.).  \nIt is organized as **phases**, each with concrete tasks, owners, artifacts, and rough effort estimates.  Insert the specifics of your environment (target DB, data volume, compliance constraints, SLA for downtime) and you\u2019ll have a ready\u2011to\u2011execute project plan.\n\n---\n\n## 1\ufe0f\u20e3  Project Foundations  \n\n| Item | What to Do | Why it Matters | Owner |\n|------|------------|----------------|-------|\n| **Executive charter** | Draft a one\u2011page business case (why we\u2019re moving, expected benefits, budget, timeline). | Secures funding & stakeholder buy\u2011in. | PM / Sponsor |\n| **Stakeholder matrix** | Identify all parties: DBAs, App devs, Ops, Security, Compliance, Business users, external vendors. | Guarantees communication channels. | PM |\n| **Success criteria** | Define measurable outcomes: <br>\u2022\u202f<\u202f2\u202f% performance degradation after cut\u2011over <br>\u2022\u202fZero data loss (checksum\u2011verified) <br>\u2022\u202fMaximum allowed downtime (e.g., \u2264\u202f30\u202fmin) <br>\u2022\u202fCompliance\u2011check pass | Provides a clear \u201cdone\u201d definition. | PM + QA |\n| **Tooling inventory** | List tools you\u2019ll use for each step (pg_dump, pg_restore, pgloader, AWS DMS, custom ETL, schema\u2011conversion scripts, CI/CD, monitoring). | Avoids \u201cfire\u2011fighting\u201d when the need arises. | DBA / Architect |\n| **Risk & mitigation register** | Populate a table with risk, impact, probability, mitigation. Example: \u201cComplex PL/pgSQL functions \u2192 rewrite cost\u201d. | Drives proactive problem\u2011solving. | PM + DBA |\n| **Kick\u2011off meeting** | Review charter, timeline, roles, communication cadence. | Aligns everyone from day one. | PM |\n\n*Deliverable*: **Migration Playbook v1.0** (this document).\n\n---\n\n## 2\ufe0f\u20e3  Discovery & Assessment  \n\n| Task | Details | Tools / Artefacts | Owner | Effort |\n|------|---------|-------------------|-------|--------|\n| **Catalogue schemas & objects** | Export `pg_dump --schema-only` and parse to list tables, views, materialized views, functions, triggers, extensions, constraints, indexes, partitions, OIDs. | `pg_dump`, `dbdoc`, custom scripts | DBA | 2\u202fdays |\n| **Data volume & growth analysis** | Size per table, row count, BLOB size, daily write volume. | `pg_total_relation_size()`, `pg_stat_user_tables` | DBA | 2\u202fdays |\n| **Feature\u2011gap analysis** | Map PostgreSQL\u2011specific features (e.g., `jsonb`, `GIN` indexes, `UPSERT`, `TABLESAMPLE`, `generated columns`, extensions like PostGIS) to equivalents in target. | Spreadsheet matrix | Architect | 3\u202fdays |\n| **Dependency mapping** | Identify all applications, ETL jobs, reporting tools, BI dashboards, data\u2011science notebooks that touch the DB. Capture connection strings, driver versions, authentication methods. | CMDB, code repo scans | Ops / Dev Lead | 2\u202fdays |\n| **Performance baseline** | Capture query latency, QPS, connection counts, cache hit ratios, lock contention. | `pg_stat_statements`, `pgbench`, Grafana | DBA | 2\u202fdays |\n| **Compliance & security audit** | Determine data classification (PII, PCI, GDPR), encryption\u2011at\u2011rest requirements, audit\u2011log needs, access\u2011control model. | DLP scans, security questionnaire | SecOps | 2\u202fdays |\n| **Downtime window analysis** | Review business calendars, batch windows, SLA contracts. | Calendar, stakeholder input | PM | 1\u202fday |\n\n*Deliverable*: **Discovery Report** \u2013 includes a detailed **Schema Inventory**, **Data Volume Summary**, **Feature Gap Matrix**, **Dependency Diagram**, **Baseline Performance Dashboard**, **Compliance Checklist**, **Proposed Cut\u2011over Window**.\n\n---\n\n## 3\ufe0f\u20e3  Architecture & Design  \n\n| Design Decision | What to Produce | Why it Matters | Owner |\n|-----------------|----------------|----------------|-------|\n| **Target schema model** | DDL scripts for the new platform (converted types, indexes, constraints). Use a migration DSL (e.g., Flyway, Liquibase) to version\u2011control them. | Guarantees reproducibility & rollback. | Architect + DBA |\n| **Data\u2011type conversion rules** | Table mapping: `bigint \u2192 NUMBER(19)`, `jsonb \u2192 VARIANT/JSON`, `serial \u2192 IDENTITY`, `tsvector \u2192 full\u2011text index` etc. Document exceptions. | Prevents silent data loss or performance regressions. | DBA |\n| **Index & partition strategy** | Translate PostgreSQL partitioning (`PARTITION BY RANGE`) to target\u2019s equivalent (e.g., MySQL 8.0 native partitions, Oracle Range\u2011Hash). Re\u2011evaluate index selectivity after conversion. | Maintains query performance. | DBA |\n| **Stored\u2011procedure & trigger rewrite plan** | List every PL/pgSQL function/triggers. For each decide: <br>1) Auto\u2011convert (e.g., to MySQL stored procedure) <br>2) Manual rewrite <br>3) Remove (if not needed). | PL/pgSQL is not portable. | Dev Lead |\n| **ETL & CDC approach** | Choose between **bulk\u2011load + delta sync** vs. **continuous replication (CDC)**: <br> \u2022  Small DB (<\u202f100\u202fGB) \u2192 bulk load + cut\u2011over <br> \u2022  Large, high\u2011write DB \u2192 CDC (e.g., Debezium, AWS DMS, Striim). | Determines downtime length. | Architect |\n| **Security model translation** | Map PostgreSQL roles & row\u2011level security policies to target RBAC. Decide on password hashing (SCRAM\u2011SHA\u2011256 \u2192 bcrypt/MD5), IAM integration, TLS certificates. | Keeps compliance intact. | SecOps |\n| **Backup & rollback plan** | Decide on *pre\u2011migration full dump* vs. *snapshot* vs. *point\u2011in\u2011time recovery* on source. Define how to revert if cut\u2011over fails. | Guarantees data safety. | DBA |\n| **Monitoring & alerting** | Replicate key metrics (CPU, IOPS, query latency, replication lag) on the new platform. Set up alerts for lag >\u202fX\u202fseconds during CDC. | Early detection of issues. | Ops |\n| **Testing environment topology** | Build a **sandbox** (1\u00d7 production size) and a **staging** (full\u2011scale copy). Use Docker/K8s or cloud clones. | Enables realistic load tests. | Ops / DevOps |\n\n*Deliverable*: **Migration Design Document** (schema definition, conversion rules, CDC diagram, security mapping, rollback procedure).\n\n---\n\n## 4\ufe0f\u20e3  Proof\u2011of\u2011Concept (PoC)  \n\n| PoC Objective | Example Tasks | Success Metric | Owner |\n|---------------|---------------|----------------|-------|\n| **Validate conversion tools** | Run `pgloader` on a representative subset (3\u20115 tables, 10\u202fM rows). | Row count & checksum match (\u00b10.01\u202f%). | DBA |\n| **Test CDC latency** | Set up Debezium \u2192 target, generate a burst of inserts/updates for 1\u202fhour. | Replication lag \u2264\u202f5\u202fs, no data gaps. | Architect |\n| **Assess stored\u2011proc rewrite effort** | Pick the most complex PL/pgSQL function, translate to target language, run unit tests. | Functional parity confirmed. | Dev Lead |\n| **Performance baseline on target** | Run the same pgbench workload on the PoC target. | \u2264\u202f10\u202f% slowdown vs. source baseline. | DBA |\n| **Security compliance check** | Run automated scans (e.g., OpenSCAP) on the PoC target. | No critical findings. | SecOps |\n\n*Decision point*: **Go/No\u2011Go** \u2013 if any metric fails, iterate on tool choice or design before proceeding.\n\n*Deliverable*: **PoC Report** \u2013 includes scripts, performance charts, issues & mitigations.\n\n---\n\n## 5\ufe0f\u20e3  Implementation \u2013 Migration Buildout  \n\n### 5.1. Prepare Target Environment  \n\n1. **Provision hardware / cloud instance**  \n   - Size based on 1.5\u00d7 forecasted load (CPU",
+      "topics_hit": [
+        "motivation",
+        "scale",
+        "downtime",
+        "timeline",
+        "rollback"
+      ],
+      "passed": true
+    }
+  ]
+}

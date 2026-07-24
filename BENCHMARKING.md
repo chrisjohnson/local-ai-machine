@@ -24,11 +24,17 @@ first if you deliberately change the methodology (and note the change in `OPTIMI
   swaps, downloads). One benchmark at a time, full stop.
 - All commands below run on the target machine (`ssh chris@local-ai-machine.local`) unless marked
   "from the Mac."
-- Passwordless sudo is already configured for `chris` scoped to `nixos-rebuild switch` — pausing/
-  resuming `systemd` units and running `docker`/`docker compose` commands does **not** require
-  `sudo` (chris is already in the `docker` group and owns these units as a normal user via
-  `systemctl --user` or plain `systemctl` where applicable). If a command below fails with a
-  permissions error, that's a signal to stop and check, not to blindly add `sudo`.
+- Passwordless sudo is configured for `chris` scoped to `nixos-rebuild switch` **and**, as of
+  2026-07-24, `systemctl start`/`systemctl stop`/`systemctl restart` (all three verbs, NOPASSWD,
+  scoped to those verbs only — not `enable`/`disable`/`edit`/masking). `docker`/`docker compose`
+  commands do **not** need `sudo` (chris is in the `docker` group). **Pausing/resuming
+  `download-model-*.service` units DOES need `sudo -n systemctl stop/start` in practice** —
+  confirmed 2026-07-24: plain `systemctl stop <unit>` fails with "Access denied... requires
+  interactive authentication" for these units, `sudo -n systemctl stop <unit>` succeeds cleanly
+  and silently (no password prompt). This corrects an earlier (now-stale) version of this note
+  that claimed no `sudo` was needed for this step. If a command below fails with a permissions
+  error and it's `systemctl start/stop/restart`, add `sudo -n` first before treating it as a real
+  problem; for other command types, still stop and check rather than blindly adding `sudo`.
 
 ---
 
@@ -47,8 +53,14 @@ ago" — state can change between runs.
 
 2. **If any download units are "activating," pause all of them in one command:**
    ```
-   systemctl stop $(systemctl list-units "download-model-*" --all --no-legend | grep activating | awk '{print $1}')
+   sudo -n systemctl stop $(systemctl list-units "download-model-*" --all --no-legend | grep activating | awk '{print $2}')
    ```
+   **Real gotcha, confirmed 2026-07-24**: `--no-legend` output over a non-interactive SSH session
+   still includes the leading bullet character (`●`) as column 1 — `awk '{print $1}'` grabs that
+   bullet, not the unit name, and silently no-ops (`systemctl stop` on a bare `●` fails with an
+   "Invalid unit name" error per unit, easy to miss in a wall of output). Use `$2` for the actual
+   unit name. Also needs `sudo -n` in practice (see the note above this checklist) — plain
+   `systemctl stop` fails with a permissions error on these units.
    Confirm they're stopped (`systemctl list-units "download-model-*" --all --no-legend` should show
    no "activating" units) before proceeding. Keep a copy of exactly which units you stopped — you
    must resume the same list at teardown (§3).
@@ -296,10 +308,16 @@ simultaneously.**
    is not yet healthy, wait and re-check — do not resume downloads while waiting.
 
 3. **Only then resume the download queue**, using the exact same list of units that were paused
-   in §1:
+   in §1 (needs `sudo -n`, same as the pause step):
    ```
-   systemctl start <unit1> <unit2> ...
+   sudo -n systemctl start <unit1> <unit2> ...
    ```
+   Expect an "activating" unit or two to report `Job for download-model-X.service failed because
+   the control process exited with error code` right after resuming — this is normal, not a new
+   failure introduced by the pause/resume cycle. It means that unit is back to its own pre-existing
+   retry-loop behavior (e.g., waiting behind the shared flock while another download is in
+   progress), the same "activating" state it was in before it got paused. Confirm via the unit
+   count, not the absence of any error text:
    Confirm they went back to "activating":
    ```
    systemctl list-units "download-model-*" --all --no-legend | grep activating

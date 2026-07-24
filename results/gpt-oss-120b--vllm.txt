@@ -1,0 +1,89 @@
+Command (server start, via scripts/swap_model_start.sh):
+./scripts/swap_model_start.sh gpt-oss-120b gpt-oss-120b 131072 \
+  --enable-auto-tool-choice --tool-call-parser openai --reasoning-parser openai_gptoss
+
+Date: 2026-07-24
+First-ever serve/benchmark of this model in any form on this machine (previously
+UNTESTED-BUT-DOWNLOADED in MODEL_STACK_CATALOG.md).
+
+Pre-flight: download queue (7 activating download-model-*.service units: gpt-oss-120b,
+gpt-oss-20b, llamacpp-gpt-oss-120b, llamacpp-minimax-m2.7, llamacpp-nemotron-3-super-120b,
+llamacpp-qwen3.5-122b-a10b, north-mini-code-1.0-w4a16) confirmed active via
+`systemctl list-units 'download-model-*' --all --no-legend | grep activating`, paused via
+`sudo -n systemctl stop <all 7 units>` before this run (BENCHMARKING.md's claim that this
+doesn't need sudo is stale -- passwordless sudo for systemctl start/stop/restart was added
+2026-07-24 per README's Phase 5 log, and stopping these units did require sudo -n in practice).
+Kept paused for the whole gpt-oss-120b + gpt-oss-20b session (not resumed between models),
+resumed only after both models were fully done and vllm-primary/vllm-judge were confirmed
+healthy again. vllm-primary/vllm-judge stopped by swap_model_start.sh itself (standard swap
+pattern), not restored between the two GPT-OSS models -- both benchmarked back-to-back before
+restoring the standard stack.
+
+Server startup log excerpts (footprint):
+  Model loading took 68.7 GiB memory and 43.662431 seconds
+  Available KV cache memory: 41.31 GiB
+  GPU KV cache size: 1,130,744 tokens
+  Maximum concurrency for 131,072 tokens per request: 8.63x
+Healthy after 220s (~3.7 min cold start).
+
+*** METHODOLOGY DEVIATION, real and necessary, not optional ***
+GPT-OSS's chat template uses OpenAI's "harmony" response format (special channel/message
+control tokens parsed by vllm's built-in harmony parser, wired in via
+--tool-call-parser openai --reasoning-parser openai_gptoss). The project's standard
+`vllm bench serve --backend openai-chat --endpoint /v1/chat/completions --ignore-eos` recipe
+is INCOMPATIBLE with this model: --ignore-eos forces the sampler to keep generating past the
+model's natural end-of-turn token, and continued generation past that point violates harmony's
+expected token grammar, causing every request to error out server-side with:
+  openai_harmony.HarmonyError: Unexpected token 200002 while expecting start token 200006
+Confirmed independently via a manual curl to /v1/chat/completions with "ignore_eos": true --
+reproduced 100% of the time. A normal chat request (no ignore_eos) works fine and returns
+finish_reason: length cleanly when max_tokens is hit -- the harmony parser only breaks under
+forced continued generation past the natural stop point, not under simple truncation.
+FIX USED: switched `vllm bench serve` to `--backend openai --endpoint /v1/completions`
+(the raw-completions endpoint, bypassing the chat template / harmony parser entirely).
+Confirmed via manual curl to /v1/completions with ignore_eos:true -- works cleanly, no error.
+This is the same --ignore-eos/--random-input-len/--random-output-len/--num-prompts convention
+as every other model in this project, just a different backend/endpoint pair to route around
+this model-family-specific incompatibility. Flagging this explicitly per BENCHMARKING.md's
+honesty rule -- this is a genuine methodology change for this model family, not a silent
+substitution.
+
+Command (c1):
+docker exec vllm-bench-swap vllm bench serve \
+  --backend openai --base-url http://localhost:8000 --endpoint /v1/completions \
+  --model gpt-oss-120b --tokenizer /models/gpt-oss-120b \
+  --dataset-name random --random-input-len 2048 --random-output-len 512 \
+  --max-concurrency 1 --num-prompts 20 --ignore-eos \
+  --save-result --result-dir /tmp --result-filename gpt-oss-120b-c1.json
+
+Raw result (c1):
+{"date": "20260724-070146", "endpoint_type": "openai", "backend": "openai", "model_id": "gpt-oss-120b", "num_prompts": 20, "max_concurrency": 1, "duration": 1210.93, "completed": 20, "failed": 0, "total_input_tokens": 40960, "total_output_tokens": 10240, "output_throughput": 8.456, "total_token_throughput": 42.28, "mean_ttft_ms": 3191.45, "median_ttft_ms": 3158.51, "p99_ttft_ms": 3714.33, "mean_tpot_ms": 112.24, "median_tpot_ms": 112.24, "p99_tpot_ms": 112.26}
+
+Command (c8):
+docker exec vllm-bench-swap vllm bench serve \
+  --backend openai --base-url http://localhost:8000 --endpoint /v1/completions \
+  --model gpt-oss-120b --tokenizer /models/gpt-oss-120b \
+  --dataset-name random --random-input-len 2048 --random-output-len 256 \
+  --max-concurrency 8 --num-prompts 100 --ignore-eos \
+  --save-result --result-dir /tmp --result-filename gpt-oss-120b-c8.json
+
+Raw result (c8):
+{"date": "20260724-071604", "endpoint_type": "openai", "backend": "openai", "model_id": "gpt-oss-120b", "num_prompts": 100, "max_concurrency": 8, "duration": 815.47, "completed": 100, "failed": 0, "total_input_tokens": 204800, "total_output_tokens": 25600, "output_throughput": 31.393, "total_token_throughput": 282.54, "mean_ttft_ms": 10311.93, "median_ttft_ms": 13338.71, "p99_ttft_ms": 20910.49, "mean_tpot_ms": 202.66, "median_tpot_ms": 196.55, "p99_tpot_ms": 310.92}
+
+Summary:
+  c1: 8.46 tok/s output. TTFT 3191/3159/3714ms (mean/median/p99). TPOT 112.24ms flat (single-stream).
+  c8: 31.39 tok/s output. TTFT 10312/13339/20910ms. TPOT 202.66/196.55/310.92ms.
+  Footprint: 68.7 GiB weights, 41.31 GiB KV cache, 1,130,744 KV tokens, 8.63x max concurrency @131072.
+
+Notes: c1 throughput (8.46 tok/s) is notably slow for a ~5.1B-active-param MoE model on this
+hardware -- slower even than the dense Qwen3.6-27B (4.07 tok/s c1... actually faster than that,
+but far behind the other small-active-param MoE models: Qwen3.6-35B-A3B 11.91 tok/s c1,
+Gemma-4-26B-A4B-it 20.85 tok/s c1, GLM-4.7-Flash-AWQ 18.95 tok/s c1). Likely cause (not fully
+isolated): MXFP4 is a very new quant format and this hardware (gfx1151/RDNA3.5) has no native
+FP4 matrix-core support (same reason bf16 was chosen over FP8 for the primary) -- the
+"Using MoEPrepareAndFinalizeNoDPEPMonolithic" log line suggests a non-optimized MXFP4 MoE
+kernel path on this toolbox build, plausibly dequantizing to a compute-friendly format on the
+fly rather than running true low-bit matmuls, which would explain the gap versus the other
+MoE models' higher-bandwidth-native quant formats (bf16, AWQ-4bit). Not confirmed via kernel
+profiling -- a real, measured result, but the "why" is a plausible hypothesis, not a verified
+root cause.
