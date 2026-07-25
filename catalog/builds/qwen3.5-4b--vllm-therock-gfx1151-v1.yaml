@@ -36,4 +36,188 @@ notes: standing docker-compose.yml service.
 status: WORKING
 created: "2026-07-22"
 last_verified: "2026-07-24"
-benchmark_runs: []
+benchmark_runs:
+  - timestamp: '2026-07-25T14:41:57Z'
+    benchmark_id: vllm-speed-c1c8-v2
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: ee3938dac744180484ab798dea6e10f4a4fab238
+      host_gpu_driver: Mesa 25.3.6
+      concurrent_load:
+        downloads_paused: false
+        vllm_co_resident_or_stopped: co_resident_standing_service
+      host_metrics_window:
+        start: '2026-07-25T14:41:57Z'
+        end: '2026-07-25T15:06:35Z'
+      image_digest: '[kyuz0/vllm-therock-gfx1151@sha256:25fd294fde9f729d1e75f109022ab4496c78190c0a6dc0142440529f7af20e4d]'
+      engine_version: 0.22.1rc1.dev499+g470229c37.d20260613.rocm714
+    result:
+      trial_summaries:
+        c1:
+          output_throughput:
+            raw:
+            - 0.0
+            - 0.0
+            - 0.0
+            mean: 0.0
+            stddev: 0.0
+          total_token_throughput:
+            raw:
+            - 0.0
+            - 0.0
+            - 0.0
+            mean: 0.0
+            stddev: 0.0
+          mean_ttft_ms:
+            raw:
+            - 0.0
+            - 0.0
+            - 0.0
+            mean: 0.0
+            stddev: 0.0
+          median_ttft_ms:
+            raw:
+            - 0.0
+            - 0.0
+            - 0.0
+            mean: 0.0
+            stddev: 0.0
+          p99_ttft_ms:
+            raw:
+            - 0.0
+            - 0.0
+            - 0.0
+            mean: 0.0
+            stddev: 0.0
+          mean_tpot_ms:
+            raw:
+            - 0.0
+            - 0.0
+            - 0.0
+            mean: 0.0
+            stddev: 0.0
+          median_tpot_ms:
+            raw:
+            - 0.0
+            - 0.0
+            - 0.0
+            mean: 0.0
+            stddev: 0.0
+          p99_tpot_ms:
+            raw:
+            - 0.0
+            - 0.0
+            - 0.0
+            mean: 0.0
+            stddev: 0.0
+        c8:
+          output_throughput:
+            raw:
+            - 0.0
+            - 0.0
+            - 0.0
+            mean: 0.0
+            stddev: 0.0
+          total_token_throughput:
+            raw:
+            - 0.0
+            - 0.0
+            - 0.0
+            mean: 0.0
+            stddev: 0.0
+          mean_ttft_ms:
+            raw:
+            - 0.0
+            - 0.0
+            - 0.0
+            mean: 0.0
+            stddev: 0.0
+          median_ttft_ms:
+            raw:
+            - 0.0
+            - 0.0
+            - 0.0
+            mean: 0.0
+            stddev: 0.0
+          p99_ttft_ms:
+            raw:
+            - 0.0
+            - 0.0
+            - 0.0
+            mean: 0.0
+            stddev: 0.0
+          mean_tpot_ms:
+            raw:
+            - 0.0
+            - 0.0
+            - 0.0
+            mean: 0.0
+            stddev: 0.0
+          median_tpot_ms:
+            raw:
+            - 0.0
+            - 0.0
+            - 0.0
+            mean: 0.0
+            stddev: 0.0
+          p99_tpot_ms:
+            raw:
+            - 0.0
+            - 0.0
+            - 0.0
+            mean: 0.0
+            stddev: 0.0
+      footprint:
+        weights_gib: 8.61
+        kv_cache_gib: 13.74
+        kv_tokens: 437934
+        max_concurrency: 3.34
+      raw_files:
+        c1:
+        - catalog/raw/qwen3.5-4b--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c1-trial1--20260725T144157Z.json
+        - catalog/raw/qwen3.5-4b--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c1-trial2--20260725T144157Z.json
+        - catalog/raw/qwen3.5-4b--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c1-trial3--20260725T144157Z.json
+        c8:
+        - catalog/raw/qwen3.5-4b--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c8-trial1--20260725T144157Z.json
+        - catalog/raw/qwen3.5-4b--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c8-trial2--20260725T144157Z.json
+        - catalog/raw/qwen3.5-4b--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c8-trial3--20260725T144157Z.json
+      server_log_raw_file: catalog/raw/qwen3.5-4b--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--server-log--20260725T144157Z.txt
+
+  - timestamp: '2026-07-25T14:41:57Z'
+    benchmark_id: seven-tier-coding-v2
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: ee3938dac744180484ab798dea6e10f4a4fab238
+      host_gpu_driver: Mesa 25.3.6
+      concurrent_load:
+        downloads_paused: false
+        vllm_co_resident_or_stopped: co_resident_standing_service
+      host_metrics_window:
+        start: '2026-07-25T14:41:57Z'
+        end: '2026-07-25T15:06:35Z'
+      image_digest: '[kyuz0/vllm-therock-gfx1151@sha256:25fd294fde9f729d1e75f109022ab4496c78190c0a6dc0142440529f7af20e4d]'
+      engine_version: 0.22.1rc1.dev499+g470229c37.d20260613.rocm714
+    result:
+      tier_scores:
+        a:
+          pass: 2
+          total: 3
+        b:
+          pass: 5
+          total: 5
+        j:
+          pass: 7
+          total: 8
+        p:
+          pass: 1
+          total: 2
+        d:
+          pass: 1
+          total: 1
+        q:
+          pass: 2
+          total: 2
+        l:
+          pass: 1
+          total: 1
+      raw_file: catalog/raw/qwen3.5-4b--vllm-therock-gfx1151-v1--seven-tier-coding-v2--20260725T144157Z.json
