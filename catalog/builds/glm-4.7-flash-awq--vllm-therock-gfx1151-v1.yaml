@@ -36,4 +36,188 @@ notes: >
 status: WORKING
 created: "2026-07-23"
 last_verified: "2026-07-23"
-benchmark_runs: []
+benchmark_runs:
+  - timestamp: '2026-07-25T01:48:02Z'
+    benchmark_id: vllm-speed-c1c8-v2
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: e730b071a6278823a0e0647cdad6433d3f260429
+      host_gpu_driver: Mesa 25.3.6
+      concurrent_load:
+        downloads_paused: true
+        vllm_co_resident_or_stopped: stopped_for_swap
+      host_metrics_window:
+        start: '2026-07-25T01:48:02Z'
+        end: '2026-07-25T03:17:23Z'
+      image_digest: '[kyuz0/vllm-therock-gfx1151@sha256:25fd294fde9f729d1e75f109022ab4496c78190c0a6dc0142440529f7af20e4d]'
+      engine_version: 0.22.1rc1.dev499+g470229c37.d20260613.rocm714
+    result:
+      trial_summaries:
+        c1:
+          output_throughput:
+            raw:
+            - 18.900206490982896
+            - 19.65244003472294
+            - 19.707140530056417
+            mean: 19.419929018587418
+            stddev: 0.4509231257344832
+          total_token_throughput:
+            raw:
+            - 94.685604783928
+            - 98.4541185333288
+            - 98.72815519452092
+            mean: 97.28929283725924
+            stddev: 2.259019174822161
+          mean_ttft_ms:
+            raw:
+            - 1391.7854154962697
+            - 350.24923585297074
+            - 277.25177484971937
+            mean: 673.0954753996533
+            stddev: 623.4729984733011
+          median_ttft_ms:
+            raw:
+            - 1312.9497384943534
+            - 280.40184201381635
+            - 277.8786060080165
+            mean: 623.7433955053954
+            stddev: 596.871534831529
+          p99_ttft_ms:
+            raw:
+            - 2639.4860630916064
+            - 1414.9512924268474
+            - 283.44116396503523
+            mean: 1445.9595064944963
+            stddev: 1178.3284871714816
+          mean_tpot_ms:
+            raw:
+            - 50.28889066507071
+            - 50.29792876976167
+            - 50.299256282874275
+            mean: 50.29535857256889
+            stddev: 0.005640562323008371
+          median_tpot_ms:
+            raw:
+            - 50.295370398231675
+            - 50.298251152638194
+            - 50.29957128863316
+            mean: 50.29773094650101
+            stddev: 0.0021482157387458147
+          p99_tpot_ms:
+            raw:
+            - 50.32001177350493
+            - 50.31061176251194
+            - 50.31038237273328
+            mean: 50.31366863625005
+            stddev: 0.005494515228237036
+        c8:
+          output_throughput:
+            raw:
+            - 30.251685589593148
+            - 34.65551047656653
+            - 34.639678536437984
+            mean: 33.18229153419922
+            stddev: 2.5379915414560394
+          total_token_throughput:
+            raw:
+            - 272.8560235405101
+            - 312.5764597280942
+            - 312.43366304935665
+            mean: 299.2887154393203
+            stddev: 22.891494020398405
+          mean_ttft_ms:
+            raw:
+            - 7816.662723101617
+            - 963.1723758915905
+            - 965.7695329701528
+            mean: 3248.5348773211203
+            stddev: 3956.1149753075424
+          median_ttft_ms:
+            raw:
+            - 9410.97880799498
+            - 952.2365534940036
+            - 952.2528494999278
+            mean: 3771.822736996304
+            stddev: 4883.652413396894
+          p99_ttft_ms:
+            raw:
+            - 11982.448707167932
+            - 1164.8437112875401
+            - 1165.419913677033
+            mean: 4770.904110710835
+            stddev: 6245.3808277013395
+          mean_tpot_ms:
+            raw:
+            - 228.24939129058976
+            - 221.76261354089536
+            - 221.7927612738887
+            mean: 223.9349220351246
+            stddev: 3.736470385098308
+          median_tpot_ms:
+            raw:
+            - 229.08835975098307
+            - 224.3117979725403
+            - 224.92461438044248
+            mean: 226.1082573679886
+            stddev: 2.598969728045226
+          p99_tpot_ms:
+            raw:
+            - 248.92658144720676
+            - 228.27757774393746
+            - 227.34899503099797
+            mean: 234.85105140738074
+            stddev: 12.198605489572413
+      footprint:
+        weights_gib: 16.94
+        kv_cache_gib: 92.87
+        kv_tokens: 1841792
+        max_concurrency: 28.1
+      raw_files:
+        c1:
+        - catalog/raw/glm-4.7-flash-awq--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c1-trial1--20260725T014802Z.json
+        - catalog/raw/glm-4.7-flash-awq--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c1-trial2--20260725T014802Z.json
+        - catalog/raw/glm-4.7-flash-awq--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c1-trial3--20260725T014802Z.json
+        c8:
+        - catalog/raw/glm-4.7-flash-awq--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c8-trial1--20260725T014802Z.json
+        - catalog/raw/glm-4.7-flash-awq--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c8-trial2--20260725T014802Z.json
+        - catalog/raw/glm-4.7-flash-awq--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c8-trial3--20260725T014802Z.json
+      server_log_raw_file: catalog/raw/glm-4.7-flash-awq--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--server-log--20260725T014802Z.txt
+
+  - timestamp: '2026-07-25T01:48:02Z'
+    benchmark_id: seven-tier-coding-v2
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: e730b071a6278823a0e0647cdad6433d3f260429
+      host_gpu_driver: Mesa 25.3.6
+      concurrent_load:
+        downloads_paused: true
+        vllm_co_resident_or_stopped: stopped_for_swap
+      host_metrics_window:
+        start: '2026-07-25T01:48:02Z'
+        end: '2026-07-25T03:17:23Z'
+      image_digest: '[kyuz0/vllm-therock-gfx1151@sha256:25fd294fde9f729d1e75f109022ab4496c78190c0a6dc0142440529f7af20e4d]'
+      engine_version: 0.22.1rc1.dev499+g470229c37.d20260613.rocm714
+    result:
+      tier_scores:
+        a:
+          pass: 3
+          total: 3
+        b:
+          pass: 0
+          total: 5
+        j:
+          pass: 7
+          total: 8
+        p:
+          pass: 2
+          total: 2
+        d:
+          pass: 0
+          total: 1
+        q:
+          pass: 1
+          total: 2
+        l:
+          pass: 1
+          total: 1
+      raw_file: catalog/raw/glm-4.7-flash-awq--vllm-therock-gfx1151-v1--seven-tier-coding-v2--20260725T014802Z.json
