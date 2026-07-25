@@ -37,6 +37,151 @@ status: WORKING
 created: "2026-07-22"
 last_verified: "2026-07-24"
 benchmark_runs:
+  - timestamp: '2026-07-25T15:17:27Z'
+    benchmark_id: vllm-speed-c1c8-v2
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: 1d1f0da770e35bd5df6632d6d8b3fafc071bb344
+      host_gpu_driver: Mesa 25.3.6
+      concurrent_load:
+        downloads_paused: false
+        vllm_co_resident_or_stopped: co_resident_standing_service
+      host_metrics_window:
+        start: '2026-07-25T15:17:27Z'
+        end: '2026-07-25T15:56:30Z'
+      image_digest: '[kyuz0/vllm-therock-gfx1151@sha256:25fd294fde9f729d1e75f109022ab4496c78190c0a6dc0142440529f7af20e4d]'
+      engine_version: 0.22.1rc1.dev499+g470229c37.d20260613.rocm714
+    result:
+      trial_summaries:
+        c1:
+          output_throughput:
+            raw:
+            - 22.868557617738833
+            - 23.574690510993687
+            - 23.574691530418086
+            mean: 23.339313219716868
+            stddev: 0.40768631028713315
+          total_token_throughput:
+            raw:
+            - 114.80953892288436
+            - 118.3546156718432
+            - 118.35462078977181
+            mean: 117.17292512816645
+            stddev: 2.0467524927296044
+          mean_ttft_ms:
+            raw:
+            - 884.2684604023816
+            - 209.7441618097946
+            - 210.3179451514734
+            mean: 434.7768557878832
+            stddev: 389.27125410312306
+          median_ttft_ms:
+            raw:
+            - 873.1282475055195
+            - 209.2038590053562
+            - 209.81860999017954
+            mean: 430.71690550035174
+            stddev: 383.13958439556137
+          p99_ttft_ms:
+            raw:
+            - 1050.7954345177857
+            - 217.45561878196895
+            - 215.03002845973242
+            mean: 494.42702725316235
+            stddev: 481.83070089371967
+          mean_tpot_ms:
+            raw:
+            - 42.082798247257024
+            - 42.0904558759154
+            - 42.089317884050594
+            mean: 42.087524002407676
+            stddev: 0.004131988344491134
+          median_tpot_ms:
+            raw:
+            - 42.08500042562045
+            - 42.091237008845006
+            - 42.0890303365426
+            mean: 42.088422590336016
+            stddev: 0.003162397692876995
+          p99_tpot_ms:
+            raw:
+            - 42.10489816821172
+            - 42.105879539775586
+            - 42.118867036871485
+            mean: 42.1098815816196
+            stddev: 0.007797087731926695
+        c8:
+          output_throughput:
+            raw:
+            - 84.64680178899278
+            - 78.99449219404526
+            - 80.04898393522207
+            mean: 81.23009263942004
+            stddev: 3.0055638851358784
+          total_token_throughput:
+            raw:
+            - 765.253379392223
+            - 714.1534095470878
+            - 723.686591562497
+            mean: 734.3644601672693
+            stddev: 27.171941189378014
+          mean_ttft_ms:
+            raw:
+            - 5554.9759696814
+            - 7645.71022883174
+            - 6997.576894718222
+            mean: 6732.754364410454
+            stddev: 1070.2292581569554
+          median_ttft_ms:
+            raw:
+            - 7318.109021493001
+            - 8281.46314350306
+            - 7925.068850017851
+            mean: 7841.547005004638
+            stddev: 487.0777299818292
+          p99_ttft_ms:
+            raw:
+            - 7618.618826093734
+            - 8988.320727788378
+            - 8638.679810119793
+            mean: 8415.206454667301
+            stddev: 711.6713288621211
+          mean_tpot_ms:
+            raw:
+            - 70.81466339297556
+            - 69.25754362698781
+            - 70.55357666710145
+            mean: 70.20859456235495
+            stddev: 0.8339154518618395
+          median_tpot_ms:
+            raw:
+            - 69.19350702356657
+            - 68.19526893725875
+            - 68.21931441172993
+            mean: 68.53603012418507
+            stddev: 0.5695186135025417
+          p99_tpot_ms:
+            raw:
+            - 94.96669652675023
+            - 79.75650881781634
+            - 95.64551970057929
+            mean: 90.12290834838196
+            stddev: 8.983979054172769
+      footprint:
+        weights_gib: 8.61
+        kv_cache_gib: 13.74
+        kv_tokens: 437934
+        max_concurrency: 3.34
+      raw_files:
+        c1:
+        - catalog/raw/qwen3.5-4b--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c1-trial1--20260725T151727Z.json
+        - catalog/raw/qwen3.5-4b--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c1-trial2--20260725T151727Z.json
+        - catalog/raw/qwen3.5-4b--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c1-trial3--20260725T151727Z.json
+        c8:
+        - catalog/raw/qwen3.5-4b--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c8-trial1--20260725T151727Z.json
+        - catalog/raw/qwen3.5-4b--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c8-trial2--20260725T151727Z.json
+        - catalog/raw/qwen3.5-4b--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c8-trial3--20260725T151727Z.json
+      server_log_raw_file: catalog/raw/qwen3.5-4b--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--server-log--20260725T151727Z.txt
 # vllm-speed-c1c8-v2 run from 2026-07-25T14:41:57Z removed 2026-07-25 — a real
 # orchestrator bug (--base-url hardcoded to port 8000 instead of the judge's
 # actual 8001) made every request fail instantly (completed=0/failed=N per
