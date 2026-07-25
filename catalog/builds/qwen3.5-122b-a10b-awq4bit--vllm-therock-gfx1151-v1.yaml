@@ -39,4 +39,188 @@ notes: >
 status: WORKING
 created: "2026-07-22"
 last_verified: "2026-07-23"
-benchmark_runs: []
+benchmark_runs:
+  - timestamp: '2026-07-25T10:49:02Z'
+    benchmark_id: vllm-speed-c1c8-v2
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: ee3938dac744180484ab798dea6e10f4a4fab238
+      host_gpu_driver: Mesa 25.3.6
+      concurrent_load:
+        downloads_paused: false
+        vllm_co_resident_or_stopped: stopped_for_swap
+      host_metrics_window:
+        start: '2026-07-25T10:49:02Z'
+        end: '2026-07-25T14:34:14Z'
+      image_digest: '[kyuz0/vllm-therock-gfx1151@sha256:25fd294fde9f729d1e75f109022ab4496c78190c0a6dc0142440529f7af20e4d]'
+      engine_version: 0.22.1rc1.dev499+g470229c37.d20260613.rocm714
+    result:
+      trial_summaries:
+        c1:
+          output_throughput:
+            raw:
+            - 8.136248994679855
+            - 8.157178640303364
+            - 8.155152377540386
+            mean: 8.149526670841201
+            stddev: 0.01154335082982199
+          total_token_throughput:
+            raw:
+            - 40.847307086669595
+            - 40.95238249212458
+            - 40.94220982197009
+            mean: 40.91396646692142
+            stddev: 0.057952355743197376
+          mean_ttft_ms:
+            raw:
+            - 3750.075533450581
+            - 3578.985094204836
+            - 3580.502664297819
+            mean: 3636.5210973177454
+            stddev: 98.34395369737518
+          median_ttft_ms:
+            raw:
+            - 3586.4385000168113
+            - 3586.7549410031643
+            - 3584.8572840041015
+            mean: 3586.016908341359
+            stddev: 1.016651453119969
+          p99_ttft_ms:
+            raw:
+            - 6260.486510909973
+            - 3632.146208078193
+            - 3621.749912080413
+            mean: 4504.794210356193
+            stddev: 1520.4830191128365
+          mean_tpot_ms:
+            raw:
+            - 115.808112240021
+            - 115.82694491408532
+            - 115.85448091937278
+            mean: 115.82984602449304
+            stddev: 0.02332007584475627
+          median_tpot_ms:
+            raw:
+            - 115.81703439334848
+            - 115.82479336397078
+            - 115.8515337768964
+            mean: 115.83112051140522
+            stddev: 0.018099073520198086
+          p99_tpot_ms:
+            raw:
+            - 115.87291167735329
+            - 115.85808693958377
+            - 115.95783067469388
+            mean: 115.89627643054365
+            stddev: 0.05382041380520731
+        c8:
+          output_throughput:
+            raw:
+            - 16.367008022840274
+            - 16.221482203255537
+            - 16.329661406851166
+            mean: 16.30605054431566
+            stddev: 0.07558138437277608
+          total_token_throughput:
+            raw:
+            - 147.96670323398857
+            - 146.65107024050997
+            - 147.6290694015164
+            mean: 147.415614292005
+            stddev: 0.6832970482994691
+          mean_ttft_ms:
+            raw:
+            - 18384.12663077819
+            - 17563.737613740377
+            - 18146.515633812232
+            mean: 18031.4599594436
+            stddev: 422.12307562177097
+          median_ttft_ms:
+            raw:
+            - 19943.55342250492
+            - 16539.06082501635
+            - 19944.175989512587
+            mean: 18808.930079011287
+            stddev: 1965.7644618750905
+          p99_ttft_ms:
+            raw:
+            - 27190.18092632527
+            - 27048.079952338303
+            - 27189.394705257437
+            mean: 27142.551861307
+            stddev: 81.81601752734375
+          mean_tpot_ms:
+            raw:
+            - 406.7255777729819
+            - 414.0936542407007
+            - 408.5839659907369
+            mean: 409.80106600147315
+            stddev: 3.8318581700838625
+          median_tpot_ms:
+            raw:
+            - 408.66357052160026
+            - 408.39881313332427
+            - 409.05283385289687
+            mean: 408.70507250260715
+            stddev: 0.32897961369693746
+          p99_tpot_ms:
+            raw:
+            - 453.68667167421046
+            - 482.2287303783552
+            - 452.03184120708335
+            mean: 462.64908108654964
+            stddev: 16.97664913230253
+      footprint:
+        weights_gib: 73.58
+        kv_cache_gib: 35.21
+        kv_tokens: 1264154
+        max_concurrency: 19.29
+      raw_files:
+        c1:
+        - catalog/raw/qwen3.5-122b-a10b-awq4bit--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c1-trial1--20260725T104902Z.json
+        - catalog/raw/qwen3.5-122b-a10b-awq4bit--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c1-trial2--20260725T104902Z.json
+        - catalog/raw/qwen3.5-122b-a10b-awq4bit--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c1-trial3--20260725T104902Z.json
+        c8:
+        - catalog/raw/qwen3.5-122b-a10b-awq4bit--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c8-trial1--20260725T104902Z.json
+        - catalog/raw/qwen3.5-122b-a10b-awq4bit--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c8-trial2--20260725T104902Z.json
+        - catalog/raw/qwen3.5-122b-a10b-awq4bit--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c8-trial3--20260725T104902Z.json
+      server_log_raw_file: catalog/raw/qwen3.5-122b-a10b-awq4bit--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--server-log--20260725T104902Z.txt
+
+  - timestamp: '2026-07-25T10:49:02Z'
+    benchmark_id: seven-tier-coding-v2
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: ee3938dac744180484ab798dea6e10f4a4fab238
+      host_gpu_driver: Mesa 25.3.6
+      concurrent_load:
+        downloads_paused: false
+        vllm_co_resident_or_stopped: stopped_for_swap
+      host_metrics_window:
+        start: '2026-07-25T10:49:02Z'
+        end: '2026-07-25T14:34:14Z'
+      image_digest: '[kyuz0/vllm-therock-gfx1151@sha256:25fd294fde9f729d1e75f109022ab4496c78190c0a6dc0142440529f7af20e4d]'
+      engine_version: 0.22.1rc1.dev499+g470229c37.d20260613.rocm714
+    result:
+      tier_scores:
+        a:
+          pass: 2
+          total: 3
+        b:
+          pass: 4
+          total: 5
+        j:
+          pass: 7
+          total: 8
+        p:
+          pass: 1
+          total: 2
+        d:
+          pass: 1
+          total: 1
+        q:
+          pass: 2
+          total: 2
+        l:
+          pass: 1
+          total: 1
+      raw_file: catalog/raw/qwen3.5-122b-a10b-awq4bit--vllm-therock-gfx1151-v1--seven-tier-coding-v2--20260725T104902Z.json
