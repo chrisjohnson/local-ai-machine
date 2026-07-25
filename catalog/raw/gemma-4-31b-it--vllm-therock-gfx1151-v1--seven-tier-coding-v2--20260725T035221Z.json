@@ -1,0 +1,265 @@
+{
+  "model": "gemma-4-31b-it",
+  "base_url": "http://localhost:8000",
+  "tier_a_pass": 3,
+  "tier_a_total": 3,
+  "tier_b_pass": 5,
+  "tier_b_total": 5,
+  "tier_j_pass": 8,
+  "tier_j_total": 8,
+  "tier_p_pass": 2,
+  "tier_p_total": 2,
+  "tier_d_pass": 1,
+  "tier_d_total": 1,
+  "tier_q_pass": 2,
+  "tier_q_total": 2,
+  "tier_l_pass": 1,
+  "tier_l_total": 1,
+  "results": [
+    {
+      "id": "palindrome",
+      "tier": "A",
+      "elapsed_s": 17.48,
+      "raw_content": "```python\nimport re\n\ndef is_palindrome(s: str) -> bool:\n    clean_s = re.sub(r'[^a-zA-Z0-9]', '', s).lower()\n    return clean_s == clean_s[::-1]\n```",
+      "raw_reasoning": null,
+      "extracted_code": "import re\n\ndef is_palindrome(s: str) -> bool:\n    clean_s = re.sub(r'[^a-zA-Z0-9]', '', s).lower()\n    return clean_s == clean_s[::-1]\n",
+      "passed": true
+    },
+    {
+      "id": "merge_sorted",
+      "tier": "A",
+      "elapsed_s": 37.76,
+      "raw_content": "```python\ndef merge_sorted(a: list, b: list) -> list:\n    result = []\n    i = 0\n    j = 0\n    \n    while i < len(a) and j < len(b):\n        if a[i] < b[j]:\n            result.append(a[i])\n            i += 1\n        else:\n            result.append(b[j])\n            j += 1\n            \n    result.extend(a[i:])\n    result.extend(b[j:])\n    \n    return result\n```",
+      "raw_reasoning": null,
+      "extracted_code": "def merge_sorted(a: list, b: list) -> list:\n    result = []\n    i = 0\n    j = 0\n    \n    while i < len(a) and j < len(b):\n        if a[i] < b[j]:\n            result.append(a[i])\n            i += 1\n        else:\n            result.append(b[j])\n            j += 1\n            \n    result.extend(a[i:])\n    result.extend(b[j:])\n    \n    return result\n",
+      "passed": true
+    },
+    {
+      "id": "expr_eval",
+      "tier": "A",
+      "elapsed_s": 107.99,
+      "raw_content": "```python\ndef evaluate(expr: str) -> float:\n    def apply_op(operators, values):\n        operator = operators.pop()\n        right = values.pop()\n        left = values.pop()\n        if operator == '+': values.append(left + right)\n        elif operator == '-': values.append(left - right)\n        elif operator == '*': values.append(left * right)\n        elif operator == '/': values.append(left / right)\n\n    def precedence(op):\n        if op in ('+', '-'): return 1\n        if op in ('*', '/'): return 2\n        return 0\n\n    values = []\n    operators = []\n    i = 0\n    while i < len(expr):\n        if expr[i].isspace():\n            i += 1\n            continue\n        if expr[i].isdigit():\n            val = 0\n            while i < len(expr) and expr[i].isdigit():\n                val = val * 10 + int(expr[i])\n                i += 1\n            values.append(float(val))\n            continue\n        if expr[i] == '(':\n            operators.append('(')\n        elif expr[i] == ')':\n            while operators and operators[-1] != '(':\n                apply_op(operators, values)\n            operators.pop()\n        else:\n            while operators and precedence(operators[-1]) >= precedence(expr[i]):\n                apply_op(operators, values)\n            operators.append(expr[i])\n        i += 1\n\n    while operators:\n        apply_op(operators, values)\n        \n    return values[0]\n```",
+      "raw_reasoning": null,
+      "extracted_code": "def evaluate(expr: str) -> float:\n    def apply_op(operators, values):\n        operator = operators.pop()\n        right = values.pop()\n        left = values.pop()\n        if operator == '+': values.append(left + right)\n        elif operator == '-': values.append(left - right)\n        elif operator == '*': values.append(left * right)\n        elif operator == '/': values.append(left / right)\n\n    def precedence(op):\n        if op in ('+', '-'): return 1\n        if op in ('*', '/'): return 2\n        return 0\n\n    values = []\n    operators = []\n    i = 0\n    while i < len(expr):\n        if expr[i].isspace():\n            i += 1\n            continue\n        if expr[i].isdigit():\n            val = 0\n            while i < len(expr) and expr[i].isdigit():\n                val = val * 10 + int(expr[i])\n                i += 1\n            values.append(float(val))\n            continue\n        if expr[i] == '(':\n            operators.append('(')\n        elif expr[i] == ')':\n            while operators and operators[-1] != '(':\n                apply_op(operators, values)\n            operators.pop()\n        else:\n            while operators and precedence(operators[-1]) >= precedence(expr[i]):\n                apply_op(operators, values)\n            operators.append(expr[i])\n        i += 1\n\n    while operators:\n        apply_op(operators, values)\n        \n    return values[0]\n",
+      "passed": true
+    },
+    {
+      "id": "single_tool_call",
+      "tier": "B",
+      "elapsed_s": 6.05,
+      "called_tool": "read_file",
+      "called_args": {
+        "path": "/tmp/data.txt"
+      },
+      "passed": true
+    },
+    {
+      "id": "multi_step_tool_call",
+      "tier": "B",
+      "elapsed_s": 50.48,
+      "called_tool": "write_file",
+      "called_args": {
+        "content": "def fizzbuzz(n):\n    if n % 15 == 0:\n        return \"FizzBuzz\"\n    if n % 3 == 0:\n        return \"Fizz\"\n    if n % 5 == 0:\n        return \"Buzz\"\n    return str(n)\n\ndef test_fizzbuzz():\n    assert fizzbuzz(3) == \"Fizz\"\n    assert fizzbuzz(5) == \"Buzz\"\n    assert fizzbuzz(15) == \"FizzBuzz\"\n    assert fizzbuzz(2) == \"2\"\n    print(\"All tests passed!\")\n\nif __name__ == \"__main__\":\n    test_fizzbuzz()\n",
+        "path": "/tmp/fizzbuzz.py"
+      },
+      "passed": true
+    },
+    {
+      "id": "no_tool_needed",
+      "tier": "B",
+      "elapsed_s": 1.3,
+      "called_tool": null,
+      "passed": true
+    },
+    {
+      "id": "tool_selection_similar",
+      "tier": "B",
+      "elapsed_s": 6.19,
+      "called_tool": "search_internal_docs",
+      "called_args": {
+        "query": "onboarding runbook"
+      },
+      "passed": true
+    },
+    {
+      "id": "nested_args_tool_call",
+      "tier": "B",
+      "elapsed_s": 18.3,
+      "called_tool": "write_files",
+      "called_args": {
+        "files": [
+          {
+            "content": "alpha",
+            "path": "/tmp/a.txt"
+          },
+          {
+            "content": "beta",
+            "path": "/tmp/b.txt"
+          },
+          {
+            "content": "gamma",
+            "path": "/tmp/c.txt"
+          }
+        ]
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_correct",
+      "tier": "J",
+      "elapsed_s": 11.53,
+      "raw_content": "```json\n{\"passes\": true, \"reason\": \"The function correctly filters non-alphanumeric characters, normalizes case, and checks for equality with its reverse.\"}\n```",
+      "raw_reasoning": null,
+      "verdict": {
+        "passes": true,
+        "reason": "The function correctly filters non-alphanumeric characters, normalizes case, and checks for equality with its reverse."
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_incorrect",
+      "tier": "J",
+      "elapsed_s": 12.2,
+      "raw_content": "```json\n{\"passes\": false, \"reason\": \"The slice [:-1] causes the function to fail for single-character strings and incorrectly validate some non-palindromes.\"}\n```",
+      "raw_reasoning": null,
+      "verdict": {
+        "passes": false,
+        "reason": "The slice [:-1] causes the function to fail for single-character strings and incorrectly validate some non-palindromes."
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_correct_offbyone",
+      "tier": "J",
+      "elapsed_s": 10.87,
+      "raw_content": "```json\n{\"passes\": true, \"reason\": \"The function correctly calculates the sum using a manual for loop without using the built-in sum() function.\"}\n```",
+      "raw_reasoning": null,
+      "verdict": {
+        "passes": true,
+        "reason": "The function correctly calculates the sum using a manual for loop without using the built-in sum() function."
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_incorrect_offbyone",
+      "tier": "J",
+      "elapsed_s": 8.0,
+      "raw_content": "```json\n{\"passes\": false, \"reason\": \"The loop range excludes the last element of the list.\"}\n```",
+      "raw_reasoning": null,
+      "verdict": {
+        "passes": false,
+        "reason": "The loop range excludes the last element of the list."
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_correct_security",
+      "tier": "J",
+      "elapsed_s": 7.77,
+      "raw_content": "```json\n{\"passes\": true, \"reason\": \"The code uses parameterized queries to prevent SQL injection.\"}\n```",
+      "raw_reasoning": null,
+      "verdict": {
+        "passes": true,
+        "reason": "The code uses parameterized queries to prevent SQL injection."
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_incorrect_security",
+      "tier": "J",
+      "elapsed_s": 11.37,
+      "raw_content": "```json\n{\"passes\": false, \"reason\": \"The function uses f-strings to interpolate user input directly into the SQL query, making it vulnerable to SQL injection.\"}\n```",
+      "raw_reasoning": null,
+      "verdict": {
+        "passes": false,
+        "reason": "The function uses f-strings to interpolate user input directly into the SQL query, making it vulnerable to SQL injection."
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_correct_logic",
+      "tier": "J",
+      "elapsed_s": 10.85,
+      "raw_content": "```json\n{\"passes\": true, \"reason\": \"The function correctly uses the greater-than-or-equal-to operator to include 50.\"}\n```",
+      "raw_reasoning": null,
+      "verdict": {
+        "passes": true,
+        "reason": "The function correctly uses the greater-than-or-equal-to operator to include 50."
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_incorrect_logic",
+      "tier": "J",
+      "elapsed_s": 10.52,
+      "raw_content": "```json\n{\"passes\": false, \"reason\": \"The function uses '>' instead of '>=' and fails to qualify a total of exactly 50.\"}\n```",
+      "raw_reasoning": null,
+      "verdict": {
+        "passes": false,
+        "reason": "The function uses '>' instead of '>=' and fails to qualify a total of exactly 50."
+      },
+      "passed": true
+    },
+    {
+      "id": "constrained_summary",
+      "tier": "P",
+      "elapsed_s": 14.1,
+      "raw_content": "The Bosgame M5 is a mini PC featuring AMD's Strix Halo APU with shared LPDDR5X memory. This unified memory architecture allows the device to run large language models locally without needing a discrete graphics card.",
+      "sentence_count": 2,
+      "passed": true
+    },
+    {
+      "id": "structured_extraction",
+      "tier": "P",
+      "elapsed_s": 13.92,
+      "raw_content": "```json\n{\n  \"order_id\": \"A-58291\",\n  \"total_usd\": 47.50,\n  \"item_count\": 3\n}\n```",
+      "extracted": {
+        "order_id": "A-58291",
+        "total_usd": 47.5,
+        "item_count": 3
+      },
+      "passed": true
+    },
+    {
+      "id": "debug_off_by_one",
+      "tier": "D",
+      "elapsed_s": 27.54,
+      "final_content": "```python\ndef flag_big_drops(orders):\n    results = []\n    for i in range(len(orders)):\n        if i < len(orders) - 1 and orders[i] > 100:\n            results.append(orders[i] > orders[i+1])\n        else:\n            results.append(False)\n    return results\n```",
+      "extracted_code": "def flag_big_drops(orders):\n    results = []\n    for i in range(len(orders)):\n        if i < len(orders) - 1 and orders[i] > 100:\n            results.append(orders[i] > orders[i+1])\n        else:\n            results.append(False)\n    return results\n",
+      "passed": true
+    },
+    {
+      "id": "planning_new_tool",
+      "tier": "Q",
+      "elapsed_s": 232.58,
+      "raw_content": "To help you plan this effectively, we need to move from a \"vague idea\" to a \"technical blueprint.\" The biggest risk with internal tools is **\"scope creep\"**\u2014adding too many features because \"it's just for us,\" which leads to a tool that is never finished or impossible to maintain.\n\nTo get started, let's go through these **four planning phases**.\n\n---\n\n### Phase 1: The \"Why\" (Discovery)\nBefore thinking about code, define the problem. Answer these questions:\n\n*   **The Problem Statement:** What is the specific pain point? (e.g., *\"It takes 4 hours a week to manually pull data from X and put it into Y.\"*)\n*   **The User:** Who exactly is using this? (e.g., Account Managers, DevOps, HR?)\n*   **The \"Happy Path\":** If the tool worked perfectly, what is the exact sequence of steps a user takes to get their result?\n*   **Success Metric:** How do we know this tool is successful? (e.g., *\"Reduction in manual entry time by 50%.\"*)\n\n### Phase 2: The \"What\" (Requirements)\nBreak the tool down into functional pieces.\n\n*   **Core Features (MVP):** What is the absolute minimum required to solve the problem? List only these.\n*   **Nice-to-Haves:** Features that are cool but not essential for Day 1.\n*   **Data Sources:** Where is the data coming from? (APIs, SQL Databases, CSVs, Google Sheets?)\n*   **Permissions:** Who can *view* data vs. who can *edit/delete* it?\n\n### Phase 3: The \"How\" (Technical Stack)\nYou have three main paths for internal tools. Which one fits your team?\n\n**Option A: Low-Code/No-Code (Fastest)**\n*   *Tools:* Retool, AppSmith, Glide, Airtable.\n*   *Best for:* CRUD apps (Create, Read, Update, Delete), dashboards, and simple API connectors.\n*   *Pros:* Extremely fast build time, built-in UI components.\n\n**Option B: Framework-Based (Custom)**\n*   *Tools:* React/Next.js, Vue, or Python (Streamlit/FastAPI).\n*   *Best for:* Complex logic, unique user experiences, or tools that will eventually become customer-facing.\n*   *Pros:* Total control, scalable.\n\n**Option C: The \"Script\" (Simplest)**\n*   *Tools:* Python script, Bash, or a Google Apps Script.\n*   *Best for:* One-off data migrations or automation that doesn't need a UI.\n\n### Phase 4: The Roadmap (Execution)\nDon't build the whole thing at once. Use this timeline:\n\n1.  **Prototype (Week 1):** Wireframe the screens (even on paper) and verify that the APIs/Data sources are accessible.\n2.  **Alpha (Week 2-3):** Build the MVP. Only one \"power user\" tests it.\n3.  **Beta (Week 4):** Roll it out to the immediate team. Gather feedback.\n4.  **Maintenance:** Who owns this tool in 6 months? Document the setup so it doesn't become \"mystery code.\"\n\n---\n\n### \ud83d\ude80 Want me to help you fill this out?\n**Tell me a little bit about the tool you have in mind:**\n1. What is the main goal of the tool?\n2. Who are the primary users?\n3. Do you already have a preferred tech stack, or should I suggest one?\n4. What is the \"magic button\"\u2014the one thing the tool *must* do to be useful?",
+      "topics_hit": [
+        "users",
+        "tech_stack",
+        "timeline",
+        "success_criteria"
+      ],
+      "passed": true
+    },
+    {
+      "id": "planning_db_migration",
+      "tier": "Q",
+      "elapsed_s": 330.75,
+      "raw_content": "Migrating a production database is a high-stakes operation. To do it right, you need to move from a \"hope-based\" strategy to a \"verification-based\" strategy.\n\nSince you haven't specified the destination system, I have designed this framework to work whether you are moving to another SQL database (MySQL, SQL Server), a NoSQL system (MongoDB, Cassandra), or a Cloud Warehouse (Snowflake, BigQuery).\n\nHere is your comprehensive migration blueprint.\n\n---\n\n### Phase 1: Discovery & Analysis\nBefore moving a single row, you must understand the \"shape\" of your data.\n\n*   **Schema Mapping:** Create a source-to-target map. \n    *   *Compatible:* `VARCHAR` $\\rightarrow$ `STRING`\n    *   *Incompatible:* How will you handle Postgres-specific types like `JSONB`, `UUID`, or `INET` in the new system?\n*   **Data Volume & Velocity:** \n    *   How many TBs of data?\n    *   What is the write-rate (TPS)? This determines if you can afford downtime.\n*   **Dependency Audit:** List every application, cron job, and BI tool that connects to the DB. You will need to update connection strings and potentially rewrite queries.\n*   **Constraint Review:** Identify all Foreign Keys, Triggers, and Stored Procedures. (Note: These are the hardest parts to migrate).\n\n---\n\n### Phase 2: Strategy Selection\nChoose your migration path based on your tolerance for downtime.\n\n#### Option A: Big Bang (Offline Migration)\n*   **Process:** Stop the app $\\rightarrow$ Export $\\rightarrow$ Import $\\rightarrow$ Start app.\n*   **Best for:** Small datasets, non-critical apps, or internal tools.\n*   **Pros:** Simple, no data consistency issues.\n*   **Cons:** Significant downtime.\n\n#### Option B: Trickle/CDC (Online Migration)\n*   **Process:** \n    1.  Take a snapshot of the DB and move it.\n    2.  Use **Change Data Capture (CDC)** (e.g., Debezium or AWS DMS) to stream real-time updates from Postgres to the new DB.\n    3.  Once the new DB is \"caught up,\" flip the switch.\n*   **Best for:** High-availability production systems.\n*   **Pros:** Near-zero downtime.\n*   **Cons:** Complex to set up and monitor.\n\n#### Option C: Dual Write (Application Level)\n*   **Process:** Modify your application code to write to *both* databases simultaneously. Gradually migrate read traffic.\n*   **Best for:** Moving to a completely different paradigm (e.g., Postgres $\\rightarrow$ MongoDB).\n*   **Pros:** Maximum control; easiest rollback.\n*   **Cons:** Adds latency to writes; requires significant code changes.\n\n---\n\n### Phase 3: Execution (The Technical Steps)\n\n1.  **Environment Setup:** Provision the new hardware/instance. Ensure networking (VPCs, Firewalls) allows the migration tool to talk to both DBs.\n2.  **Schema Deployment:** Apply the target schema. Do **not** migrate data into a blank slate; define your tables/collections first.\n3.  **The Initial Load:** Perform the bulk transfer. \n    *   *Tip:* Disable indexes and constraints on the target DB during the bulk load to speed up the process by 5x\u201310x.\n4.  **Synchronization:** If using CDC, start the replication stream to sync the delta.\n5.  **Indexing:** Re-enable indexes and constraints on the target system.\n\n---\n\n### Phase 4: Validation & Testing\n**Never flip the switch without these three tests:**\n\n*   **Row Count Validation:** Do the number of records in `Users` match exactly between Source and Target?\n*   **Checksum/Sampling:** Pick 1,000 random rows and compare every column to ensure no data truncation or encoding errors occurred.\n*   **Performance Benchmarking:** Run your top 10 slowest queries on the new system. If they are slower than Postgres, you need to tune your indexes before going live.\n\n---\n\n### Phase 5: The Cutover & Rollback\n\n**The Cutover Sequence:**\n1.  Set the Postgres DB to **Read-Only mode**.\n2.  Allow the final CDC sync to complete.\n3.  Update application environment variables to point to the new DB.\n4.  Restart application services.\n5.  Monitor error logs for \"Query Syntax\" or \"Connection Timeout\" errors.\n\n**The Rollback Plan (The \"Oh No\" Button):**\nDefine a \"Point of No Return.\" If the system is unstable after $X$ hours, how do you go back?\n*   *If using Dual Write:* Simply flip the read switch back to Postgres.\n*   *If using Big Bang:* Restore from the final Postgres backup.\n\n---\n\n### Summary Checklist for your Planning Document:\n- [ ] Map of data types (Postgres $\\rightarrow$ New System).\n- [ ] List of stored procedures/triggers to be rewritten.\n- [ ] Decision: Big Bang vs. CDC vs. Dual Write.\n- [ ] Estimated downtime window.\n- [ ] Validation script for row counts and checksums.\n- [ ] Rollback trigger (the specific condition that forces a revert).",
+      "topics_hit": [
+        "scale",
+        "downtime",
+        "rollback"
+      ],
+      "passed": true
+    },
+    {
+      "id": "needle_in_haystack",
+      "tier": "L",
+      "haystack_chars": 69121,
+      "elapsed_s": 106.95,
+      "raw_content": "BLUEFALCON-77",
+      "passed": true
+    }
+  ]
+}
