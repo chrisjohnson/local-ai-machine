@@ -1,0 +1,268 @@
+{
+  "model": "qwen3-coder-next-gptq4bit",
+  "base_url": "http://localhost:8000",
+  "tier_a_pass": 3,
+  "tier_a_total": 3,
+  "tier_b_pass": 4,
+  "tier_b_total": 5,
+  "tier_j_pass": 8,
+  "tier_j_total": 8,
+  "tier_p_pass": 2,
+  "tier_p_total": 2,
+  "tier_d_pass": 1,
+  "tier_d_total": 1,
+  "tier_q_pass": 2,
+  "tier_q_total": 2,
+  "tier_l_pass": 1,
+  "tier_l_total": 1,
+  "results": [
+    {
+      "id": "palindrome",
+      "tier": "A",
+      "elapsed_s": 5.78,
+      "raw_content": "```python\ndef is_palindrome(s: str) -> bool:\n    filtered = ''.join(c.lower() for c in s if c.isalnum())\n    return filtered == filtered[::-1]\n```",
+      "raw_reasoning": null,
+      "extracted_code": "def is_palindrome(s: str) -> bool:\n    filtered = ''.join(c.lower() for c in s if c.isalnum())\n    return filtered == filtered[::-1]\n",
+      "passed": true
+    },
+    {
+      "id": "merge_sorted",
+      "tier": "A",
+      "elapsed_s": 7.12,
+      "raw_content": "```python\ndef merge_sorted(a: list, b: list) -> list:\n    result = []\n    i, j = 0, 0\n    while i < len(a) and j < len(b):\n        if a[i] <= b[j]:\n            result.append(a[i])\n            i += 1\n        else:\n            result.append(b[j])\n            j += 1\n    while i < len(a):\n        result.append(a[i])\n        i += 1\n    while j < len(b):\n        result.append(b[j])\n        j += 1\n    return result\n```",
+      "raw_reasoning": null,
+      "extracted_code": "def merge_sorted(a: list, b: list) -> list:\n    result = []\n    i, j = 0, 0\n    while i < len(a) and j < len(b):\n        if a[i] <= b[j]:\n            result.append(a[i])\n            i += 1\n        else:\n            result.append(b[j])\n            j += 1\n    while i < len(a):\n        result.append(a[i])\n        i += 1\n    while j < len(b):\n        result.append(b[j])\n        j += 1\n    return result\n",
+      "passed": true
+    },
+    {
+      "id": "expr_eval",
+      "tier": "A",
+      "elapsed_s": 25.82,
+      "raw_content": "```python\ndef evaluate(expr: str) -> float:\n    tokens = []\n    i = 0\n    while i < len(expr):\n        c = expr[i]\n        if c.isspace():\n            i += 1\n            continue\n        elif c.isdigit():\n            j = i\n            while j < len(expr) and expr[j].isdigit():\n                j += 1\n            tokens.append(int(expr[i:j]))\n            i = j\n        elif c in '+-*/()':\n            tokens.append(c)\n            i += 1\n        else:\n            raise ValueError(f\"Invalid character: {c}\")\n    \n    def parse_expression():\n        result = parse_term()\n        while tokens and tokens[0] in '+-':\n            op = tokens.pop(0)\n            right = parse_term()\n            if op == '+':\n                result += right\n            else:\n                result -= right\n        return result\n    \n    def parse_term():\n        result = parse_factor()\n        while tokens and tokens[0] in '*/':\n            op = tokens.pop(0)\n            right = parse_factor()\n            if op == '*':\n                result *= right\n            else:\n                if right == 0:\n                    raise ZeroDivisionError(\"Division by zero\")\n                result /= right\n        return result\n    \n    def parse_factor():\n        if not tokens:\n            raise ValueError(\"Unexpected end of expression\")\n        if tokens[0] == '(':\n            tokens.pop(0)  # remove '('\n            result = parse_expression()\n            if not tokens or tokens[0] != ')':\n                raise ValueError(\"Missing closing parenthesis\")\n            tokens.pop(0)  # remove ')'\n            return result\n        elif tokens[0] == '-':\n            tokens.pop(0)\n            return -parse_factor()\n        elif tokens[0] == '+':\n            tokens.pop(0)\n            return parse_factor()\n        elif isinstance(tokens[0], int):\n            return float(tokens.pop(0))\n        else:\n            raise ValueError(f\"Unexpected token: {tokens[0]}\")\n    \n    if not tokens:\n        raise ValueError(\"Empty expression\")\n    result = parse_expression()\n    if tokens:\n        raise ValueError(f\"Unexpected token after expression: {tokens[0]}\")\n    return result\n```",
+      "raw_reasoning": null,
+      "extracted_code": "def evaluate(expr: str) -> float:\n    tokens = []\n    i = 0\n    while i < len(expr):\n        c = expr[i]\n        if c.isspace():\n            i += 1\n            continue\n        elif c.isdigit():\n            j = i\n            while j < len(expr) and expr[j].isdigit():\n                j += 1\n            tokens.append(int(expr[i:j]))\n            i = j\n        elif c in '+-*/()':\n            tokens.append(c)\n            i += 1\n        else:\n            raise ValueError(f\"Invalid character: {c}\")\n    \n    def parse_expression():\n        result = parse_term()\n        while tokens and tokens[0] in '+-':\n            op = tokens.pop(0)\n            right = parse_term()\n            if op == '+':\n                result += right\n            else:\n                result -= right\n        return result\n    \n    def parse_term():\n        result = parse_factor()\n        while tokens and tokens[0] in '*/':\n            op = tokens.pop(0)\n            right = parse_factor()\n            if op == '*':\n                result *= right\n            else:\n                if right == 0:\n                    raise ZeroDivisionError(\"Division by zero\")\n                result /= right\n        return result\n    \n    def parse_factor():\n        if not tokens:\n            raise ValueError(\"Unexpected end of expression\")\n        if tokens[0] == '(':\n            tokens.pop(0)  # remove '('\n            result = parse_expression()\n            if not tokens or tokens[0] != ')':\n                raise ValueError(\"Missing closing parenthesis\")\n            tokens.pop(0)  # remove ')'\n            return result\n        elif tokens[0] == '-':\n            tokens.pop(0)\n            return -parse_factor()\n        elif tokens[0] == '+':\n            tokens.pop(0)\n            return parse_factor()\n        elif isinstance(tokens[0], int):\n            return float(tokens.pop(0))\n        else:\n            raise ValueError(f\"Unexpected token: {tokens[0]}\")\n    \n    if not tokens:\n        raise ValueError(\"Empty expression\")\n    result = parse_expression()\n    if tokens:\n        raise ValueError(f\"Unexpected token after expression: {tokens[0]}\")\n    return result\n",
+      "passed": true
+    },
+    {
+      "id": "single_tool_call",
+      "tier": "B",
+      "elapsed_s": 2.49,
+      "called_tool": "read_file",
+      "called_args": {
+        "path": "/tmp/data.txt"
+      },
+      "passed": true
+    },
+    {
+      "id": "multi_step_tool_call",
+      "tier": "B",
+      "elapsed_s": 11.74,
+      "called_tool": "write_file",
+      "called_args": {
+        "path": "/tmp/fizzbuzz.py",
+        "content": "def fizzbuzz(n):\n    \"\"\"\n    FizzBuzz function returns 'Fizz' if n is divisible by 3,\n    'Buzz' if n is divisible by 5, 'FizzBuzz' if n is divisible by 15,\n    and the number itself as a string otherwise.\n    \"\"\"\n    if n % 15 == 0:\n        return \"FizzBuzz\"\n    elif n % 3 == 0:\n        return \"Fizz\"\n    elif n % 5 == 0:\n        return \"Buzz\"\n    else:\n        return str(n)\n\n\nif __name__ == \"__main__\":\n    # Example usage: print FizzBuzz for numbers from 1 to 100\n    for i in range(1, 101):\n        print(fizzbuzz(i))\n"
+      },
+      "passed": true
+    },
+    {
+      "id": "no_tool_needed",
+      "tier": "B",
+      "elapsed_s": 2.24,
+      "called_tool": "run_calculator",
+      "passed": false,
+      "error": "expected no tool call, got 'run_calculator'"
+    },
+    {
+      "id": "tool_selection_similar",
+      "tier": "B",
+      "elapsed_s": 2.25,
+      "called_tool": "search_internal_docs",
+      "called_args": {
+        "query": "internal onboarding runbook document"
+      },
+      "passed": true
+    },
+    {
+      "id": "nested_args_tool_call",
+      "tier": "B",
+      "elapsed_s": 4.28,
+      "called_tool": "write_files",
+      "called_args": {
+        "files": [
+          {
+            "path": "/tmp/a.txt",
+            "content": "alpha"
+          },
+          {
+            "path": "/tmp/b.txt",
+            "content": "beta"
+          },
+          {
+            "path": "/tmp/c.txt",
+            "content": "gamma"
+          }
+        ]
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_correct",
+      "tier": "J",
+      "elapsed_s": 2.57,
+      "raw_content": "{\"passes\": true, \"reason\": \"The function correctly filters non-alphanumeric characters, converts to lowercase, and checks if the cleaned string equals its reverse, satisfying all requirements.\"}",
+      "raw_reasoning": null,
+      "verdict": {
+        "passes": true,
+        "reason": "The function correctly filters non-alphanumeric characters, converts to lowercase, and checks if the cleaned string equals its reverse, satisfying all requirements."
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_incorrect",
+      "tier": "J",
+      "elapsed_s": 3.72,
+      "raw_content": "{\"passes\": false, \"reason\": \"The slicing `[:-1]` on both sides removes the last character, so it incorrectly returns True for non-palindromes like 'ab' (cleaned to ['a','b']) and fails to compare the full string.\"}",
+      "raw_reasoning": null,
+      "verdict": {
+        "passes": false,
+        "reason": "The slicing `[:-1]` on both sides removes the last character, so it incorrectly returns True for non-palindromes like 'ab' (cleaned to ['a','b']) and fails to compare the full string."
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_correct_offbyone",
+      "tier": "J",
+      "elapsed_s": 2.25,
+      "raw_content": "{\"passes\": true, \"reason\": \"The function correctly uses a manual loop to sum all elements in the list without using the built-in sum().\"}",
+      "raw_reasoning": null,
+      "verdict": {
+        "passes": true,
+        "reason": "The function correctly uses a manual loop to sum all elements in the list without using the built-in sum()."
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_incorrect_offbyone",
+      "tier": "J",
+      "elapsed_s": 3.06,
+      "raw_content": "{\"passes\": false, \"reason\": \"The loop iterates only up to len(nums) - 1, missing the last element; it should iterate over all elements using range(len(nums)) or directly over the list.\"}",
+      "raw_reasoning": null,
+      "verdict": {
+        "passes": false,
+        "reason": "The loop iterates only up to len(nums) - 1, missing the last element; it should iterate over all elements using range(len(nums)) or directly over the list."
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_correct_security",
+      "tier": "J",
+      "elapsed_s": 2.5,
+      "raw_content": "{\"passes\": true, \"reason\": \"The function uses a parameterized query with %s placeholder, preventing SQL injection by letting the database driver safely handle the username value.\"}",
+      "raw_reasoning": null,
+      "verdict": {
+        "passes": true,
+        "reason": "The function uses a parameterized query with %s placeholder, preventing SQL injection by letting the database driver safely handle the username value."
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_incorrect_security",
+      "tier": "J",
+      "elapsed_s": 2.48,
+      "raw_content": "{\"passes\": false, \"reason\": \"The function constructs the SQL query using string interpolation, making it vulnerable to SQL injection; it should use parameterized queries instead.\"}",
+      "raw_reasoning": null,
+      "verdict": {
+        "passes": false,
+        "reason": "The function constructs the SQL query using string interpolation, making it vulnerable to SQL injection; it should use parameterized queries instead."
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_correct_logic",
+      "tier": "J",
+      "elapsed_s": 2.31,
+      "raw_content": "{\"passes\": true, \"reason\": \"The function correctly returns True when the total is at least $50, satisfying the free shipping eligibility requirement.\"}",
+      "raw_reasoning": null,
+      "verdict": {
+        "passes": true,
+        "reason": "The function correctly returns True when the total is at least $50, satisfying the free shipping eligibility requirement."
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_incorrect_logic",
+      "tier": "J",
+      "elapsed_s": 2.91,
+      "raw_content": "{\"passes\": false, \"reason\": \"The function uses > instead of >=, so a total of exactly 50 does not qualify for free shipping, violating the requirement that 50 itself qualifies.\"}",
+      "raw_reasoning": null,
+      "verdict": {
+        "passes": false,
+        "reason": "The function uses > instead of >=, so a total of exactly 50 does not qualify for free shipping, violating the requirement that 50 itself qualifies."
+      },
+      "passed": true
+    },
+    {
+      "id": "constrained_summary",
+      "tier": "P",
+      "elapsed_s": 4.87,
+      "raw_content": "The Bosgame M5 is a mini PC featuring AMD's Strix Halo APU, combining a Zen 5 CPU with an RDNA 3.5 integrated GPU and sharing up to 128GB of unified LPDDR5X memory. This unified memory architecture enables the device to run large language models for local AI inference\u2014typically requiring a discrete GPU\u2014without any dedicated graphics hardware.",
+      "sentence_count": 2,
+      "passed": true
+    },
+    {
+      "id": "structured_extraction",
+      "tier": "P",
+      "elapsed_s": 2.18,
+      "raw_content": "{\"order_id\": \"A-58291\", \"total_usd\": 47.5, \"item_count\": 3}",
+      "extracted": {
+        "order_id": "A-58291",
+        "total_usd": 47.5,
+        "item_count": 3
+      },
+      "passed": true
+    },
+    {
+      "id": "debug_off_by_one",
+      "tier": "D",
+      "elapsed_s": 5.25,
+      "final_content": "```python\ndef flag_big_drops(orders):\n    results = []\n    for i in range(len(orders)):\n        if i < len(orders) - 1 and orders[i] > 100:\n            results.append(orders[i] > orders[i + 1])\n        else:\n            results.append(False)\n    return results\n```",
+      "extracted_code": "def flag_big_drops(orders):\n    results = []\n    for i in range(len(orders)):\n        if i < len(orders) - 1 and orders[i] > 100:\n            results.append(orders[i] > orders[i + 1])\n        else:\n            results.append(False)\n    return results\n",
+      "passed": true
+    },
+    {
+      "id": "planning_new_tool",
+      "tier": "Q",
+      "elapsed_s": 68.87,
+      "raw_content": "Absolutely! Let\u2019s build a solid plan for your internal tool. To make this as relevant and actionable as possible, I\u2019d like to understand a bit more\u2014*but if you\u2019re not ready to share specifics, I\u2019ll walk you through a standard framework you can adapt*.\n\n---\n\n### \ud83d\udee0\ufe0f Phase 0: Clarify the Goal (15\u201330 mins)\nBefore any design or code, define *why* you\u2019re building this. Ask:\n\n| Question | Why It Matters |\n|--------|----------------|\n| **What problem are we solving?** | Avoids building something unnecessary. |\n| **Who will use it? (Roles & needs)** | Shapes UX, permissions, and features. |\n| **What\u2019s the current workaround?** | Reveals pain points and sets success metrics. |\n| **What does \u201csuccess\u201d look like?** (e.g., \u201ccuts report time from 2h \u2192 15m\u201d) | Lets you measure impact later. |\n\n\ud83d\udc49 *Example:*  \n> *\u201cOur support team manually pulls data from 3 tools (Zendesk, Salesforce, and Google Sheets) to create weekly client health reports. It takes ~2 hours/week and often has outdated info. We need one dashboard showing real-time status.\u201d*\n\n---\n\n### \ud83d\udccb Phase 1: Scope & Prioritize (1\u20132 hours)\nUse the **MoSCoW method** to avoid scope creep:\n\n| Category | Description | Example |\n|----------|-------------|---------|\n| **M**ust have | Critical for launch | Login, data import, basic dashboard |\n| **S**hould have | Important but not blocking | Export to PDF, user roles |\n| **C**ould have | Nice-to-have if time | Dark mode, custom alerts |\n| **W**on\u2019t have (this version) | Deferred for future | AI summaries, API integrations |\n\n\ud83d\udd0d *Tip:* Talk to 2\u20133 end-users first. Ask: *\u201cWhat\u2019s the #1 thing you\u2019d fix about today\u2019s process?\u201d*\n\n---\n\n### \u2699\ufe0f Phase 2: Tech Stack & Architecture\n| Component | Options | Notes |\n|-----------|---------|-------|\n| **Frontend** | React (Vite), Vue, or even a super-light Svelte app | If speed matters: use a framework like Next.js for SSR |\n| **Backend** | Python (FastAPI/Flask), Node.js (Express/Nest), or serverless (Vercel/Netlify + serverless functions) | FastAPI + PostgreSQL is great for internal tools (strong typing, docs auto-generated) |\n| **Database** | PostgreSQL (relational), Supabase (Postgres + auth), or SQLite (small scale) | Use Supabase if you want auth + DB + real-time out-of-the-box |\n| **Auth** | Supabase Auth, Clerk, or simple Google/SAML SSO (if enterprise) | For internal tools, SSO is highly recommended |\n| **Hosting** | Render, Fly.io, or Vercel (frontend) + Supabase/Heroku (DB) | Free tiers exist for small teams |\n\n\ud83d\udca1 *Pro tip:* Start with **no-code/low-code** if it fits (e.g., Retool, Streamlit, or FlutterFlow). If you\u2019ll need heavy customization or scale, move to code.\n\n---\n\n### \ud83d\udcd0 Phase 3: Core Features (MVP Example)\nAssuming a generic *data aggregation dashboard* for internal teams:\n\n| Feature | Details | Effort (Est.) |\n|---------|---------|---------------|\n| **User login** | SSO via company Google/Microsoft | Low |\n| **Dashboard** | KPIs, quick filters (e.g., date range, team) | Medium |\n| **Data sources** | Connect to 2\u20133 APIs/spreadsheets (CSV upload as fallback) | Medium-High |\n| **Automated refresh** | Scheduled (e.g., hourly) or manual trigger | Medium |\n| **Export** | CSV/PDF of reports | Low |\n| **Permissions** | Role-based (viewer/edit/admin) | Medium |\n\n---\n\n### \ud83d\udcc5 Phase 4: Timeline & Milestones\n| Week | Goal | Deliverable |\n|------|------|-------------|\n| **1** | Plan & prototype | Paper wireframes + 1-click demo (e.g., Figma + mock API) |\n| **2\u20133** | Build MVP | Auth + 1 key widget (e.g., a chart pulling real data) |\n| **4** | User testing | 3\u20135 power users try it + feedback loop |\n| **5** | Polish & ship | Bug fixes, docs, training |  \n\n\u23f1\ufe0f *Total MVP: ~4\u20136 weeks for 1 dev (or 2\u20133 for a team).*\n\n---\n\n### \ud83d\ude80 Bonus: Low-Risk Launch Strategy\n1. **Internal beta** with 2\u20133 trusting teams  \n2. **Anonymized usage metrics** (e.g., \"Which reports are run most?\")  \n3. **Feedback loop** in-app (e.g., \ud83d\udc4d/\ud83d\udc4e on features)  \n4. **Iterate fast** \u2014 build, measure, learn in 1-week sprints  \n\n---\n\n### \ud83d\udd1c Next Steps for You:\n1. **Tell me more about your tool**:  \n   - What\u2019s the core purpose?  \n   - Who uses it?  \n   - Any non-negotiables (e.g., \u201cmust run on-prem,\u201d \u201cno cloud,\u201d \u201cmust work offline\u201d)?  \n\n2. **Or let me help you**:  \n   - Draft a 1-page product spec  \n   - Sketch a basic data model  \n   - Recommend tools based on your stack  \n\nI\u2019m here to help \u2014 no idea too small! \ud83d\ude0a",
+      "topics_hit": [
+        "users",
+        "tech_stack",
+        "timeline",
+        "success_criteria"
+      ],
+      "passed": true
+    },
+    {
+      "id": "planning_db_migration",
+      "tier": "Q",
+      "elapsed_s": 114.48,
+      "raw_content": "Absolutely \u2014 migrating a database from PostgreSQL to a new system is a significant undertaking that requires careful planning to ensure data integrity, minimize downtime, and reduce risk. Below is a comprehensive, step-by-step migration plan you can adapt based on your specific context (e.g., target system, team size, downtime tolerance, data volume, etc.).\n\n---\n\n### \ud83e\udded **Phase 0: Discovery & Assessment**\n*Before choosing a new system or writing code, gather context.*\n\n1. **Define Objectives & Constraints**\n   - Why migrate? (e.g., cost, scalability, features, vendor lock-in, performance)\n   - What\u2019s the acceptable downtime? (Rolling? Blue-green? Zero-downtime?)\n   - Compliance/security requirements (GDPR, HIPAA, etc.)?\n   - Budget & timeline constraints?\n\n2. **Inventory Your PostgreSQL Environment**\n   - Version (e.g., 13, 14, 15, 16+)\n   - Database size (data + indexes + LOBs)\n   - Number of schemas/tables (10 vs. 1000+)\n   - Complexity of objects: triggers, stored procedures, views, functions, extensions (e.g., PostGIS, pgcrypto)\n   - Connection points: apps, ETLs, reports, cron jobs (e.g., `pg_dump`, `psql`, ORMs)\n\n3. **Evaluate Target System**\n   - What\u2019s the destination? (e.g., MySQL, Snowflake, BigQuery, DynamoDB, MongoDB, CockroachDB, Citus, Amazon RDS/Aurora, Azure SQL)\n   - **Critical:** Understand the target\u2019s capabilities:\n     - SQL compatibility level (e.g., does it support window functions, CTEs, JSONB, array types?)\n     - Data types (e.g., `UUID`, `inet`, `tsvector` \u2192 need mapping)\n     - Transaction semantics (e.g., PostgreSQL\u2019s MVCC vs. others)\n     - Indexing support\n     - Concurrency model\n\n4. **Risk Assessment**\n   - Data loss exposure\n   - Application compatibility (e.g., raw SQL vs ORM abstraction)\n   - Performance regressions (index choice, query plans)\n   - Rollback feasibility\n\n---\n\n### \ud83d\udee0\ufe0f **Phase 1: Strategy Selection**\nChoose one or hybrid migration approach:\n\n| **Approach**          | **Best For**                                      | **Pros & Cons** |\n|------------------------|---------------------------------------------------|------------------|\n| **Dump & Load**         | One-time offline migration, smaller datasets, low complexity | \u2705 Simple, reproducible<br>\u274c Downtime, no CDC, may lose constraints/triggers |\n| **Schema + Data Copy**  | Medium complexity, need more control              | \u2705 Granular, partial reloads<br>\u274c Still usually requires downtime |\n| **Change Data Capture (CDC)** | Large DBs, zero-downtime need (e.g., logical replication, Debezium) | \u2705 Near-zero downtime<br>\u274c Complex setup, lag risk |\n| **ETL Pipeline**        | Migration to analytics DB (e.g., Snowflake), transformations needed | \u2705 Transform during load<br>\u274c High dev effort, possible latency |\n\n> \ud83d\udca1 **Tip:** For OLTP \u2192 analytics (e.g., PostgreSQL \u2192 Snowflake), CDC + scheduled sync + staging layer often works well.\n\n---\n\n### \ud83d\udccb **Phase 2: Design & Preparation**\n1. **Schema Mapping**\n   - Map PostgreSQL data types to target equivalents:\n     - `SERIAL` \u2192 `IDENTITY`, `AUTO_INCREMENT`, or sequence-based\n     - `UUID` \u2192 `UUID`, `CHAR(36)`, `BINARY(16)`\n     - `JSONB` \u2192 `JSON`, `OBJECT`, or `STRING` (with parsing)\n     - `TIMESTAMPTZ` \u2192 timestamp with timezone handling\n     - `CIDR`, `INET` \u2192 string or custom type\n   - Handle missing features: \n     - Recursive CTEs? \n     - UPSERT (`ON CONFLICT`) vs `MERGE` or app-level logic?\n     - Window functions?\n\n2. **Tool Selection**\n   - **Schema migration tools:** Flyway, Liquibase, custom scripts\n   - **Data loaders:** `psql COPY`, `pg_dump`/`psql`, `aws datasync`, `AWS DMS`, `Debezium`\n   - **Validation:** `pt-table-sync`, custom SQL checksums, Python (`pandas`, `pydantic`), `dbt`\n\n3. **Test Environment Setup**\n   - Clone production schema/data (use `pg_dump --schema-only` + anonymization)\n   - Mirror production config (e.g., collation, timezone, extensions)\n\n---\n\n### \ud83d\udd01 **Phase 3: Execution (Pilot Migration)**\n1. **Migrate Schema**\n   - Convert PostgreSQL DDL \u2192 target DDL (manually or with tools)\n   - Add necessary constraints/indexes *after* load for speed (if supported)\n\n2. **Run Data Migration (Low-Risk First)**\n   - Start with non-critical schema or dev DB\n   - Validate:\n     - Row counts\n     - Null ratio\n     - Data type validity (e.g., no invalid JSON)\n     - Referential integrity (if enforced on target)\n\n3. **Test Applications**\n   - Run integration tests (e.g., Postman, Cypress, pytest)\n   - Check ORMs: does it auto-generate correct SQL?\n   - Benchmark query performance (vs. old system)\n\n---\n\n### \ud83d\ude80 **Phase 4: Production Migration (Phased & Safe)**\n1. **Downtime Window Plan**\n   - **Option A (Minimal Downtime):**\n     - Freeze writes (application level)\n     - Final sync (CDC last-mile)\n     - Point application to new DB\n     - Verify \u2192 unfreeze writes\n   - **Option B (Blue/Green):**\n     - Dual-write temporarily (e.g., with Debezium or app-level fanout)\n     - Sync both systems until cutover\n     - Switch read traffic \u2192 switch write traffic \u2192 decommission old\n\n2. **Go/No-Go Criteria**\n   - \u2705 Row counts match\n   - \u2705 Validation queries pass\n   - \u2705 Critical performance SLAs met\n   - \u2705 Rollback plan verified\n\n3. **Rollback Plan**\n   - Back up final production PostgreSQL snapshot *before* cutover\n   - Ensure you can revert app config instantly\n   - Test rollback in staging\n\n---\n\n### \u2705 **Phase 5: Post-Migration**\n1. **Validation**\n   - Automated data sync verification (checksums per table)\n   - Smoke tests: login, search, checkout \u2014 whatever is critical\n   - Log monitoring: watch for SQL syntax errors in app logs\n\n2. **Tuning & Optimization**\n   - Rebuild indexes (if needed)\n   - Analyze query plans \u2192 add missing indexes\n   - Fix slow queries (rewrite PostgreSQL-specific SQL)\n\n3. **Cleanup**\n   - Decommission old DB (after 2\u20134 weeks)\n   - Update docs, monitoring alerts, CI/CD pipelines\n   - Archive migration artifacts (logs, scripts, lessons learned)\n\n---\n\n### \ud83e\udde9 **Key Tools & Libraries**\n| Purpose | Tools |\n|--------|-------|\n| Schema Diff | `pg_dump`, `pt-table-diff`, `schemalex`, `sqitch` |\n| Data Sync | `pglogical`, `wal2json` + Debezium, `AWS DMS`, `Flyway`, `Flyway Teams` |\n| Validation | `dbt` (for audit queries), `pandas` (sample comparison), custom Python scripts |\n| Monitoring | Prometheus + PostgreSQL exporter (for source), CloudWatch/Sentry (for target) |\n\n---\n\n### \ud83d\udccc **Pro Tips**\n- **Never migrate on Friday afternoon.**\n- **Anonymize data** in test environments (e.g., `pg_anon`).\n- Use `COPY TO/FROM` for large bulk loads \u2014 way faster than `INSERT`.\n- Log every script and migration step \u2014 audit trail is essential.\n- Include **negative tests** (e.g., ensure invalid data is rejected on target).\n\n---\n\n### \ud83d\udcc4 Template: Migration Checklist\n```markdown\n- [ ] Define goals & constraints (done by X date)\n- [ ] Inventory DB + app dependencies (done)\n- [ ] Choose migration strategy (e.g., CDC)\n- [ ] Build schema conversion script + test in dev\n- [ ] Create data validation plan\n- [ ] Dry-run migration in staging (full cycle)\n- [ ] Document rollback steps (tested)\n- [ ] Notify stakeholders (apps, teams, cron jobs)\n- [ ] Execute production migration (with downtime window)\n- [ ] Post-migration validation & tuning\n- [ ] Decommission old DB (with sign-off)\n```\n\n---\n\nWould you like me to:\n- Tailor this for your specific target system (e.g., \"we\u2019re moving to Snowflake\" or \"to MySQL\")?\n- Help write a schema conversion script (e.g., PostgreSQL \u2192 BigQuery)?\n- Provide an example CDC pipeline with Debezium?\n- Estimate effort/downtime for your DB size?\n\nLet me know \u2014 happy to go deeper! \ud83d\uddc4\ufe0f\u2728",
+      "topics_hit": [
+        "motivation",
+        "scale",
+        "downtime",
+        "timeline",
+        "rollback"
+      ],
+      "passed": true
+    },
+    {
+      "id": "needle_in_haystack",
+      "tier": "L",
+      "haystack_chars": 69121,
+      "elapsed_s": 15.54,
+      "raw_content": "BLUEFALCON-77",
+      "passed": true
+    }
+  ]
+}
