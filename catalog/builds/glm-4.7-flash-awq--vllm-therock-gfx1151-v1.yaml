@@ -18,6 +18,9 @@ model:
   size_on_disk_gb: 20   # under 20GB
 served_model_name: glm-4.7-flash-awq
 build_specific_flags:
+  - --enable-auto-tool-choice   # added 2026-07-24 — orchestrator run found the parser alone
+                                 # wasn't enough (Tier B: 0/5, every request 400'd); the
+                                 # standing production services have both flags together
   - --tool-call-parser glm47   # dedicated parser, no AWQ workaround needed (unlike the 122B tier's VLLM_USE_TRITON_AWQ)
   - --reasoning-parser glm45
   - --max-model-len 65536
@@ -182,42 +185,8 @@ benchmark_runs:
         - catalog/raw/glm-4.7-flash-awq--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c8-trial2--20260725T014802Z.json
         - catalog/raw/glm-4.7-flash-awq--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c8-trial3--20260725T014802Z.json
       server_log_raw_file: catalog/raw/glm-4.7-flash-awq--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--server-log--20260725T014802Z.txt
-
-  - timestamp: '2026-07-25T01:48:02Z'
-    benchmark_id: seven-tier-coding-v2
-    fingerprint:
-      host_kernel: 6.18.39
-      repo_commit: e730b071a6278823a0e0647cdad6433d3f260429
-      host_gpu_driver: Mesa 25.3.6
-      concurrent_load:
-        downloads_paused: true
-        vllm_co_resident_or_stopped: stopped_for_swap
-      host_metrics_window:
-        start: '2026-07-25T01:48:02Z'
-        end: '2026-07-25T03:17:23Z'
-      image_digest: '[kyuz0/vllm-therock-gfx1151@sha256:25fd294fde9f729d1e75f109022ab4496c78190c0a6dc0142440529f7af20e4d]'
-      engine_version: 0.22.1rc1.dev499+g470229c37.d20260613.rocm714
-    result:
-      tier_scores:
-        a:
-          pass: 3
-          total: 3
-        b:
-          pass: 0
-          total: 5
-        j:
-          pass: 7
-          total: 8
-        p:
-          pass: 2
-          total: 2
-        d:
-          pass: 0
-          total: 1
-        q:
-          pass: 1
-          total: 2
-        l:
-          pass: 1
-          total: 1
-      raw_file: catalog/raw/glm-4.7-flash-awq--vllm-therock-gfx1151-v1--seven-tier-coding-v2--20260725T014802Z.json
+# seven-tier-coding-v2 run from 2026-07-25T01:48:02Z removed 2026-07-25 — recorded before
+# build_specific_flags had --enable-auto-tool-choice (parser alone isn't enough), so Tier B
+# scored 0/5 on HTTP 400s rather than real model behavior. Raw file left at
+# catalog/raw/glm-4.7-flash-awq--vllm-therock-gfx1151-v1--seven-tier-coding-v2--20260725T014802Z.json
+# for reference. Orchestrator will re-run this leg fresh now that the flag is fixed.

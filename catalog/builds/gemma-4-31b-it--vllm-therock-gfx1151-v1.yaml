@@ -18,6 +18,9 @@ model:
   size_on_disk_gb: null
 served_model_name: gemma-4-31b-it
 build_specific_flags:
+  - --enable-auto-tool-choice   # added 2026-07-25 — sibling gemma-4-26b build hit Tier B 0/5
+                                 # (parser alone isn't enough); adding here preemptively before
+                                 # this build's first coding-tier attempt
   - --tool-call-parser gemma4    # NOT the Qwen parser
   - --reasoning-parser gemma4
   - --max-model-len 65536

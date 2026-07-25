@@ -452,11 +452,14 @@ def run_vllm_bench_serve_trial(container, served_name, model_dir, backend, endpo
     ]
     # Known client segfault-on-exit right after a run completes — tolerate
     # nonzero exit, verify success via the result file's existence instead.
-    # 2400s (up from 1200s) — canary 1's own c8 trials ran as long as ~22min
-    # (1320s) on a mid-size 80B GPTQ model; 1200s was uncomfortably close to
-    # that in practice and would leave zero margin for a larger/slower
-    # candidate still in the queue (e.g. 122B-class models).
-    run(cmd, check=False, timeout=2400)
+    # 5400s (up from 2400s) — 2400s genuinely wasn't enough: gemma-4-31b-it's
+    # c1 trial 1 (20 prompts, concurrency 1, 512 output tokens) timed out for
+    # real at 2400s during the unattended run on 2026-07-25, confirmed via
+    # llama-bench-adjacent evidence this model runs ~3.3 tok/s single-stream
+    # (documented in its own build file as "slowest model tested all
+    # session") — 20 * 512 / 3.3 ~= 3100s needed for that trial alone, with
+    # no margin. 5400s gives real headroom above the worst case seen so far.
+    run(cmd, check=False, timeout=5400)
     check = run(["docker", "exec", container, "test", "-f", f"/tmp/{result_path_in_container}"], check=False)
     if check.returncode != 0:
         raise RuntimeError(f"vllm bench serve trial produced no result file: {result_path_in_container}")
