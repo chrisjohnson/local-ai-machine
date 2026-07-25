@@ -433,11 +433,11 @@ def parse_vllm_footprint_from_log(log_text: str):
     return footprint
 
 
-def run_vllm_bench_serve_trial(container, served_name, model_dir, backend, endpoint, out_len, num_prompts, conc, result_path_in_container):
+def run_vllm_bench_serve_trial(container, port, served_name, model_dir, backend, endpoint, out_len, num_prompts, conc, result_path_in_container):
     cmd = [
         "docker", "exec", container, "vllm", "bench", "serve",
         "--backend", backend,
-        "--base-url", "http://localhost:8000",
+        "--base-url", f"http://localhost:{port}",
         "--endpoint", endpoint,
         "--model", served_name,
         "--tokenizer", f"/models/{model_dir}",
@@ -464,7 +464,15 @@ def run_vllm_bench_serve_trial(container, served_name, model_dir, backend, endpo
     if check.returncode != 0:
         raise RuntimeError(f"vllm bench serve trial produced no result file: {result_path_in_container}")
     raw = run(["docker", "exec", container, "cat", f"/tmp/{result_path_in_container}"]).stdout
-    return json.loads(raw)
+    data = json.loads(raw)
+    # Real bug found 2026-07-25: a wrong --base-url (port mismatch on a
+    # standing service) made every request fail instantly, but the result
+    # file still gets written with completed=0/failed=N — the file-exists
+    # check alone let bogus all-zero data through as if it were a real
+    # trial. Treat zero completions as a hard failure, not silent bad data.
+    if data.get("completed", 0) == 0:
+        raise RuntimeError(f"vllm bench serve trial completed 0/{data.get('failed', '?')} requests — every request failed: {result_path_in_container}")
+    return data
 
 
 def summarize_trials(trials, keys):
@@ -480,7 +488,7 @@ def summarize_trials(trials, keys):
     return out
 
 
-def run_vllm_speed_benchmark(build_id, build, container, served_name, model_dir, backend, endpoint, timestamp, dry_run):
+def run_vllm_speed_benchmark(build_id, build, container, port, served_name, model_dir, backend, endpoint, timestamp, dry_run):
     log(f"[{build_id}] Running vLLM speed benchmark ({VLLM_SPEED_BENCHMARK_ID}) against {served_name} on {container}.")
     if dry_run:
         log(f"[dry-run] would run c1 (3 trials) + c8 (3 trials) vllm bench serve against {served_name}")
@@ -518,7 +526,7 @@ def run_vllm_speed_benchmark(build_id, build, container, served_name, model_dir,
             fname = f"{build_id}--{tier}-trial{trial_n}.json"
             log(f"[{build_id}] {tier} trial {trial_n}/3 ...")
             data = run_vllm_bench_serve_trial(
-                container, served_name, model_dir, backend, endpoint,
+                container, port, served_name, model_dir, backend, endpoint,
                 cfg["out_len"], cfg["num_prompts"], cfg["conc"], fname,
             )
             trials.append(data)
@@ -851,6 +859,7 @@ def process_vllm_build(build_id, build_path, build, dry_run, downloads_paused, k
             vllm_stopped_for_run = True
             swap_started = True
             container = "vllm-bench-swap"
+            port = 8000
             base_url = "http://localhost:8000"
 
         image_digest, engine_version = vllm_image_digest_and_version(container)
@@ -874,7 +883,7 @@ def process_vllm_build(build_id, build_path, build, dry_run, downloads_paused, k
             log(f"[{build_id}] {VLLM_SPEED_BENCHMARK_ID} already recorded — skipping speed trials, not re-running.")
         else:
             speed_result = run_vllm_speed_benchmark(
-                build_id, build, container, served_name, model_dir, backend, endpoint, timestamp, dry_run,
+                build_id, build, container, port, served_name, model_dir, backend, endpoint, timestamp, dry_run,
             )
 
         coding_result = None
