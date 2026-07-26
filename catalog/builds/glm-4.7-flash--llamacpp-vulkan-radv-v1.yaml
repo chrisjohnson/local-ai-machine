@@ -32,4 +32,62 @@ notes: >
 status: WORKING
 created: "2026-07-24"
 last_verified: "2026-07-24"
-benchmark_runs: []
+benchmark_runs:
+  - timestamp: '2026-07-26T00:12:00Z'
+    benchmark_id: llamacpp-bench-v1
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: 1d1f0da770e35bd5df6632d6d8b3fafc071bb344
+      host_gpu_driver: Mesa 25.3.6
+      concurrent_load:
+        downloads_paused: false
+        vllm_co_resident_or_stopped: stopped_for_run
+      host_metrics_window:
+        start: '2026-07-26T00:12:00Z'
+        end: '2026-07-26T00:12:27Z'
+      image_digest: '[kyuz0/amd-strix-halo-toolboxes@sha256:25eb45677d1824eec6c650ea19024323a81b1994f80a09a28d9f7faab37da2f0]'
+      engine_version: c812c543f (10128)
+    result:
+      pp512_tok_s: 1085.15 ± 4.49
+      tg128_tok_s: 71.24 ± 0.20
+      engine_build: c812c543f (10128)
+      raw_stdout_file: catalog/raw/glm-4.7-flash--llamacpp-vulkan-radv-v1--llamacpp-bench-v1--20260726T001200Z.txt
+
+  - timestamp: '2026-07-26T00:12:00Z'
+    benchmark_id: seven-tier-coding-v2
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: 1d1f0da770e35bd5df6632d6d8b3fafc071bb344
+      host_gpu_driver: Mesa 25.3.6
+      concurrent_load:
+        downloads_paused: false
+        vllm_co_resident_or_stopped: stopped_for_run
+      host_metrics_window:
+        start: '2026-07-26T00:12:37Z'
+        end: '2026-07-26T00:20:08Z'
+      image_digest: '[kyuz0/amd-strix-halo-toolboxes@sha256:25eb45677d1824eec6c650ea19024323a81b1994f80a09a28d9f7faab37da2f0]'
+      engine_version: null
+    result:
+      tier_scores:
+        a:
+          pass: 3
+          total: 3
+        b:
+          pass: 4
+          total: 5
+        j:
+          pass: 8
+          total: 8
+        p:
+          pass: 2
+          total: 2
+        d:
+          pass: 1
+          total: 1
+        q:
+          pass: 1
+          total: 2
+        l:
+          pass: 1
+          total: 1
+      raw_file: catalog/raw/glm-4.7-flash--llamacpp-vulkan-radv-v1--seven-tier-coding-v2--20260726T001200Z.json
