@@ -1,0 +1,44 @@
+{
+  "correctness_check": [
+    {
+      "prompt": "what is 17*23? Answer with just the number.",
+      "response": "391",
+      "passed": true
+    },
+    {
+      "prompt": "what is the capital of France? Answer with just the city name.",
+      "response": "Paris",
+      "passed": true
+    },
+    {
+      "prompt": "repeat the word BANANA five times separated by spaces, nothing else.",
+      "response": "BANANA BANANA BANANA BANANA BANANA",
+      "passed": true
+    },
+    {
+      "prompt": "what color is the sky on a clear day? one word.",
+      "response": "Blue",
+      "passed": true
+    }
+  ],
+  "correctness_passed": true,
+  "c1": {
+    "concurrency": 1,
+    "wall_clock_s": 16.10091733932495,
+    "per_request_s": [
+      16.099396467208862
+    ],
+    "aggregate_tok_s": 12.297435967601917
+  },
+  "c4": {
+    "concurrency": 4,
+    "wall_clock_s": 26.013112545013428,
+    "per_request_s": [
+      26.011986017227173,
+      19.7474627494812,
+      21.67213201522827,
+      15.177054405212402
+    ],
+    "aggregate_tok_s": 30.36929927677719
+  }
+}
