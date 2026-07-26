@@ -69,27 +69,46 @@ let
     # model-*-of-00014.safetensors). Native vLLM tool-call/reasoning parser
     # support (openai / openai_gptoss).
     #
-    # hfExclude is required, not just an optimization: this repo also ships
-    # metal/model.bin (a 65GB single-file Apple-Metal-format checkpoint,
-    # irrelevant on this hardware) and original/*.safetensors (a redundant
-    # ~63GB full-precision copy). Confirmed directly - the download failed
-    # outright on metal/model.bin ("Invalid value. The file is too large to
-    # be downloaded using the regular download method... Install hf_xet"),
-    # since HF_HUB_DISABLE_XET=1 is set globally above (needed because Xet
-    # hangs repeatedly on this network path for other models) and this one
-    # file is apparently large enough that HF's non-Xet HTTP path refuses
-    # it outright. Excluding both directories avoids ~128GB of unneeded
-    # download AND sidesteps the hard failure, without having to compromise
-    # the global Xet-disable fix for every other model.
-    { name = "gpt-oss-120b"; repo = "openai/gpt-oss-120b"; hfExclude = [ "metal/*" "original/*" ]; }
+    # hfExclude ("metal/*" "original/*") was the original approach but
+    # turned out not to actually work: confirmed 2026-07-26, the download
+    # kept attempting metal/model.bin (65GB single-file Apple-Metal-format
+    # checkpoint, irrelevant on this hardware) despite the exclude glob,
+    # crash-looping forever on "Invalid value. The file is too large to be
+    # downloaded using the regular download method... Install hf_xet"
+    # (HF_HUB_DISABLE_XET=1 is set globally above, deliberately, because Xet
+    # hangs repeatedly on this network path for other models — not
+    # something to compromise for one repo). Root cause not fully isolated
+    # (hf-cli version drift in nixpkgs since this was first verified working
+    # is the leading theory), but an explicit hfFiles allowlist sidesteps
+    # the exclude-glob mechanism entirely and is more robust regardless —
+    # switched to that instead. File list confirmed directly against the
+    # HF API tree listing, not guessed.
+    { name = "gpt-oss-120b"; repo = "openai/gpt-oss-120b"; hfFiles = [
+        "config.json" "generation_config.json" "chat_template.jinja"
+        "model.safetensors.index.json" "special_tokens_map.json"
+        "tokenizer.json" "tokenizer_config.json"
+        "model-00000-of-00014.safetensors" "model-00001-of-00014.safetensors"
+        "model-00002-of-00014.safetensors" "model-00003-of-00014.safetensors"
+        "model-00004-of-00014.safetensors" "model-00005-of-00014.safetensors"
+        "model-00006-of-00014.safetensors" "model-00007-of-00014.safetensors"
+        "model-00008-of-00014.safetensors" "model-00009-of-00014.safetensors"
+        "model-00010-of-00014.safetensors" "model-00011-of-00014.safetensors"
+        "model-00012-of-00014.safetensors" "model-00013-of-00014.safetensors"
+        "model-00014-of-00014.safetensors"
+      ]; }
     # GPT-OSS-20B: same MXFP4/BF16 family, also proven-compatible in the
     # same table, TP=1. Smaller footprint (~13GB real weights) — candidate
     # to replace Qwen3.5-4B as the judge/quick-tasks model, not primarily a
-    # coding contender given its size. Same metal/original bloat as the
-    # 120B tier above (this repo's metal/model.bin is only 13.75GB, under
-    # whatever size threshold triggers the hard failure, but still ~28GB of
-    # pure waste without hfExclude).
-    { name = "gpt-oss-20b"; repo = "openai/gpt-oss-20b"; hfExclude = [ "metal/*" "original/*" ]; }
+    # coding contender given its size. Hit the identical metal/model.bin
+    # exclude-glob failure as the 120B tier above (file size doesn't matter
+    # to the actual bug, that theory was wrong) — same hfFiles-allowlist fix.
+    { name = "gpt-oss-20b"; repo = "openai/gpt-oss-20b"; hfFiles = [
+        "config.json" "generation_config.json" "chat_template.jinja"
+        "model.safetensors.index.json" "special_tokens_map.json"
+        "tokenizer.json" "tokenizer_config.json"
+        "model-00000-of-00002.safetensors" "model-00001-of-00002.safetensors"
+        "model-00002-of-00002.safetensors"
+      ]; }
     # GLM-4.7-Flash: MoE, ~30B total/~3B active (same active-param class as
     # the two fastest models already proven here), AWQ 4-bit so a very
     # small footprint (well under 20GB) with lots of KV cache headroom.
