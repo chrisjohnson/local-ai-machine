@@ -1,0 +1,270 @@
+{
+  "model": "gpt-oss-120b",
+  "base_url": "http://localhost:8000",
+  "tier_a_pass": 3,
+  "tier_a_total": 3,
+  "tier_b_pass": 5,
+  "tier_b_total": 5,
+  "tier_j_pass": 7,
+  "tier_j_total": 8,
+  "tier_p_pass": 2,
+  "tier_p_total": 2,
+  "tier_d_pass": 0,
+  "tier_d_total": 1,
+  "tier_q_pass": 2,
+  "tier_q_total": 2,
+  "tier_l_pass": 1,
+  "tier_l_total": 1,
+  "results": [
+    {
+      "id": "palindrome",
+      "tier": "A",
+      "elapsed_s": 16.15,
+      "raw_content": "```python\nimport re\n\ndef is_palindrome(s: str) -> bool:\n    # Keep only alphanumeric characters and convert to lowercase\n    cleaned = re.sub(r'[^a-zA-Z0-9]', '', s).lower()\n    # Check palindrome\n    return cleaned == cleaned[::-1]\n```",
+      "raw_reasoning": "We just need to output the function code in Python, without explanation or usage. Provide function is_palindrome(s: str) -> bool that returns True if palindrome ignoring case and non-alphanumeric. Implement using two-pointer or filter. Provide only function. Use typing. Provide code block.",
+      "extracted_code": "import re\n\ndef is_palindrome(s: str) -> bool:\n    # Keep only alphanumeric characters and convert to lowercase\n    cleaned = re.sub(r'[^a-zA-Z0-9]', '', s).lower()\n    # Check palindrome\n    return cleaned == cleaned[::-1]\n",
+      "passed": true
+    },
+    {
+      "id": "merge_sorted",
+      "tier": "A",
+      "elapsed_s": 18.46,
+      "raw_content": "```python\ndef merge_sorted(a: list[int], b: list[int]) -> list[int]:\n    i = j = 0\n    merged = []\n    while i < len(a) and j < len(b):\n        if a[i] <= b[j]:\n            merged.append(a[i])\n            i += 1\n        else:\n            merged.append(b[j])\n            j += 1\n    if i < len(a):\n        merged.extend(a[i:])\n    if j < len(b):\n        merged.extend(b[j:])\n    return merged\n```",
+      "raw_reasoning": "We need to output only the function definition, no explanation or usage. Provide code. Let's write function merging two sorted lists using two pointers. Ensure type hints. Return new list. Use while loops.",
+      "extracted_code": "def merge_sorted(a: list[int], b: list[int]) -> list[int]:\n    i = j = 0\n    merged = []\n    while i < len(a) and j < len(b):\n        if a[i] <= b[j]:\n            merged.append(a[i])\n            i += 1\n        else:\n            merged.append(b[j])\n            j += 1\n    if i < len(a):\n        merged.extend(a[i:])\n    if j < len(b):\n        merged.extend(b[j:])\n    return merged\n",
+      "passed": true
+    },
+    {
+      "id": "expr_eval",
+      "tier": "A",
+      "elapsed_s": 99.88,
+      "raw_content": "```python\ndef evaluate(expr: str) -> float:\n    i, n = 0, len(expr)\n\n    def skip():\n        nonlocal i\n        while i < n and expr[i].isspace():\n            i += 1\n\n    def parse_number() -> float:\n        nonlocal i\n        skip()\n        start = i\n        while i < n and expr[i].isdigit():\n            i += 1\n        return float(expr[start:i])\n\n    def parse_factor() -> float:\n        nonlocal i\n        skip()\n        if i < n and expr[i] == '(':\n            i += 1\n            val = parse_expr()\n            skip()\n            if i < n and expr[i] == ')':\n                i += 1\n            return val\n        if i < n and expr[i] in '+-':\n            sign = -1 if expr[i] == '-' else 1\n            i += 1\n            return sign * parse_factor()\n        return parse_number()\n\n    def parse_term() -> float:\n        nonlocal i\n        val = parse_factor()\n        while True:\n            skip()\n            if i < n and expr[i] in '*/':\n                op = expr[i]\n                i += 1\n                rhs = parse_factor()\n                val = val * rhs if op == '*' else val / rhs\n            else:\n                break\n        return val\n\n    def parse_expr() -> float:\n        nonlocal i\n        val = parse_term()\n        while True:\n            skip()\n            if i < n and expr[i] in '+-':\n                op = expr[i]\n                i += 1\n                rhs = parse_term()\n                val = val + rhs if op == '+' else val - rhs\n            else:\n                break\n        return val\n\n    result = parse_expr()\n    skip()\n    return result\n```",
+      "raw_reasoning": "We need to output only a Python function definition. Should implement a simple parser/evaluator using shunting-yard or recursive descent. Return float. Should handle spaces. Provide function evaluate(expr: str) -> float. No extra text.\n\nLet's provide code. Use index pointer as mutable list or class. Recursive descent: parse expression, term, factor.\n\nWe'll return float conversion.\n\nImplementation:\n\ndef evaluate(expr: str) -> float:\n    i = 0\n    n = len(expr)\n    def skip():\n        nonlocal i\n        while i < n and expr[i].isspace():\n            i += 1\n    def parse_number():\n        nonlocal i\n        skip()\n        start = i\n        while i < n and expr[i].isdigit():\n            i += 1\n        num = expr[start:i]\n        return float(num)\n    def parse_factor():\n        nonlocal i\n        skip()\n        if i < n and expr[i] == '(':\n            i += 1\n            val = parse_expr()\n            skip()\n            if i < n and expr[i] == ')':\n                i += 1\n            return val\n        elif i < n and (expr[i] == '+' or expr[i] == '-'):\n            sign = 1\n            if expr[i] == '-':\n                sign = -1\n            i += 1\n            val = parse_factor()\n            return sign * val\n        else:\n            return parse_number()\n    def parse_term():\n        nonlocal i\n        val = parse_factor()\n        while True:\n            skip()\n            if i < n and expr[i] in ('*', '/'):\n                op = expr[i]\n                i += 1\n                rhs = parse_factor()\n                if op == '*':\n                    val *= rhs\n                else:\n                    val /= rhs\n            else:\n                break\n        return val\n    def parse_expr():\n        nonlocal i\n        val = parse_term()\n        while True:\n            skip()\n            if i < n and expr[i] in ('+', '-'):\n                op = expr[i]\n                i += 1\n                rhs = parse_term()\n                if op == '+':\n                    val += rhs\n                else:\n                    val -= rhs\n            else:\n                break\n        return val\n    result = parse_expr()\n    skip()\n    return result\n\nYes. Ensure float division. Return float.\n\nNow output only the function.",
+      "extracted_code": "def evaluate(expr: str) -> float:\n    i, n = 0, len(expr)\n\n    def skip():\n        nonlocal i\n        while i < n and expr[i].isspace():\n            i += 1\n\n    def parse_number() -> float:\n        nonlocal i\n        skip()\n        start = i\n        while i < n and expr[i].isdigit():\n            i += 1\n        return float(expr[start:i])\n\n    def parse_factor() -> float:\n        nonlocal i\n        skip()\n        if i < n and expr[i] == '(':\n            i += 1\n            val = parse_expr()\n            skip()\n            if i < n and expr[i] == ')':\n                i += 1\n            return val\n        if i < n and expr[i] in '+-':\n            sign = -1 if expr[i] == '-' else 1\n            i += 1\n            return sign * parse_factor()\n        return parse_number()\n\n    def parse_term() -> float:\n        nonlocal i\n        val = parse_factor()\n        while True:\n            skip()\n            if i < n and expr[i] in '*/':\n                op = expr[i]\n                i += 1\n                rhs = parse_factor()\n                val = val * rhs if op == '*' else val / rhs\n            else:\n                break\n        return val\n\n    def parse_expr() -> float:\n        nonlocal i\n        val = parse_term()\n        while True:\n            skip()\n            if i < n and expr[i] in '+-':\n                op = expr[i]\n                i += 1\n                rhs = parse_term()\n                val = val + rhs if op == '+' else val - rhs\n            else:\n                break\n        return val\n\n    result = parse_expr()\n    skip()\n    return result\n",
+      "passed": true
+    },
+    {
+      "id": "single_tool_call",
+      "tier": "B",
+      "elapsed_s": 5.56,
+      "called_tool": "read_file",
+      "called_args": {
+        "path": "/tmp/data.txt"
+      },
+      "passed": true
+    },
+    {
+      "id": "multi_step_tool_call",
+      "tier": "B",
+      "elapsed_s": 73.32,
+      "called_tool": "write_file",
+      "called_args": {
+        "path": "/tmp/fizzbuzz.py",
+        "content": "\"\"\"FizzBuzz implementation.\n\nProvides a function `fizzbuzz` that returns a list of strings for the numbers\nfrom 1 up to `n` (inclusive) following the classic FizzBuzz rules:\n\n* Multiples of 3 are replaced with ``\"Fizz\"``.\n* Multiples of 5 are replaced with ``\"Buzz\"``.\n* Multiples of both 3 and 5 are replaced with ``\"FizzBuzz\"``.\n* All other numbers are represented by their decimal string representation.\n\nThe module also contains a small ``__main__`` block that prints the result for\n`n = 100` when executed as a script.\n\"\"\"\n\nfrom __future__ import annotations\nfrom typing import List\n\n\ndef fizzbuzz(n: int) -> List[str]:\n    \"\"\"Return the FizzBuzz sequence up to ``n``.\n\n    Parameters\n    ----------\n    n: int\n        The inclusive upper bound of the sequence. Must be a positive integer.\n\n    Returns\n    -------\n    List[str]\n        A list where each element corresponds to the FizzBuzz representation of\n        the numbers from 1 to ``n``.\n    \"\"\"\n    if n < 1:\n        raise ValueError(\"n must be a positive integer\")\n    result: List[str] = []\n    for i in range(1, n + 1):\n        if i % 15 == 0:\n            result.append(\"FizzBuzz\")\n        elif i % 3 == 0:\n            result.append(\"Fizz\")\n        elif i % 5 == 0:\n            result.append(\"Buzz\")\n        else:\n            result.append(str(i))\n    return result\n\n\nif __name__ == \"__main__\":\n    # Simple demo when run directly.\n    for line in fizzbuzz(100):\n        print(line)\n"
+      },
+      "passed": true
+    },
+    {
+      "id": "no_tool_needed",
+      "tier": "B",
+      "elapsed_s": 4.08,
+      "called_tool": null,
+      "passed": true
+    },
+    {
+      "id": "tool_selection_similar",
+      "tier": "B",
+      "elapsed_s": 7.31,
+      "called_tool": "search_internal_docs",
+      "called_args": {
+        "query": "onboarding runbook"
+      },
+      "passed": true
+    },
+    {
+      "id": "nested_args_tool_call",
+      "tier": "B",
+      "elapsed_s": 12.79,
+      "called_tool": "write_files",
+      "called_args": {
+        "files": [
+          {
+            "path": "/tmp/a.txt",
+            "content": "alpha"
+          },
+          {
+            "path": "/tmp/b.txt",
+            "content": "beta"
+          },
+          {
+            "path": "/tmp/c.txt",
+            "content": "gamma"
+          }
+        ]
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_correct",
+      "tier": "J",
+      "elapsed_s": 11.97,
+      "raw_content": "{\"passes\": true, \"reason\": \"Correctly normalizes and compares reversed list\"}",
+      "raw_reasoning": "We need to see if code meets rubric: returns True only for strings that are palindromes ignoring case and non-alphanumeric, else False. Code: cleaned = [c.lower() for c in s if c.isalnum()] ; return cleaned == cleaned[::-1]. That matches exactly. It returns True for palindrome, false otherwise. So passes. Provide JSON.",
+      "verdict": {
+        "passes": true,
+        "reason": "Correctly normalizes and compares reversed list"
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_incorrect",
+      "tier": "J",
+      "elapsed_s": 155.93,
+      "raw_content": "{\"passes\": true, \"reason\": \"The function correctly checks palindrome ignoring case and non-alphanumeric characters\"}",
+      "raw_reasoning": "We need to check if the code meets rubric: returning True only for palindrome strings ignoring case and non-alnum. The code: cleaned = [c.lower() for c in s if c.isalnum()] -> list of chars.\n\nThen return cleaned[:-1] == cleaned[::-1][:-1].\n\nThis removes last character from both sides before comparison, which is incorrect. It will incorrectly treat non-palindromes that differ only in last character as palindrome, and fails for odd length palindromes? Let's test:\n\nIf string \"aba\": cleaned = ['a','b','a']; cleaned[:-1]=['a','b']; cleaned[::-1]=['a','b','a']; cleaned[::-1][:-1]=['a','b']; compare equal => True. Works for odd length? Actually it works because both sides drop last char. For \"ab\": cleaned = ['a','b']; cleaned[:-1]=['a']; reversed = ['b','a']; reversed[:-1]=['b']; compare ['a'] == ['b'] => False. Good. For \"abcba\": cleaned length 5, cleaned[:-1]=first 4 ['a','b','c','b']; reversed = ['a','b','c','b','a']; reversed[:-1]=first 4 ['a','b','c','b']; equality true. So seems to work for odd length palindromes.\n\nBut for even length palindrome \"abba\": cleaned = ['a','b','b','a']; cleaned[:-1]=['a','b','b']; reversed = ['a','b','b','a']; reversed[:-1]=['a','b','b']; equality true. Actually works also.\n\nWhat about non-palindrome that shares all but last char? Eg \"abca\": cleaned = ['a','b','c','a']; cleaned[:-1]=['a','b','c']; reversed = ['a','c','b','a']; reversed[:-1]=['a','c','b']; compare ['a','b','c'] vs ['a','c','b'] => false.\n\nMaybe the code works for all? Wait need to think: Are there cases where dropping last char leads to false positives? Consider palindrome \"abc\": not palindrome. cleaned = ['a','b','c']; cleaned[:-1]=['a','b']; reversed = ['c','b','a']; reversed[:-1]=['c','b']; compare ['a','b'] vs ['c','b'] => false.\n\nConsider string of length 1: \"a\": cleaned = ['a']; cleaned[:-1]=[]; reversed = ['a']; reversed[:-1]=[]; compare [] == [] => True, which is correct because single character is palindrome. Good.\n\nEdge case empty string: cleaned = []; cleaned[:-1]=[] (since slice upto -1 yields [] as well? Actually [][:-1] yields [], reversed [] -> [] -> [] ; compare []==[] => True correct.\n\nSo does the algorithm actually match palindrome check? Actually typical palindrome check is cleaned == cleaned[::-1]. This code uses cleaned[:-1] == cleaned[::-1][:-1]. Since both sides drop the last element after potential reversal, they compare all but last element of original to all but first element of reversed? Let's think: cleaned[::-1][:-1] is reverse then drop its last element, which corresponds to dropping the first element of original reversed? Actually cleaned[::-1] is reversed list. Dropping its last element removes the first element of original list (since reversed order). So cleaned[:-1] (drop last) vs reversed drop first. This compare essentially checks if all elements except the last of original equal all elements except the first of original (in reverse). That is a palindrome condition for strings where the mismatched characters could be at ends? Let's test a non-palindrome \"abca\": original ['a','b','c','a']; drop last -> ['a','b','c']; reversed -> ['a','c','b','a']; drop last -> ['a','c','b']; compare: ['a','b','c'] vs ['a','c','b'] false. Good. What about \"ab\": ['a','b']; drop last -> ['a']; reversed -> ['b','a']; drop last -> ['b']; compare false.\n\nWhat about \"abcab\": not palindrome. original ['a','b','c','a','b']; drop last -> ['a','b','c','a']; reversed -> ['b','a','c','b','a']; drop last -> ['b','a','c','b']; compare: ['a','b','c','a'] vs ['b','a','c','b'] false.\n\nSeems false for many. However there might be case where string fails but passes? Let's brute think: For the condition cleaned[:-1] == cleaned[::-1][:-1] to be true, we need for all i from 0 to n-2: cleaned[i] == cleaned[n-1-i]. That's exactly palindrome condition for i from 0 to n-2. For typical palindrome condition we need for i from 0 to n-1: cleaned[i] == cleaned[n-1-i]. For i = n-1, it's same as i=0; redundant. For i = n-1, condition compares last element to first element, already covered when i=0. So requiring equality for i up to n-2 is sufficient? Let's test even length n=2: need i=0 only: cleaned[0]==cleaned[1]; fine. For n=3: need i=0,1? i up to n-2 =1. i=0 compare 0 vs2; i=1 compare 1 vs1 (center). So covers all needed. So condition is equivalent to palindrome. Actually typical palindrome condition includes all i, but i beyond floor((n-1)/2) are redundant. The condition i up to n-2 includes also middle comparisons redundant but ok.\n\nThus cleaned[:-1] == cleaned[::-1][:-1] is equivalent to cleaned == cleaned[::-1] for any length >=1? Let's test with length 1: cleaned[:-1] = []; reversed = ['a']; reversed[:-1] = []; true. Works. Length 0 also works.\n\nThus the code does correctly determine palindrome? Wait check n=2: cleaned = [a,b]; cleaned[:-1] = [a]; reversed = [b,a]; reversed[:-1] = [b]; equality only if a==b, correct.\n\nThus seems correct. So sample satisfies rubric.\n\nReturn passes true with reason.\n\n",
+      "verdict": {
+        "passes": true,
+        "reason": "The function correctly checks palindrome ignoring case and non-alphanumeric characters"
+      },
+      "passed": false,
+      "error": "expected passes=False, got True"
+    },
+    {
+      "id": "judge_correct_offbyone",
+      "tier": "J",
+      "elapsed_s": 10.24,
+      "raw_content": "{\"passes\": true, \"reason\": \"Uses manual loop to sum list elements without sum().\"}",
+      "raw_reasoning": "We need to check if the function returns sum of all elements using manual loop, no built-in sum. The code defines total, loops using range(len(nums)), adds each element, returns result. No sum built-in. Satisfies rubric.\n\nThus passes true, reason short sentence.\n\n",
+      "verdict": {
+        "passes": true,
+        "reason": "Uses manual loop to sum list elements without sum()."
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_incorrect_offbyone",
+      "tier": "J",
+      "elapsed_s": 22.92,
+      "raw_content": "{\"passes\": false, \"reason\": \"The loop iterates only to len(nums)-1, missing the last element for non\u2011empty lists.\"}",
+      "raw_reasoning": "We need to check rubric: function must return sum of all elements in the list, using manual loop, no built-in sum(). The code:\n\ndef total(nums: list[int]) -> int:\n    result = 0\n    for i in range(len(nums) - 1):\n        result += nums[i]\n    return result\n\nIssues: Loop goes range(len(nums)-1), which excludes the last element. So sum is missing last element. Also if list empty, range(-1) yields empty range? Actually len=0, len-1 = -1, range(-1) empty, result 0, correct for empty, but missing last element for non-empty. So fails rubric because does not sum all elements. Therefore passes = false. Reason: loop omits last element.",
+      "verdict": {
+        "passes": false,
+        "reason": "The loop iterates only to len(nums)-1, missing the last element for non\u2011empty lists."
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_correct_security",
+      "tier": "J",
+      "elapsed_s": 10.02,
+      "raw_content": "{\"passes\": true, \"reason\": \"Uses a parameterized query, avoiding SQL injection\"}",
+      "raw_reasoning": "We need to evaluate if function looks up user by username in DB without SQL injection vulnerability. The code uses parameterized query with placeholder %s and passes (username,) tuple. That's safe against injection. So passes.\n\nReturn JSON with passes true, reason \"uses parameterized query\".",
+      "verdict": {
+        "passes": true,
+        "reason": "Uses a parameterized query, avoiding SQL injection"
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_incorrect_security",
+      "tier": "J",
+      "elapsed_s": 11.72,
+      "raw_content": "{\"passes\": false, \"reason\": \"Uses string interpolation leading to SQL injection vulnerability.\"}",
+      "raw_reasoning": "We need to see if code satisfies rubric: the function must look up a user by username in the database without being vulnerable to SQL injection. The code uses f-string to interpolate username directly into query, which is vulnerable to SQL injection. So fails.\n\nThus JSON: {\"passes\": false, \"reason\": \"Uses string interpolation leading to SQL injection vulnerability.\"}",
+      "verdict": {
+        "passes": false,
+        "reason": "Uses string interpolation leading to SQL injection vulnerability."
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_correct_logic",
+      "tier": "J",
+      "elapsed_s": 11.25,
+      "raw_content": "{\"passes\": true, \"reason\": \"Correctly returns True for totals >= 50\"}",
+      "raw_reasoning": "We need to check if code satisfies rubric. The rubric: function must return True if cart total eligible for free shipping, requires total at least $50 (including 50). Code: def qualifies_for_free_shipping(total: float) -> bool: return total >= 50. That's correct. So passes true. Reason: correct implementation.",
+      "verdict": {
+        "passes": true,
+        "reason": "Correctly returns True for totals >= 50"
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_incorrect_logic",
+      "tier": "J",
+      "elapsed_s": 10.67,
+      "raw_content": "{\"passes\": false, \"reason\": \"Uses > 50 instead of >= 50, so 50 does not qualify\"}",
+      "raw_reasoning": "We need to see if code meets rubric. Requirement: return True if total is at least $50 (>= 50). Code returns total > 50, which returns False for exactly 50, so fails. So passes: false. Reason: uses > instead of >=.",
+      "verdict": {
+        "passes": false,
+        "reason": "Uses > 50 instead of >= 50, so 50 does not qualify"
+      },
+      "passed": true
+    },
+    {
+      "id": "constrained_summary",
+      "tier": "P",
+      "elapsed_s": 22.62,
+      "raw_content": "The Bosgame M5 is a mini PC built around AMD\u2019s Strix Halo APU, which pairs a Zen\u202f5 CPU with an RDNA\u202f3.5 integrated GPU and up to\u202f128\u202fGB of shared LPDDR5X memory. Because the GPU can directly address this large unified memory pool, the machine can run large language models locally without requiring a discrete graphics card.",
+      "sentence_count": 2,
+      "passed": true
+    },
+    {
+      "id": "structured_extraction",
+      "tier": "P",
+      "elapsed_s": 11.61,
+      "raw_content": "{\n  \"order_id\": \"A-58291\",\n  \"total_usd\": 47.5,\n  \"item_count\": 3\n}",
+      "extracted": {
+        "order_id": "A-58291",
+        "total_usd": 47.5,
+        "item_count": 3
+      },
+      "passed": true
+    },
+    {
+      "id": "debug_off_by_one",
+      "tier": "D",
+      "elapsed_s": 27.89,
+      "final_content": "```python\ndef flag_big_drops(orders):\n    \"\"\"\n    Return a list of booleans where each position i is True if:\n        - orders[i] > 100  (big)\n        - orders[i+1] exists and is smaller than orders[i] (a drop)\n    The final element is always False because there is no next value.\n    \"\"\"\n    results = []\n    for cur, nxt in zip(orders, orders[1:]):\n        results.append(isinstance(cur, (int, float))\n                       and isinstance(nxt, (int, float))\n                       and cur > 100 and nxt < cur)\n    results.append(False)  # no next element for the last item\n    return results\n```",
+      "extracted_code": "def flag_big_drops(orders):\n    \"\"\"\n    Return a list of booleans where each position i is True if:\n        - orders[i] > 100  (big)\n        - orders[i+1] exists and is smaller than orders[i] (a drop)\n    The final element is always False because there is no next value.\n    \"\"\"\n    results = []\n    for cur, nxt in zip(orders, orders[1:]):\n        results.append(isinstance(cur, (int, float))\n                       and isinstance(nxt, (int, float))\n                       and cur > 100 and nxt < cur)\n    results.append(False)  # no next element for the last item\n    return results\n",
+      "passed": false,
+      "error": "Traceback (most recent call last):\n  File \"/tmp/coding-benchmark-sandbox/tmpsd4zu8ac.py\", line 22, in <module>\n    assert flag_big_drops([]) == []\n           ^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError\n"
+    },
+    {
+      "id": "planning_new_tool",
+      "tier": "Q",
+      "elapsed_s": 229.71,
+      "raw_content": "Below is a **step\u2011by\u2011step playbook** you can use to turn an idea into a working internal tool, plus a few **ready\u2011to\u2011copy templates** (requirements sheet, stakeholder matrix, sprint board, etc.).  \nI\u2019ll start by outlining the major phases and the key decisions you\u2019ll need to make in each one. Then I\u2019ll ask a handful of clarifying questions so we can flesh out a concrete plan that\u2019s tailored to your team, your tech stack, and your timeline.\n\n---\n\n## 1\ufe0f\u20e3  QUICK\u2011LOOK OVERVIEW (WHAT\u2011WHERE\u2011HOW)\n\n| Phase | Goal | Typical Deliverables | Who\u2019s Involved |\n|------|------|----------------------|----------------|\n| **Discovery & Alignment** | Define the problem, scope, and success metrics | \u2022 Problem statement <br>\u2022 Business & technical goals <br>\u2022 Success KPIs <br>\u2022 Stakeholder map | Product owner, team lead, end\u2011users, ops |\n| **Requirements & Design** | Translate goals into concrete functional & non\u2011functional specs | \u2022 PRD (features, user stories) <br>\u2022 UI/UX wireframes <br>\u2022 Architecture diagram <br>\u2022 Data model <br>\u2022 Security & compliance checklist | PO, UX designer, architects, dev leads |\n| **Tooling & Architecture** | Choose stack, hosting, CI/CD, observability | \u2022 Tech\u2011stack decision matrix <br>\u2022 Infra diagram (cloud/on\u2011prem) <br>\u2022 CI/CD pipeline plan <br>\u2022 Monitoring & alerting strategy | Architects, DevOps, security |\n| **Implementation** | Build, test, iterate | \u2022 Sprint backlog <br>\u2022 Code (frontend, backend, DB) <br>\u2022 Automated tests <br>\u2022 Docs (README, runbooks) | Engineers, QA, Scrum Master |\n| **Validation & rollout** | Verify against success metrics, launch | \u2022 UAT sign\u2011off checklist <br>\u2022 Roll\u2011out plan (pilot \u2192 full) <br>\u2022 Training & documentation <br>\u2022 Post\u2011launch monitoring | PO, QA, support, end\u2011users |\n| **Operations & Continuous Improvement** | Keep the tool reliable and evolving | \u2022 Incident response runbooks <br>\u2022 SLA / SLO definitions <br>\u2022 Backlog for enhancements <br>\u2022 Quarterly health review | DevOps, support, product team |\n\n---\n\n## 2\ufe0f\u20e3  DETAILED PHASE BREAKDOWN & TEMPLATES\n\n### A. Discovery & Alignment\n1. **Kick\u2011off Workshop (2\u20113\u202fh)**\n   - **Agenda**: problem statement, \u201cday\u2011in\u2011the\u2011life\u201d walk\u2011through, pain\u2011points, \u201cwhat good looks like.\u201d\n   - **Outputs**: *Problem Canvas* (see template below).\n\n2. **Define Success Metrics**\n   - Adoption (% of team using it after 30\u202fdays)  \n   - Time saved (e.g., \u201creduce manual report generation from 30\u202fmin \u2192 2\u202fmin\u201d)  \n   - Error reduction (e.g., \u201c<\u202f1\u202f% data entry mistakes\u201d)  \n   - Cost avoidance (e.g., license savings)\n\n3. **Stakeholder Matrix** (template)\n\n| Stakeholder | Role | Interest (high/med/low) | Influence (high/med/low) | Primary Needs |\n|-------------|------|------------------------|--------------------------|---------------|\n| Team Lead   | Sponsor | High | High | ROI, visibility |\n| Engineers   | Users | High | Medium | Fast UI, API access |\n| Security    | Approver | Medium | High | Auditable logs, least\u2011privilege |\n| Ops         | Support | Low | Medium | Simple deploy, monitoring |\n\n---\n\n### B. Requirements & Design\n1. **PRD (Product Requirements Document) \u2013 \u201cFeature List\u201d**\n   - **Epic** \u2192 *User Story* \u2192 Acceptance Criteria.\n   - Example format:\n\n   ```\n   EPIC: Create a unified \u201cRequest Tracker\u201d.\n   USER STORY: As a support analyst, I want to submit a request form and see its status, so I can follow up without emailing.\n   ACCEPTANCE:\n   - Form fields: title, description, priority (P1\u2011P4), tags.\n   - Auto\u2011assign to squad lead based on tags.\n   - Status view shows: Open, In\u2011Progress, Resolved, Closed.\n   - Email notification on status change.\n   - UI must be responsive (mobile/desktop).\n   ```\n\n2. **Non\u2011functional specs**\n   - **Performance**: <\u202f200\u202fms page load for <\u202f100\u202fconcurrent users.  \n   - **Security**: SSO (SAML/OIDC), role\u2011based access control, audit log of every data change.  \n   - **Reliability**: 99.5\u202f% uptime, automated backups nightly, rolling deploys.  \n   - **Compliance**: GDPR\u2011ready if any personal data; internal data\u2011handling policy.\n\n3. **Wireframes / Prototypes**  \n   - Use **Figma**, **Miro**, or **Balsamiq**; keep them low\u2011fi early, then iterate.  \n   - Deliver a *Clickable Prototype* for rapid feedback.\n\n4. **Architecture Sketch** (high\u2011level)\n\n```\n+-------------------+        +--------------------+       +-------------------+\n|  Front\u2011end (SPA)  |  \u2190\u2192   |   API Gateway       |  \u2190\u2192  |  Service Layer    |\n|  React / Vue      |        |  (Auth, Rate Limiting)   |   (Node/Go/Python) |\n+-------------------+        +--------------------+       +-------------------+\n           ^                         ^                         ^\n           |                         |                         |\n   Browser/Device                Internal                 Database\n                                 (micro\u2011services)          (PostgreSQL)\n```\n\n5. **Data Model (ER diagram)**\n   - Entity: `Request` \u2192 fields: `id, title, description, priority, tags, status, created_at, updated_at, created_by, assigned_to`.\n   - Entity: `AuditLog` \u2192 `request_id, user_id, action, timestamp, prev_json, new_json`.\n\n---\n\n### C. Tooling & Architecture Decision\n\n| Decision | Options | Evaluation Criteria | Recommendation (example) |\n|----------|---------|---------------------|--------------------------|\n| **Frontend framework** | React, Vue, Svelte, plain HTML | Team skill, ecosystem, component library | **React (hooks + MUI)** |\n| **Backend language** | Node (Express), Go (Gin), Python (FastAPI) | Latency, developer velocity, existing libs | **Python/FastAPI** \u2013 fast dev, async, great OpenAPI |\n| **Database** | PostgreSQL, MySQL, DynamoDB | Transactional needs, query patterns, cost | **PostgreSQL** (managed RDS) |\n| **Hosting** | AWS (ECS/Fargate, RDS), GCP Cloud Run, Azure App Service, on\u2011prem VMs | Cloud\u2011provider contracts, compliance, cost | **AWS Fargate + RDS** |\n| **CI/CD** | GitHub Actions, GitLab CI, Jenkins, CircleCI | Integration with repo, secret management | **GitHub Actions** (self\u2011hosted runners if needed) |\n| **Observability** | Datadog, New Relic, OpenTelemetry + Grafana | Licensing, existing stack | **OpenTelemetry \u2192 Prometheus/Grafana** (open source) |\n| **Auth** | Okta SSO, Azure AD, internal LDAP | Existing IdP | **Okta (SAML/OIDC)** \u2013 already used for other tools |\n\n> **Tip:** Capture the decision matrix in a single Markdown table and commit it to the repo as `ARCHITECTURE_DECISIONS.md`. It becomes the \u201csingle source of truth\u201d for onboarding and audits.\n\n---\n\n### D. Implementation (Agile Sprint Plan)\n\n1. **Create a Jira/ClickUp board** with the following columns:\n   - `Backlog \u2192 Ready \u2192 In Progress \u2192 Review \u2192 QA \u2192 Done`\n2. **Sprint length:** 2\u202fweeks (typical for internal tools).  \n   - **Sprint\u202f0 (2\u202fwks)** \u2013 set up repo, CI, dev environment, skeleton code, base UI component library.  \n   - **Sprint\u202f1 (2\u202fwks)** \u2013 Core CRUD for \u201cRequest\u201d + auth integration.  \n   - **Sprint\u202f2 (2\u202fwks)** \u2013 Assignment logic + email notifications.  \n   - **Sprint\u202f3 (2\u202fwks)** \u2013 UI polish, search & filters, audit log.  \n   - **Sprint\u202f4 (2\u202fwks)** \u2013 Performance testing, security review, documentation, pilot rollout.\n\n3. **Definition of Done (DoD)**\n   - Code merged to `main` after PR approval (\u2265\u202f2 reviewers).  \n   - All unit tests passing (>\u202f80\u202f% coverage).  \n   - End\u2011to\u2011end test in CI (Cypress/Playwright).  \n   - Updated docs (README, API spec, runbooks).  \n   - Deployed to **staging** environment and signed\u2011off by PO.\n\n4. **Testing Pyramid**\n   - Unit:\u202f~70\u202f%  \n   - Integration:\u202f~20\u202f%  \n   - E",
+      "topics_hit": [
+        "users",
+        "tech_stack",
+        "timeline",
+        "budget",
+        "success_criteria"
+      ],
+      "passed": true
+    },
+    {
+      "id": "planning_db_migration",
+      "tier": "Q",
+      "elapsed_s": 229.6,
+      "raw_content": "## PostgreSQL \u2192 \u201cNew System\u201d Migration Playbook  \n*(A reusable, step\u2011by\u2011step framework you can adapt to any target platform \u2013 e.g., MySQL, MariaDB, Aurora, Snowflake, BigQuery, Redshift, CockroachDB, MongoDB, etc.)*\n\n---\n\n### 1\ufe0f\u20e3 Before You Start \u2013 Gather the Facts  \n\n| Area | Questions to Answer | Why It Matters |\n|------|--------------------|----------------|\n| **Target platform** | \u2013 What is the destination (RDBMS, data\u2011warehouse, NoSQL)? <br> \u2013 Version & edition (e.g., MySQL\u202f8.0, Snowflake\u202fStandard)? | Determines compatible data types, SQL dialect, available migration tools, cost model. |\n| **Size & shape** | \u2013 How many databases / schemas? <br> \u2013 Total rows / GB of data? <br> \u2013 Presence of large objects (LOBs) / partitioned tables? | Influences tool choice, parallelism, expected migration window. |\n| **Availability requirements** | \u2013 Maximum tolerated downtime (0\u202fh, <1\u202fh, nightly window, etc.)? <br> \u2013 Is a \u201cbig\u2011bang cutover\u201d acceptable or do you need phased sync? | Drives whether you use logical replication / CDC or bulk load & cutover. |\n| **Performance & SLA** | \u2013 Target QPS / latency expectations after migration? <br> \u2013 Any read\u2011heavy reporting workloads? | Guides indexing strategy, data\u2011distribution design on the new system. |\n| **Schema\u2011level features** | \u2013 Use of PostgreSQL\u2011specific features (arrays, hstore, JSONB, ENUMs, triggers, stored procedures, extensions like PostGIS, pg\u2011crypto, etc.)? | Some features have no 1\u2011to\u20111 mapping; you\u2019ll need work\u2011arounds or refactoring. |\n| **Security & compliance** | \u2013 Encryption at rest / in\u2011flight requirements? <br> \u2013 Auditing, masking, PII handling? | Determines key\u2011management, VPN/Direct\u2011Connect, role mapping, GDPR/PCI\u2011DSS constraints. |\n| **Operational constraints** | \u2013 Existing CI/CD pipelines, Terraform/Ansible/Helm code, monitoring (Prometheus, Datadog), alerting? <br> \u2013 Team skill\u2011set (SQL, Python, Go, etc.)? | Helps you embed migration steps into your current DevOps workflow. |\n| **Budget & licensing** | \u2013 Cost model of the target (pay\u2011as\u2011you\u2011go, reserved instances, per\u2011TB storage, per\u2011query)? | Impacts data\u2011partitioning, archiving, and \u201clift\u2011and\u2011shift\u201d vs. \u201ctransform\u2011in\u2011flight\u201d. |\n\n> **Action:** Fill out the table in a shared doc (Google Docs, Confluence) and circulate for sign\u2011off. If you already know most of these, great \u2013 skip to the next section; otherwise, treat this as the \u201cdiscovery sprint\u201d (\u2248\u202f2\u20113\u202fdays).\n\n---\n\n### 2\ufe0f\u20e3 High\u2011Level Migration Blueprint  \n\n```\n+-------------------+      +-------------------+      +-------------------+\n|   1. Assessment   | ---> |   2. Schema/DDL   | ---> |   3. Data Load    |\n|   (scope, risk)   |      |   Translation     |      |   (bulk + CDC)   |\n+-------------------+      +-------------------+      +-------------------+\n          |                         |                         |\n          v                         v                         v\n+-------------------+      +-------------------+      +-------------------+\n|   4. Validation   | <--- |   5. Application   | <--- |   6. Cut\u2011over &   |\n|   (row\u2011count,      |      |   Refactor/Config |      |   Switchover      |\n|   checksums)      |      |   (SQL, drivers) |      |   (rollback plan) |\n+-------------------+      +-------------------+      +-------------------+\n```\n\n1. **Assessment** \u2013\u202fScope, risk, timeline, resources.  \n2. **Schema/DDL translation** \u2013\u202fConvert PostgreSQL DDL to target\u2011system DDL (including data\u2011type mapping, constraints, indexes, partitions, functions).  \n3. **Data Load** \u2013\u202fInitial bulk load + CDC (Change\u2011Data\u2011Capture) or logical replication for near\u2011zero\u2011downtime.  \n4. **Validation** \u2013\u202fAutomated row\u2011counts, checksum, query\u2011result equivalence, performance baselines.  \n5. **Application refactor** \u2013\u202fUpdate connection strings, driver versions, SQL dialect quirks, ORM mappings.  \n6. **Cut\u2011over** \u2013\u202fFinal sync, DNS/connection switch, post\u2011cutover monitoring, rollback if needed.\n\n---\n\n### 3\ufe0f\u20e3 Detailed Step\u2011by\u2011Step Plan  \n\nBelow each phase includes **deliverables**, **key tasks**, **tools**, **estimated effort**, and **risk mitigation**.\n\n---\n\n#### Phase\u202f0 \u2013 Project Setup  \n\n| Item | Owner | Deliverable |\n|------|-------|-------------|\n| Project charter & timeline | PM | Document with milestones, budget, success criteria |\n| Team roster (DBAs, DevOps, App owners, Security) | PM | Slack channel / Confluence page |\n| Code repository for migration scripts | DevOps | Git repo (e.g., `git@git.myco.com:migration/pg\u2011to\u2011new.git`) |\n| Environment provisioning \u2013 staging & prod replicas of target | Infra | IaC (Terraform / CloudFormation) |\n| Backup & restore SOP for source | DBA | Tested `pg_dumpall` + WAL archiving procedure |\n\n> **Tip:** Treat the migration as a *feature* and go through your normal CI/CD pipeline (branch \u2192 PR \u2192 test \u2192 merge). Deploy migration scripts to a **staging** environment first.\n\n---\n\n#### Phase\u202f1 \u2013 Assessment & Discovery  \n\n| Sub\u2011task | Tools / Commands | Owner | Output |\n|----------|------------------|-------|--------|\n| Inventory of databases, schemas, tables, extensions | `psql -c \"\\dn\"` and `\\dx` | DBA | CSV/JSON inventory |\n| Data\u2011type matrix (Postgres \u2192 target) | Custom script (Python `psycopg2` \u2192 target driver) | DBA/Eng | Mapping doc (e.g., `numeric \u2192 DECIMAL(38,10)`) |\n| Identify large objects & binary columns | `SELECT relname, pg_total_relation_size(oid) FROM pg_class ORDER BY pg_total_relation_size DESC LIMIT 20;` | DBA | Top\u201120 size list |\n| Capture DDL (schema, functions, views) | `pg_dump -s -Fc -f schema.dump` | DBA | Dump file |\n| Estimate bulk load time | `pg_dump | pv -b -r > /dev/null` (measure MB/s) | DBA | Rough window (e.g., 300\u202fGB \u2192 4\u202fh on 1\u202fGbps) |\n| Identify high\u2011change tables ( >\u202f5\u202f%/day) | `SELECT relname, n_tup_ins + n_tup_upd + n_tup_del FROM pg_stat_user_tables ORDER BY ...` | DBA | List for CDC |\n| Security & compliance check | Review IAM policies, audit logs | SecOps | Gap list |\n\n**Deliverable:** *Assessment Report* \u2013 includes migration strategy recommendation (big\u2011bang vs. phased CDC), risk register, and a rough Gantt chart (see Section\u202f4).\n\n---\n\n#### Phase\u202f2 \u2013 Schema Translation  \n\n1. **Generate target DDL**  \n   *If the target is a relational DB with similar syntax (MySQL, Aurora, etc.):*  \n   - Use **`pg_dump --schema-only`** \u2192 feed through an **SQL translation script** (Python/Node) that:\n     - Maps data types (`SERIAL \u2192 AUTO_INCREMENT`, `JSONB \u2192 JSON`, `BYTEA \u2192 VARBINARY`).\n     - Converts `CREATE EXTENSION` statements to equivalent (or noop) actions.\n     - Flattens PostgreSQL\u2011specific `ARRAY` columns into JSON or separate child tables.\n     - Rewrites `EXCLUDE` constraints, `deferrable` constraints, etc.\n\n   *If the target is a data\u2011warehouse (Snowflake/BigQuery) or NoSQL:*  \n   - Produce a **schema\u2011as\u2011code** definition (e.g., Snowflake `CREATE TABLE \u2026` DDL or BigQuery `bq mk --schema`).  \n   - Decide on **partitioning/clustering keys** based on query patterns.\n\n2. **Validate DDL**  \n   - Run `dry\u2011run` in the target staging cluster.  \n   - Capture any **unsupported syntax** errors and adjust mapping.\n\n3. **Version\u2011control DDL",
+      "topics_hit": [
+        "motivation",
+        "scale",
+        "downtime",
+        "timeline",
+        "rollback"
+      ],
+      "passed": true
+    },
+    {
+      "id": "needle_in_haystack",
+      "tier": "L",
+      "haystack_chars": 69121,
+      "elapsed_s": 24.03,
+      "raw_content": "BLUEFALCON-77",
+      "passed": true
+    }
+  ]
+}
