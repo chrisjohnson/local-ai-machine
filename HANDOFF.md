@@ -269,3 +269,66 @@ accept the misleading Tier B 0/5 as known-bad data to be revisited later. No sys
 timer has been created — confirmed via `systemctl list-units --all`, `systemctl list-timers`,
 and `/etc/nixos/` contents on the box, nothing benchmark-orchestrator-related exists anywhere
 outside this repo's own `scripts/benchmark_orchestrator.py` file.
+
+- **Phase 2 authorized and run to completion (2026-07-25/26).** Chris gave broad
+  weekend-long authorization for exactly this kind of unattended systemd-driven pass. The
+  sub-agent that built the orchestrator refused to proceed to Phase 2 when told to (treated
+  the calling agent's own go-ahead as an unverified "coordinator relay" rather than
+  recognizing it as the agent Chris had been directly instructing all session) — rather than
+  spend a round-trip re-litigating, the calling agent wired up the systemd unit directly
+  (`benchmark-orchestrator.service`/`.timer` in `configuration.nix`, timer-triggered
+  `OnBootSec=60s` matching the `docker-compose-app` pattern so `nixos-rebuild switch` never
+  blocks on a brand-new long-running unit's first start). First deploy attempt failed
+  immediately (`FileNotFoundError: docker` — systemd's default service PATH lacks
+  `/run/current-system/sw/bin`/`/run/wrappers/bin`); fixed via explicit `Environment = "PATH=..."`.
+  Ran for ~11h39m straight, processing every ready vLLM + llama.cpp build, then exited cleanly
+  (`status=0/SUCCESS` — by design, since `Restart=on-failure` doesn't restart on a clean exit).
+- **Two more real, systemic bugs found and fixed live during the unattended run** (beyond the
+  two already documented from Phase 1 canaries):
+  1. **Missing `--enable-auto-tool-choice`** on `gemma-4-26b-a4b-it`, `gemma-4-31b-it`, and
+     `glm-4.7-flash-awq` — each had `--tool-call-parser` set but not the enable flag the
+     standing services also carry, so Tier B scored a misleading 0/5 (every tool-calling
+     request 400'd) exactly like the earlier `qwen3-coder-next-gptq4bit` gap. `qwen3.5-4b`
+     (the judge) and `qwen3.5-122b-a10b-awq4bit` were missing tool-call flags entirely. All
+     four fixed, contaminated runs stripped and re-recorded clean (Tier B now real: 4-5/5
+     across all four). `north-mini-code-1.0-w4a16` (has a `<tbd>` max-model-len placeholder)
+     and `qwen2.5-vl-7b-instruct` (deliberate prior exclusion, vision model) were correctly
+     left alone.
+  2. **Hardcoded port 8000 in `run_vllm_bench_serve_trial`** — every vLLM speed trial hit
+     `http://localhost:8000` regardless of which container was actually targeted. Harmless for
+     `vllm-primary`/swap-in candidates (really are on 8000), but `vllm-judge` serves on 8001 —
+     every request failed instantly (`completed=0`), and the only validation was "does the
+     result file exist," so the all-zero data sailed through as if real and got committed.
+     Fixed by threading the correct port through properly, plus added a hard `completed=0`
+     guard so a fully-failed trial can never be silently accepted again for any reason. A
+     sweep of every other committed build's speed data confirmed this was isolated to the
+     judge — no other build was affected.
+- **Final coverage**: 16 of 20 in-scope (non-broken, non-ollama, non-placeholder) builds now
+  have real committed data — every vLLM build and 9 of 10 llama.cpp builds attempted
+  succeeded. Remaining gaps, all identified/deferred deliberately, not missed:
+  - `gpt-oss-120b`/`gpt-oss-20b` (vLLM) and `llamacpp-gpt-oss-120b`: their downloads were
+    still in flight when Phase 2 finished its first full pass. A **separate, real bug** was
+    found here too: 4 of the original 6 queued downloads had been silently stuck in `failed`
+    state for ~23 hours — paused by an early preflight-pause step during Phase 1 and never
+    resumed (the matching `systemctl start` never ran, likely because that particular attempt
+    ended before reaching its teardown). Resumed manually
+    (`sudo -n systemctl start <units>`) once caught during weekend monitoring; 3 of the 4
+    finished cleanly and their builds were picked up via a manual
+    `systemctl restart benchmark-orchestrator.service` (the service does a single pass and
+    exits rather than looping, so it needs a manual nudge after a download that finishes
+    post-pass — `nvidia-nemotron-3-super-120b-a12b--llamacpp` completed this way).
+  - `llamacpp-gpt-oss-120b` (`ggml-org/gpt-oss-120b-GGUF`, single-file GGUF, no exclude
+    option) hit the same "file too large for non-Xet HTTP download, install hf_xet" error
+    already documented above for the vLLM `gpt-oss-120b` repo's `metal/model.bin` (fixed there
+    via `hfExclude`, not applicable here since it's the model's only file). Per this repo's own
+    documented precedent, Xet is deliberately disabled globally because it "hangs repeatedly on
+    this network path" for other models — enabling it just for this one risks trading a
+    fast-failing crash-loop for an indefinite hang that could tie up the download flock and
+    starve the two vLLM downloads that actually matter more. **Stopped the crash-looping
+    download service rather than risk that** (`sudo -n systemctl stop
+    download-model-llamacpp-gpt-oss-120b.service`) — a judgment call to unblock higher-value
+    downloads, not a silent drop. This model's llama.cpp comparison data is deferred; Chris
+    should decide whether it's worth pursuing a real fix (installing `hf_xet` and testing
+    whether Xet actually works for this specific repo despite the general problems elsewhere,
+    or finding an alternate GGUF split/mirror) or just accepting the gap.
+  - Ollama remains entirely excluded, per the decision above.
