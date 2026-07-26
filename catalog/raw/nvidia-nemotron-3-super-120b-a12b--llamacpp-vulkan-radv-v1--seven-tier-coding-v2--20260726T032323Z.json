@@ -1,0 +1,267 @@
+{
+  "model": "llamacpp-nemotron-3-super-120b",
+  "base_url": "http://localhost:8090",
+  "tier_a_pass": 3,
+  "tier_a_total": 3,
+  "tier_b_pass": 4,
+  "tier_b_total": 5,
+  "tier_j_pass": 7,
+  "tier_j_total": 8,
+  "tier_p_pass": 2,
+  "tier_p_total": 2,
+  "tier_d_pass": 1,
+  "tier_d_total": 1,
+  "tier_q_pass": 2,
+  "tier_q_total": 2,
+  "tier_l_pass": 1,
+  "tier_l_total": 1,
+  "results": [
+    {
+      "id": "palindrome",
+      "tier": "A",
+      "elapsed_s": 9.65,
+      "raw_content": "\ndef is_palindrome(s: str) -> bool:\n    cleaned = [c.lower() for c in s if c.isalnum()]\n    return cleaned == cleaned[::-1]",
+      "raw_reasoning": "We need to output only the function code, no explanation, no example usage. The function should take a string s, return bool True if palindrome ignoring case and non-alphanumeric characters.\n\nImplementation: filter alnum, lower, compare to reversed.\n\nWrite:\n\ndef is_palindrome(s: str) -> bool:\n    cleaned = [c.lower() for c in s if c.isalnum()]\n    return cleaned == cleaned[::-1]\n\nOr using join.\n\nReturn bool.\n\nWe'll output just that.\n\n",
+      "extracted_code": "\ndef is_palindrome(s: str) -> bool:\n    cleaned = [c.lower() for c in s if c.isalnum()]\n    return cleaned == cleaned[::-1]",
+      "passed": true
+    },
+    {
+      "id": "merge_sorted",
+      "tier": "A",
+      "elapsed_s": 7.62,
+      "raw_content": "\n```python\ndef merge_sorted(a: list, b: list) -> list:\n    i = j = 0\n    merged = []\n    while i < len(a) and j < len(b):\n        if a[i] <= b[j]:\n            merged.append(a[i])\n            i += 1\n        else:\n            merged.append(b[j])\n            j += 1\n    merged.extend(a[i:])\n    merged.extend(b[j:])\n    return merged\n```",
+      "raw_reasoning": "We need to output just the function definition. No explanation. Provide code.\n\n",
+      "extracted_code": "def merge_sorted(a: list, b: list) -> list:\n    i = j = 0\n    merged = []\n    while i < len(a) and j < len(b):\n        if a[i] <= b[j]:\n            merged.append(a[i])\n            i += 1\n        else:\n            merged.append(b[j])\n            j += 1\n    merged.extend(a[i:])\n    merged.extend(b[j:])\n    return merged\n",
+      "passed": true
+    },
+    {
+      "id": "expr_eval",
+      "tier": "A",
+      "elapsed_s": 48.0,
+      "raw_content": "\n```python\ndef evaluate(expr: str) -> float:\n    def precedence(op: str) -> int:\n        if op in ('+', '-'):\n            return 1\n        if op in ('*', '/'):\n            return 2\n        return 0\n\n    def apply_op():\n        op = ops.pop()\n        b = vals.pop()\n        a = vals.pop()\n        if op == '+':\n            vals.append(a + b)\n        elif op == '-':\n            vals.append(a - b)\n        elif op == '*':\n            vals.append(a * b)\n        elif op == '/':\n            vals.append(a / b)\n\n    vals = []\n    ops = []\n    i = 0\n    n = len(expr)\n    while i < n:\n        ch = expr[i]\n        if ch.isspace():\n            i += 1\n            continue\n        if ch.isdigit():\n            num = 0\n            while i < n and expr[i].isdigit():\n                num = num * 10 + int(expr[i])\n                i += 1\n            vals.append(float(num))\n            continue\n        if ch == '(':\n            ops.append(ch)\n        elif ch == ')':\n            while ops and ops[-1] != '(':\n                apply_op()\n            ops.pop()  # remove '('\n        elif ch in '+-*/':\n            while ops and precedence(ops[-1]) >= precedence(ch):\n                apply_op()\n            ops.append(ch)\n        i += 1\n\n    while ops:\n        apply_op()\n\n    return vals[-1] if vals else 0.0\n```",
+      "raw_reasoning": "We need to output a Python function evaluate(expr: str) -> float that evaluates simple arithmetic expression with + - * / parentheses and integers, no eval. Need to parse expression. Could implement using Shunting Yard algorithm to convert to RPN then evaluate, or recursive descent parsing. Provide just the function, no extra text. Ensure it's robust: handle spaces. Use float division. Use integer numbers, but result as float.\n\nImplement tokenization: numbers, operators, parentheses.\n\nImplement precedence: +,- low, *,/ higher.\n\nUse two stacks: values and operators.\n\nPseudo:\n\ndef evaluate(expr):\n    def precedence(op):\n        if op in ('+', '-'): return 1\n        if op in ('*', '/'): return 2\n        return 0\n    def apply_op():\n        op = ops.pop()\n        b = vals.pop()\n        a = vals.pop()\n        if op == '+': vals.append(a + b)\n        elif op == '-': vals.append(a - b)\n        elif op == '*': vals.append(a * b)\n        elif op == '/': vals.append(a / b)\n    i=0; n=len(expr); vals=[]; ops=[]\n    while i<n:\n        ch=expr[i]\n        if ch.isspace():\n            i+=1; continue\n        if ch.isdigit():\n            num=0\n            while i<n and expr[i].isdigit():\n                num=num*10+int(expr[i])\n                i+=1\n            vals.append(float(num))\n            continue\n        if ch=='(':\n            ops.append(ch)\n        elif ch==')':\n            while ops and ops[-1]!='(':\n                apply_op()\n            ops.pop() # remove '('\n        elif ch in '+-*/':\n            while ops and precedence(ops[-1]) >= precedence(ch):\n                apply_op()\n            ops.append(ch)\n        i+=1\n    while ops:\n        apply_op()\n    return vals[-1] if vals else 0.0\n\nNeed to ensure floats. Return float.\n\nEdge cases: negative numbers? Not needed as only integers and binary operators; but expression like \"-3+2\" not covered. Probably not required.\n\nWe'll output only the function.\n\n",
+      "extracted_code": "def evaluate(expr: str) -> float:\n    def precedence(op: str) -> int:\n        if op in ('+', '-'):\n            return 1\n        if op in ('*', '/'):\n            return 2\n        return 0\n\n    def apply_op():\n        op = ops.pop()\n        b = vals.pop()\n        a = vals.pop()\n        if op == '+':\n            vals.append(a + b)\n        elif op == '-':\n            vals.append(a - b)\n        elif op == '*':\n            vals.append(a * b)\n        elif op == '/':\n            vals.append(a / b)\n\n    vals = []\n    ops = []\n    i = 0\n    n = len(expr)\n    while i < n:\n        ch = expr[i]\n        if ch.isspace():\n            i += 1\n            continue\n        if ch.isdigit():\n            num = 0\n            while i < n and expr[i].isdigit():\n                num = num * 10 + int(expr[i])\n                i += 1\n            vals.append(float(num))\n            continue\n        if ch == '(':\n            ops.append(ch)\n        elif ch == ')':\n            while ops and ops[-1] != '(':\n                apply_op()\n            ops.pop()  # remove '('\n        elif ch in '+-*/':\n            while ops and precedence(ops[-1]) >= precedence(ch):\n                apply_op()\n            ops.append(ch)\n        i += 1\n\n    while ops:\n        apply_op()\n\n    return vals[-1] if vals else 0.0\n",
+      "passed": true
+    },
+    {
+      "id": "single_tool_call",
+      "tier": "B",
+      "elapsed_s": 5.36,
+      "called_tool": "read_file",
+      "called_args": {
+        "path": "/tmp/data.txt"
+      },
+      "passed": true
+    },
+    {
+      "id": "multi_step_tool_call",
+      "tier": "B",
+      "elapsed_s": 65.04,
+      "called_tool": "write_file",
+      "called_args": {
+        "path": "/tmp/fizzbuzz.py",
+        "content": "def fizzbuzz(n):\n    \"\"\"Return a list of strings for numbers 1 to n with FizzBuzz rules.\"\"\"\n    result = []\n    for i in range(1, n+1):\n        if i % 3 == 0 and i % 5 == 0:\n            result.append(\"FizzBuzz\")\n        elif i % 3 == 0:\n            result.append(\"Fizz\")\n        elif i % 5 == 0:\n            result.append(\"Buzz\")\n        else:\n            result.append(str(i))\n    return result\n\nif __name__ == \"__main__\":\n    # Example usage: print fizzbuzz for 1 to 15\n    for item in fizzbuzz(15):\n        print(item)"
+      },
+      "passed": true
+    },
+    {
+      "id": "no_tool_needed",
+      "tier": "B",
+      "elapsed_s": 10.57,
+      "called_tool": "run_calculator",
+      "passed": false,
+      "error": "expected no tool call, got 'run_calculator'"
+    },
+    {
+      "id": "tool_selection_similar",
+      "tier": "B",
+      "elapsed_s": 6.28,
+      "called_tool": "search_internal_docs",
+      "called_args": {
+        "query": "onboarding runbook"
+      },
+      "passed": true
+    },
+    {
+      "id": "nested_args_tool_call",
+      "tier": "B",
+      "elapsed_s": 10.6,
+      "called_tool": "write_files",
+      "called_args": {
+        "files": [
+          {
+            "path": "/tmp/a.txt",
+            "content": "alpha"
+          },
+          {
+            "path": "/tmp/b.txt",
+            "content": "beta"
+          },
+          {
+            "path": "/tmp/c.txt",
+            "content": "gamma"
+          }
+        ]
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_correct",
+      "tier": "J",
+      "elapsed_s": 11.66,
+      "raw_content": "\n{\"passes\": true, \"reason\": \"Correctly filters alphanumerics, lowercases, and compares to reverse.\"}",
+      "raw_reasoning": "We need to decide if the function satisfies the rubric: returns True only for strings that are palindromes ignoring case and non-alphanumeric, else False.\n\nThe code: cleaned = list of lowercased alphanumeric characters. Then compare cleaned to its reverse. This correctly checks palindrome ignoring case and non-alphanumeric. It returns True for empty string? cleaned will be [] and reversed [] => True. Is empty string considered palindrome? Usually yes. The rubric doesn't mention but it's consistent. So passes.\n\nThus output JSON: {\"passes\": true, \"reason\": \"Correctly filters alphanumerics, lowercases, and compares to reverse.\"}\n\nMake sure only JSON.\n\n",
+      "verdict": {
+        "passes": true,
+        "reason": "Correctly filters alphanumerics, lowercases, and compares to reverse."
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_incorrect",
+      "tier": "J",
+      "elapsed_s": 134.06,
+      "raw_content": "\n{\"passes\": true, \"reason\": \"The function correctly returns True only for strings that are palindromes when ignoring case and non\u2011alphanumeric characters.\"}",
+      "raw_reasoning": "We need to check if function correctly returns True only for strings that are palindromes ignoring case and non-alphanumeric.\n\nThe code: cleaned = [c.lower() for c in s if c.isalnum()] -> list of lowercased alphanumeric characters.\n\nThen return cleaned[:-1] == cleaned[::-1][:-1].\n\nLet's analyze: cleaned[:-1] is all elements except last. cleaned[::-1][:-1] is reversed list, then all except last (i.e., reversed list without its last element). Wait reversed list's last element corresponds to original first element. So reversed list without its last element = reversed list excluding original first element. So cleaned[::-1][:-1] = reversed list excluding the first element of original? Let's test with examples.\n\nIf cleaned = ['a','b','c','b','a'] (palindrome odd length 5). cleaned[:-1] = ['a','b','c','b']; cleaned[::-1] = ['a','b','c','b','a']; [:-1] -> ['a','b','c','b']; They are equal -> True.\n\nIf cleaned = ['a','b','b','a'] (even length 4). cleaned[:-1] = ['a','b','b']; cleaned[::-1] = ['a','b','b','a']; [:-1] -> ['a','b','b']; equal -> True.\n\nIf cleaned = ['a','b','c'] (non-palindrome). cleaned[:-1] = ['a','b']; cleaned[::-1] = ['c','b','a']; [:-1] -> ['c','b']; compare ['a','b'] vs ['c','b'] => false.\n\nIf cleaned = [] (empty string). cleaned[:-1] = [] (since slice up to -1 gives empty). cleaned[::-1] = [] ; [:-1] = [] ; equal -> True. Empty string considered palindrome (should be true). That's fine.\n\nIf cleaned length 1: e.g., ['a']. cleaned[:-1] = [] (since remove last). cleaned[::-1] = ['a']; [:-1] = [] ; compare [] == [] -> True. Single char palindrome true.\n\nEdge case: length 2 non-palindrome: ['a','b']. cleaned[:-1] = ['a']; cleaned[::-1] = ['b','a']; [:-1] = ['b']; compare ['a'] vs ['b'] => false. Good.\n\nThus the logic appears to compare all but last element of original with all but last element of reversed. That is equivalent to comparing original[0:-1] with reversed[0:-1] i.e., original without last vs reversed without last. Since reversed without last is original without first? Actually reversed list without last = original list reversed, then drop last element (which corresponds to original first). So reversed_without_last = original[::-1][:-1] = original[-2::-1]? Let's derive: original = [0,1,2,...,n-1]. reversed = [n-1,...,0]. reversed_without_last = [n-1,...,1] (dropping 0). That's original[0:n-1] reversed? original[0:n-1] = [0,...,n-2]; reversed of that is [n-2,...,0]. Not same. Hmm.\n\nBut we observed it works for palindrome cases. Let's test a non-palindrome where first and last differ but interior matches? Example: \"abca\": cleaned = ['a','b','c','a']? Actually that's palindrome? 'abca' reversed 'acba' not same. Let's test: cleaned = ['a','b','c','a']; cleaned[:-1] = ['a','b','c']; cleaned[::-1] = ['a','c','b','a']; [:-1] = ['a','c','b']; compare ['a','b','c'] vs ['a','c','b'] => false. Good.\n\nWhat about a string where removing last makes it palindrome? Eg: \"abbaa\": cleaned = ['a','b','b','a','a']; Not palindrome. cleaned[:-1] = ['a','b','b','a']; cleaned[::-1] = ['a','a','b','b','a']; [:-1] = ['a','a','b','b']; compare ['a','b','b','a'] vs ['a','a','b','b'] => false.\n\nSeems correct.\n\nBut need to verify for all possible strings. The condition cleaned[:-1] == cleaned[::-1][:-1] is equivalent to cleaned[0:-1] == cleaned[-2::-1]? Let's test algebraically.\n\nLet n = len(cleaned). cleaned[:-1] = cleaned[0:n-1]. cleaned[::-1] = cleaned[n-1::-1] (step -1). Then [:-1] on that gives cleaned[n-1::-1][0:n-1] = cleaned[n-1:0:-1]? Actually slicing: start at n-1, go to beginning (default stop None) with step -1 yields list of length n. Then [:n-1] takes first n-1 elements: that is cleaned[n-1:0:-1]? Let's compute: cleaned[n-1::-1] yields indices n-1, n-2, ..., 0. Taking first n-1 elements yields indices n-1 down to 1 (excluding 0). So result = cleaned[n-1:0:-1] (stop exclusive 0). So condition: cleaned[0:n-1] == cleaned[n-1:0:-1].\n\nNow note that cleaned[0:n-1] is all but last. cleaned[n-1:0:-1] is all but first, reversed. So condition is: original without last equals reverse of original without first. For a palindrome, original without last equals reverse of original without first? Let's test: For palindrome, original == reverse(original). Then original without last = reverse(original) without last? Actually if original == reverse(original), then original without last = reverse(original) without last = (original without first) reversed? Wait reverse(original) without last = reverse(original) [0:n-1] = reverse(original without last)? Not exactly. But we can trust empirical evidence.\n\nEdge case: length 0 => both sides empty => true.\n\nThus function seems correct.\n\nBut is there any case where it incorrectly returns True for non-palindrome? Let's brute think: condition essentially checks that the string except its last character equals the reverse of the string except its first character. For a non-palindrome, could this hold? Let's denote s = cleaned. Condition: s[0:n-1] == reverse(s[1:n])? Because s[n-1:0:-1] is reverse of s[1:n] (since s[1:n] indices 1..n-1, reversed gives n-1..1). Yes s[n-1:0:-1] = reverse(s[1:n]). So condition: s[0:n-1] == reverse(s[1:n]).\n\nThus we require that prefix (all but last) equals reverse of suffix (all but first). For palindrome, prefix equals reverse(suffix) holds because s == reverse(s) => s[0:n-1] == reverse(s)[0:n-1] = reverse(s)[0:n-1] = reverse(s[1:n])? Let's verify: reverse(s) = s_rev. s_rev[0:n-1] = s_rev without last char = s_rev[0:n-1] = reverse(s)[0:n-1] = reverse(s[1:n])? Actually reverse(s) without last char corresponds to reverse of s without first char. Yes.\n\nNow for non-palindrome, could this still hold? Let's attempt to find a counterexample. Let s = abcdef (n=6). Condition: s[0:5] = abcde ; reverse(s[1:6]) = reverse(bcdef) = fedcb. Not equal.\n\nWe need s[0:n-1] = reverse(s[1:n]). This implies that for i from 0 to n-2, s[i] = s[n-1-i]. That's exactly palindrome condition for all i except maybe the middle? Let's derive: For i in 0..n-2, we require s[i] = s[n-1-i]. That's palindrome condition for all pairs where indices i and n-1-i, with i up to n-2. When n-1-i ranges from n-1 down to 1. So we are comparing each element with its mirror, except we never compare s[n-1] with s[0]? Actually when i=0, compare s[0] vs s[n-1]; i=n-2 gives s[n-2] vs s[1]. So we compare all pairs except we never compare s[n-1] with s[0]? Wait we did i=0 gave that. Actually we compare s[0] with s[n-1] (since n-1-0 = n-1). So we do compare first and last. For i=n-2, compare s[n-2] with s[1]. So we compare all pairs except we never compare the middle element with itself when n odd? For odd n, middle index m = (n-1)/2. When i=m, we compare s[m] with s[n-1-m] = s[m] (same). That's included as long as m <= n-2? For n odd, n=2k+1, n-2 = 2k-1, m=k. Since k <= 2k-1 for k>=1, yes included. So condition actually enforces palindrome for all indices. Let's test: condition s[i] = s[n-1-i] for all i from 0 to n-2. That's exactly palindrome condition for all i except maybe i=n-1? But i=n-1 would compare s[n-1] with s[0] which is same as i=0 case. So condition is sufficient for palindrome. Therefore function correctly returns True only for palindromes.\n\nThus passes.\n\nReturn JSON: {\"passes\": true, \"reason\": \"The function correctly checks palindrome ignoring case and non-alphanumeric.\"}\n\nBut need short sentence. Provide.\n\n",
+      "verdict": {
+        "passes": true,
+        "reason": "The function correctly returns True only for strings that are palindromes when ignoring case and non\u2011alphanumeric characters."
+      },
+      "passed": false,
+      "error": "expected passes=False, got True"
+    },
+    {
+      "id": "judge_correct_offbyone",
+      "tier": "J",
+      "elapsed_s": 7.61,
+      "raw_content": "\n{\"passes\": true, \"reason\": \"The function correctly sums list elements using a manual loop without built-in sum().\"}",
+      "raw_reasoning": "We need to judge if code satisfies rubric: function must return sum of all elements in the list, using a manual loop (no built-in sum()). The code uses for i in range(len(nums)): result += nums[i]. That's a manual loop, no built-in sum(). Returns result. So passes. Return JSON with passes true and reason one short sentence. No other text.\n\n",
+      "verdict": {
+        "passes": true,
+        "reason": "The function correctly sums list elements using a manual loop without built-in sum()."
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_incorrect_offbyone",
+      "tier": "J",
+      "elapsed_s": 8.84,
+      "raw_content": "\n{\"passes\": false, \"reason\": \"The loop misses the last element, so it does not sum all elements.\"}",
+      "raw_reasoning": "We need to decide if code satisfies rubric: function must return sum of all elements in list using a manual loop (no built-in sum). The given code loops for i in range(len(nums) - 1), which excludes the last element. So it returns sum of all elements except last. Not correct. So fails. Provide JSON: {\"passes\": false, \"reason\": \"The loop misses the last element, so it does not sum all elements.\"} Ensure only JSON.\n\n",
+      "verdict": {
+        "passes": false,
+        "reason": "The loop misses the last element, so it does not sum all elements."
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_correct_security",
+      "tier": "J",
+      "elapsed_s": 6.6,
+      "raw_content": "\n{\"passes\": true, \"reason\": \"Uses a parameterized query, which prevents SQL injection.\"}",
+      "raw_reasoning": "We need to decide if code satisfies rubric: function must look up a user by username in the database without being vulnerable to SQL injection. The code uses parameterized query with %s placeholder and passes username as a tuple. That's safe. So passes true. Reason: uses parameterized query preventing injection.\n\nReturn JSON.\n\n",
+      "verdict": {
+        "passes": true,
+        "reason": "Uses a parameterized query, which prevents SQL injection."
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_incorrect_security",
+      "tier": "J",
+      "elapsed_s": 6.6,
+      "raw_content": "\n{\"passes\": false, \"reason\": \"The function constructs the SQL query by directly embedding the username string, making it vulnerable to SQL injection.\"}",
+      "raw_reasoning": "We need to decide if the code satisfies the rubric: function must look up a user by username in the database without being vulnerable to SQL injection. The code uses f-string to embed username directly into query, which is vulnerable. So fails. Provide JSON with passes false and reason.\n\n",
+      "verdict": {
+        "passes": false,
+        "reason": "The function constructs the SQL query by directly embedding the username string, making it vulnerable to SQL injection."
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_correct_logic",
+      "tier": "J",
+      "elapsed_s": 7.75,
+      "raw_content": "\n{\"passes\": true, \"reason\": \"Correctly returns True for totals >= 50\"}",
+      "raw_reasoning": "We need to decide if code satisfies rubric: function must return True if total >= 50 (including 50). The given code returns total >= 50. That matches. So passes true. Reason: correctly checks total >= 50.\n\nWe must output JSON only: {\"passes\": true, \"reason\": \"Correctly returns True for totals >= 50\"}.\n\nMake sure no extra text.\n\n",
+      "verdict": {
+        "passes": true,
+        "reason": "Correctly returns True for totals >= 50"
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_incorrect_logic",
+      "tier": "J",
+      "elapsed_s": 6.81,
+      "raw_content": "\n{\"passes\": false, \"reason\": \"The function returns True only when total > 50, but the requirement is total >= 50, so it fails for total == 50.\"}",
+      "raw_reasoning": "We need to output JSON with passes true/false and reason. The function returns total > 50, but requirement is total >= 50. So fails for total == 50. So passes false. Provide short sentence.\n\n",
+      "verdict": {
+        "passes": false,
+        "reason": "The function returns True only when total > 50, but the requirement is total >= 50, so it fails for total == 50."
+      },
+      "passed": true
+    },
+    {
+      "id": "constrained_summary",
+      "tier": "P",
+      "elapsed_s": 20.52,
+      "raw_content": "The Bosgame M5 mini PC uses AMD's Strix Halo APU, combining a Zen\u202f5 CPU with an RDNA\u202f3.5 integrated GPU that shares up to 128\u202fGB of unified LPDDR5X memory. This shared memory allows the GPU to load large language models that would normally need a discrete GPU with substantial VRAM, making the system unusually capable for local AI inference despite lacking a dedicated graphics card.",
+      "sentence_count": 2,
+      "passed": true
+    },
+    {
+      "id": "structured_extraction",
+      "tier": "P",
+      "elapsed_s": 13.89,
+      "raw_content": "{\"order_id\":\"A-58291\",\"total_usd\":47.5,\"item_count\":3}",
+      "extracted": {
+        "order_id": "A-58291",
+        "total_usd": 47.5,
+        "item_count": 3
+      },
+      "passed": true
+    },
+    {
+      "id": "debug_off_by_one",
+      "tier": "D",
+      "elapsed_s": 12.76,
+      "final_content": "\ndef flag_big_drops(orders):\n    n = len(orders)\n    results = [False] * n\n    for i in range(n - 1):\n        if orders[i] > 100:\n            results[i] = orders[i] > orders[i + 1]\n    return results",
+      "extracted_code": "\ndef flag_big_drops(orders):\n    n = len(orders)\n    results = [False] * n\n    for i in range(n - 1):\n        if orders[i] > 100:\n            results[i] = orders[i] > orders[i + 1]\n    return results",
+      "passed": true
+    },
+    {
+      "id": "planning_new_tool",
+      "tier": "Q",
+      "elapsed_s": 119.41,
+      "raw_content": "Building an effective internal tool requires **rigorous problem validation, disciplined scoping, and user-centric design**\u2014not just coding. Too many teams build elegant solutions for poorly understood problems, resulting in low adoption and wasted effort. Below is a battle-tested, step-by-step plan I've used successfully for teams of 5\u2013500 people. It prioritizes **speed to value** and **risk reduction** over perfection.\n\n---\n\n### \ud83d\udd0d Phase 0: **Pre-Work \u2013 Avoid the #1 Pitfall (Don\u2019t Skip This!)**\n*Before writing a single line of code, answer these brutally honest questions:*\n1. **What specific, measurable pain are we solving?**  \n   *(Bad: \"Our team is slow.\" Good: \"Engineers spend 4+ hours/week manually compiling sprint status from Jira, Slack, and emails \u2013 causing 20% delays in stakeholder updates.\")*  \n   \u2192 **Validate with data:** Pull timestamps from tools, run a 3-day time-tracking experiment, or shadow 3\u20135 users for 90 mins each.\n2. **Who *exactly* is the user?** (Be specific: \"QA engineers running regression tests on Tues/Thurs\" not \"the team\")  \n3. **What happens if we *don\u2019t* build this?** (If the answer is \"nothing critical,\" stop here.)  \n4. **What\u2019s the *simplest* thing that could work?** (Aim for a solution that takes <2 weeks to build V1.)  \n   \u2192 *If you can\u2019t describe the MVP in one sentence, scope is too big.*\n\n> \ud83d\udca1 **Key Insight:** 70% of internal tools fail because they solve symptoms, not root causes. Use the **\"5 Whys\" technique** in user interviews to dig deeper.  \n> *Example:*  \n> *Why are updates delayed?* \u2192 Manual data gathering.  \n> *Why manual?* \u2192 No integrated view.  \n> *Why no integrated view?* \u2192 Tools don\u2019t talk.  \n> *Why not fix integrations?* \u2192 Too costly/risky.  \n> *Why not build a lightweight aggregator?* \u2192 **Bingo.** Now you\u2019ve found the *actual* lever.\n\n---\n\n### \ud83d\udccb Phase 1: **Discovery & Validation (1\u20132 Weeks)**\n**Goal:** Prove the problem is real, urgent, and worth solving *before* building.\n\n| Step | Action | Output | Why It Matters |\n|------|--------|--------|----------------|\n| **1. User Interviews** | Talk to 5\u20138 target users (not managers!). Ask: *\"Walk me through your last frustrating experience with [process]. What did you try? What worked?\"* | Raw notes, pain point themes, quotes | Avoids building for imaginary users; surfaces hidden workarounds |\n| **2. Current State Mapping** | Diagram the existing workflow (tools, handoffs, delays). Quantify time/cost per step. | Process map with time/cost estimates | Reveals true bottlenecks (often not where you think) |\n| **3. Solution Brainstorming** | With users, sketch 3\u20135 *radically simple* solutions (e.g., \"A Slack bot that posts Jira updates,\" \"A Google Form + Sheet\"). Vote on impact vs. effort. | Prioritized feature list (max 3 for MVP) | Prevents over-engineering; focuses on highest leverage |\n| **4. Risk Assessment** | For top idea: What could make this fail? (e.g., \"Users won\u2019t adopt if it requires login,\" \"Breaks if Jira API changes\") | Risk log + mitigation plans | Forces proactive problem-solving |\n\n> \u2705 **Exit Criteria:** You have:  \n> - A **validated problem statement** (with user quotes/data)  \n> - A **priority list of \u22643 features** for V1 (everything else is \"V2+\")  \n> - Explicit **non-goals** (e.g., \"We will *not* handle audit logs in V1\")  \n> - A **success metric** (e.g., \"Reduce status update time from 4 hrs \u2192 <30 mins for 80% of users\")\n\n> \u26a0\ufe0f **Red Flag:** If users say *\"That\u2019s nice but I\u2019ll keep doing it my way\"* during discovery \u2013 **stop**. You haven\u2019t found a painful enough problem.\n\n---\n\n### \u2699\ufe0f Phase 2: **Design & Build (2\u20134 Weeks for V1)**\n**Goal:** Build the *smallest possible thing* that delivers core value, fast.\n\n| Principle | Action | Example |\n|-----------|--------|---------|\n| **Embrace \"Good Enough\"** | Use existing tools where possible (Airtable, Retool, internal APIs, even Excel + macros). Only custom-build if 10x better. | For a status tool: Start with a shared Google Sheet + Apps Script \u2192 *not* a React app. |\n| **User-In-the-Loop Design** | Show sketches/prototypes to users *every 2 days*. Ask: *\"Would you use this *today*? What\u2019s missing?\"* | Paper prototype of a dashboard \u2192 tweak based on feedback before coding |\n| **Instrument from Day 1** | Log usage (anonymized): button clicks, time spent, drop-off points. | Mixpanel/Amplitude lite \u2192 or just Google Analytics on an internal site |\n| **Plan for Death** | Design an exit strategy: How will we sunset this if it fails? (e.g., \"Data exports to CSV\") | Avoid vendor lock-in; keep data portable |\n\n> \ud83d\udee0\ufe0f **Tech Stack Tips for Speed:**  \n> - **Frontend:** Retool, Streamlit, or internal low-code platform (if available).  \n> - **Backend:** Google Apps Script, Airtable Automations, or a simple Flask/FastAPI app.  \n> - **Hosting:** Internal server, Vercel (",
+      "topics_hit": [
+        "users",
+        "tech_stack",
+        "budget",
+        "success_criteria"
+      ],
+      "passed": true
+    },
+    {
+      "id": "planning_db_migration",
+      "tier": "Q",
+      "elapsed_s": 119.38,
+      "raw_content": "Migrating from PostgreSQL to a new database system is a significant undertaking that requires careful planning to minimize risk, downtime, and data loss. **The most critical first step is defining *why* you're migrating and *what* the \"new system\" entails** (e.g., another SQL database like MySQL/SQL Server, a NoSQL option like MongoDB/Cassandra, or a cloud-native data warehouse like Snowflake/BigQuery). Without this clarity, planning becomes guesswork.\n\nBelow is a structured, phase-by-phase framework I\u2019ve used for successful migrations (adapted from real-world enterprise projects). **Fill in the specifics based on your context**\u2014this isn\u2019t a one-size-fits-all checklist, but a roadmap to avoid common pitfalls.\n\n---\n\n### \ud83d\udd0d **Phase 0: Foundation \u2013 Define Goals & Constraints (DO NOT SKIP)**\n*Without this, you risk solving the wrong problem.*\n- **Why migrate?**  \n  - Performance bottlenecks? (e.g., slow complex queries, write contention)  \n  - Cost? (Licensing, infrastructure, ops overhead)  \n  - Feature gaps? (e.g., need for native vector search, time-series optimization, or multi-model support)  \n  - Organizational mandate? (e.g., cloud strategy, vendor consolidation)  \n  - *Be specific:* \"Reduce 95th-percentile query latency from 2s to <200ms for analytics workloads\" > \"Make it faster.\"\n- **What is the \"new system\"?**  \n  - List 2\u20133 target options (e.g., \"Amazon Aurora PostgreSQL-compatible vs. MySQL 8.0 vs. SingleStore\").  \n  - **Critical:** Confirm compatibility with your app stack (ORMs, drivers, BI tools). Example: Hibernate has excellent PG support but quirks with MySQL\u2019s reserved words.\n- **Non-negotiable constraints:**  \n  - Max allowable downtime? (e.g., \"0 minutes\" \u2192 requires logical replication; \"4 hours overnight\" \u2192 allows big bang)  \n  - Data volume & growth rate? (e.g., \"5TB now, growing 20%/mo\" \u2192 impacts tool choice)  \n  - Compliance needs? (GDPR, HIPAA, SOC2 \u2013 affects encryption, audit logs)  \n  - Team expertise? (Can your team manage Cassandra, or should you prioritize managed services?)  \n  - Budget? (OPEX vs. CAPEX, licensing costs)\n\n> \ud83d\udca1 **If you can\u2019t answer these clearly, pause here.** Run a 2-day workshop with stakeholders (Dev, DBA, Product, Security) to align. *Migration fails more often from misaligned expectations than technical issues.*\n\n---\n\n### \ud83d\udcca **Phase 1: Deep Assessment \u2013 Know Your Current State**\n*Garbage in = garbage out. Understand what you\u2019re moving.*\n- **Schema & Data Analysis:**  \n  - Export schema: `pg_dump -s --no-owner --no-acl yourdb > schema.sql`  \n  - Identify PG-specific features:  \n    - Data types: `JSONB`, `ARRAY`, `HSTORE`, `UUID`, `TSRANGE`, custom types, domains  \n    - Extensions: `PostGIS`, `pgcrypto`, `pg_partman`, `timescaledb` (these often require manual rewrites)  \n    - Index types: `BRIN`, `GIN`, `GiST`, `SP-GiST` (may not exist elsewhere)  \n    - Procedural language: PL/pgSQL functions/triggers (check for PG-specific syntax like `NEW.`, `OLD.`)  \n    - Constraints: Deferrable constraints, exclusion constraints  \n  - *Tool:* Use [pgAdmin\u2019s schema diff](https://www.pgadmin.org/docs/pgadmin4/latest/pgagent.html) or [Liquibase](https://www.liquibase.org/) to catalog objects.\n- **Workload Profiling:**  \n  - Capture peak-hour metrics (use `pg_stat_statements`, `pgBadger`, or cloud monitoring):  \n    - Query patterns: % OLTP vs. OLAP, slowest queries, most frequent writes  \n    - Connection patterns: Pool size, idle-in-transaction issues  \n    - Data distribution: Skew in partition keys, hot tables  \n  - *Output:* A workload characterization doc (e.g., \"70% point lookups by UUID, 20% time-range scans on `events.timestamp`, 10% complex joins\").\n- **Application Dependency Mapping:**  \n  - Scan codebase for:  \n    - Raw SQL queries (greps for `SELECT`, `INSERT` \u2013 watch for PG-specific syntax like `RETURNING`, `ILIKE`, `::cast`)  \n    - ORM configurations (Hibernate dialect, Sequelize PG settings)  \n    - Connection strings/libraries (e.g., `psycopg2` vs. `mysql-connector-python`)  \n    - Feature flags tied to PG behavior (e.g., advisory locks, listen/notify)  \n  - *Red flag:* If >15% of queries use PG-specific features, factor in significant app refactor effort.\n\n> \ud83d\udccc **Deliverable:** A \"Migration Impact Matrix\" scoring tables/features by:  \n> `Complexity (1-5) \u00d7 Business Criticality (1-5) \u00d7 Data Volume`  \n> Focus effort on high-score items first.\n\n---\n\n### \u2699\ufe0f **Phase 2: Target System Selection & Design**\n*Don\u2019t just pick a DB \u2013 design for it.*\n- **Evaluate targets against your Phase 0/1 findings:**  \n  | Criteria          | Target A (e.g., MySQL) | Target B (e.g., MongoDB) | Target C (e.g., Snowflake) |  \n  |-------------------|------------------------|--------------------------|----------------------------|  \n  | JSONB equivalence | Poor (JSON only)       | Excellent (BSON)         | Good (VARIANT)             |  \n  | GIS support       | Weak (via plugins)     | Moderate (2dsphere)      | None (use external)        |  \n  | App rewrite effort| Medium                 | High                     | Low (if analytics-only",
+      "topics_hit": [
+        "motivation",
+        "scale",
+        "downtime"
+      ],
+      "passed": true
+    },
+    {
+      "id": "needle_in_haystack",
+      "tier": "L",
+      "haystack_chars": 69121,
+      "elapsed_s": 62.39,
+      "raw_content": "BLUEFALCON-77",
+      "passed": true
+    }
+  ]
+}
