@@ -33,4 +33,62 @@ notes: >
 status: WORKING
 created: "2026-07-24"
 last_verified: "2026-07-24"
-benchmark_runs: []
+benchmark_runs:
+  - timestamp: '2026-07-25T23:53:40Z'
+    benchmark_id: llamacpp-bench-v1
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: 1d1f0da770e35bd5df6632d6d8b3fafc071bb344
+      host_gpu_driver: Mesa 25.3.6
+      concurrent_load:
+        downloads_paused: false
+        vllm_co_resident_or_stopped: stopped_for_run
+      host_metrics_window:
+        start: '2026-07-25T23:53:40Z'
+        end: '2026-07-25T23:55:27Z'
+      image_digest: '[kyuz0/amd-strix-halo-toolboxes@sha256:25eb45677d1824eec6c650ea19024323a81b1994f80a09a28d9f7faab37da2f0]'
+      engine_version: c812c543f (10128)
+    result:
+      pp512_tok_s: 1252.02 ± 9.61
+      tg128_tok_s: 53.85 ± 0.30
+      engine_build: c812c543f (10128)
+      raw_stdout_file: catalog/raw/gemma-4-26b-a4b-it--llamacpp-vulkan-radv-v1--llamacpp-bench-v1--20260725T235340Z.txt
+
+  - timestamp: '2026-07-25T23:53:40Z'
+    benchmark_id: seven-tier-coding-v2
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: 1d1f0da770e35bd5df6632d6d8b3fafc071bb344
+      host_gpu_driver: Mesa 25.3.6
+      concurrent_load:
+        downloads_paused: false
+        vllm_co_resident_or_stopped: stopped_for_run
+      host_metrics_window:
+        start: '2026-07-25T23:55:37Z'
+        end: '2026-07-26T00:04:07Z'
+      image_digest: '[kyuz0/amd-strix-halo-toolboxes@sha256:25eb45677d1824eec6c650ea19024323a81b1994f80a09a28d9f7faab37da2f0]'
+      engine_version: null
+    result:
+      tier_scores:
+        a:
+          pass: 3
+          total: 3
+        b:
+          pass: 5
+          total: 5
+        j:
+          pass: 7
+          total: 8
+        p:
+          pass: 2
+          total: 2
+        d:
+          pass: 1
+          total: 1
+        q:
+          pass: 2
+          total: 2
+        l:
+          pass: 1
+          total: 1
+      raw_file: catalog/raw/gemma-4-26b-a4b-it--llamacpp-vulkan-radv-v1--seven-tier-coding-v2--20260725T235340Z.json
