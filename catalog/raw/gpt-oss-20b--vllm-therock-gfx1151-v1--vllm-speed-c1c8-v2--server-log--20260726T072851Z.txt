@@ -1,0 +1,190 @@
+(APIServer pid=1) INFO 07-26 07:29:17 [api_utils.py:339] 
+(APIServer pid=1) INFO 07-26 07:29:17 [api_utils.py:339]        █     █     █▄   ▄█
+(APIServer pid=1) INFO 07-26 07:29:17 [api_utils.py:339]  ▄▄ ▄█ █     █     █ ▀▄▀ █  version 0.22.1rc1.dev499+g470229c37.d20260613
+(APIServer pid=1) INFO 07-26 07:29:17 [api_utils.py:339]   █▄█▀ █     █     █     █  model   /models/gpt-oss-20b
+(APIServer pid=1) INFO 07-26 07:29:17 [api_utils.py:339]    ▀▀  ▀▀▀▀▀ ▀▀▀▀▀ ▀     ▀
+(APIServer pid=1) INFO 07-26 07:29:17 [api_utils.py:339] 
+(APIServer pid=1) INFO 07-26 07:29:17 [api_utils.py:273] non-default args: {'model_tag': '/models/gpt-oss-20b', 'enable_auto_tool_choice': True, 'tool_call_parser': 'openai', 'host': '0.0.0.0', 'model': '/models/gpt-oss-20b', 'trust_remote_code': True, 'max_model_len': 131072, 'served_model_name': ['gpt-oss-20b'], 'reasoning_parser': 'openai_gptoss', 'gpu_memory_utilization': 0.9, 'enable_prefix_caching': True, 'max_num_seqs': 64}
+(APIServer pid=1) [aiter] import [module_aiter_enum] under /opt/venv/lib64/python3.12/site-packages/aiter/jit/module_aiter_enum.so
+(APIServer pid=1) INFO 07-26 07:29:35 [model.py:598] Resolved architecture: GptOssForCausalLM
+(APIServer pid=1) INFO 07-26 07:29:35 [model.py:1723] Using max model len 131072
+(APIServer pid=1) INFO 07-26 07:29:37 [scheduler.py:247] Chunked prefill is enabled with max_num_batched_tokens=8192.
+(APIServer pid=1) INFO 07-26 07:29:37 [config.py:222] Overriding max cuda graph capture size to 1024 for performance.
+(APIServer pid=1) INFO 07-26 07:29:37 [vllm.py:998] Asynchronous scheduling is enabled.
+(APIServer pid=1) INFO 07-26 07:29:37 [kernel.py:272] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['native'], fused_add_rms_norm=['native'])
+(APIServer pid=1) WARNING 07-26 07:29:38 [vllm.py:1434] Auto-initialization of reasoning token IDs failed. Please check whether your reasoning parser has implemented the `reasoning_start_str` and `reasoning_end_str`.
+[aiter] import [module_aiter_enum] under /opt/venv/lib64/python3.12/site-packages/aiter/jit/module_aiter_enum.so
+(EngineCore pid=585) INFO 07-26 07:29:46 [core.py:114] Initializing a V1 LLM engine (v0.22.1rc1.dev499+g470229c37.d20260613) with config: model='/models/gpt-oss-20b', speculative_config=None, tokenizer='/models/gpt-oss-20b', skip_tokenizer_init=False, tokenizer_mode=auto, revision=None, tokenizer_revision=None, trust_remote_code=True, dtype=torch.bfloat16, max_seq_len=131072, download_dir=None, load_format=auto, tensor_parallel_size=1, pipeline_parallel_size=1, data_parallel_size=1, decode_context_parallel_size=1, dcp_comm_backend=ag_rs, disable_custom_all_reduce=True, quantization=gpt_oss_mxfp4, quantization_config=None, enforce_eager=False, enable_return_routed_experts=False, kv_cache_dtype=auto, device_config=cuda, structured_outputs_config=StructuredOutputsConfig(backend='auto', disable_any_whitespace=False, disable_additional_properties=False, reasoning_parser='openai_gptoss', reasoning_parser_plugin='', enable_in_reasoning=False), observability_config=ObservabilityConfig(show_hidden_metrics_for_version=None, otlp_traces_endpoint=None, collect_detailed_traces=None, kv_cache_metrics=False, kv_cache_metrics_sample=0.01, cudagraph_metrics=False, enable_layerwise_nvtx_tracing=False, enable_mfu_metrics=False, enable_mm_processor_stats=False, enable_logging_iteration_details=False), seed=0, served_model_name=gpt-oss-20b, enable_prefix_caching=True, enable_chunked_prefill=True, pooler_config=None, compilation_config={'mode': <CompilationMode.VLLM_COMPILE: 3>, 'debug_dump_path': None, 'cache_dir': '', 'compile_cache_save_format': 'binary', 'backend': 'inductor', 'custom_ops': ['+sparse_attn_indexer', 'none'], 'ir_enable_torch_wrap': True, 'splitting_ops': ['vllm::unified_attention_with_output', 'vllm::unified_mla_attention_with_output', 'vllm::mamba_mixer2', 'vllm::mamba_mixer', 'vllm::short_conv', 'vllm::linear_attention', 'vllm::plamo2_mamba_mixer', 'vllm::qwen_gdn_attention_core', 'vllm::gdn_attention_core_xpu', 'vllm::olmo_hybrid_gdn_full_forward', 'vllm::kda_attention', 'vllm::sparse_attn_indexer', 'vllm::rocm_aiter_sparse_attn_indexer', 'vllm::deepseek_v4_attention', 'vllm::unified_kv_cache_update', 'vllm::unified_mla_kv_cache_update'], 'compile_mm_encoder': False, 'cudagraph_mm_encoder': False, 'encoder_cudagraph_token_budgets': [], 'encoder_cudagraph_max_vision_items_per_batch': 0, 'encoder_cudagraph_max_frames_per_batch': None, 'compile_sizes': [], 'compile_ranges_endpoints': [8192], 'inductor_compile_config': {'enable_auto_functionalized_v2': False, 'combo_kernels': True, 'benchmark_combo_kernel': True}, 'inductor_passes': {}, 'cudagraph_mode': <CUDAGraphMode.FULL_AND_PIECEWISE: (2, 1)>, 'cudagraph_num_of_warmups': 1, 'cudagraph_capture_sizes': [1, 2, 4, 8, 16, 24, 32, 40, 48, 56, 64, 72, 80, 88, 96, 104, 112, 120, 128, 136, 144, 152, 160, 168, 176, 184, 192, 200, 208, 216, 224, 232, 240, 248, 256, 272, 288, 304, 320, 336, 352, 368, 384, 400, 416, 432, 448, 464, 480, 496, 512, 528, 544, 560, 576, 592, 608, 624, 640, 656, 672, 688, 704, 720, 736, 752, 768, 784, 800, 816, 832, 848, 864, 880, 896, 912, 928, 944, 960, 976, 992, 1008, 1024], 'cudagraph_copy_inputs': False, 'cudagraph_specialize_lora': True, 'use_inductor_graph_partition': False, 'pass_config': {'fuse_norm_quant': False, 'fuse_act_quant': False, 'fuse_attn_quant': False, 'enable_sp': False, 'fuse_gemm_comms': False, 'fuse_allreduce_rms': False, 'fuse_rope_kvcache_cat_mla': False, 'fuse_act_padding': False, 'fuse_mla_dual_rms_norm': False, 'fuse_rope_kvcache': False}, 'max_cudagraph_capture_size': 1024, 'dynamic_shapes_config': {'type': <DynamicShapesType.BACKED: 'backed'>, 'evaluate_guards': False, 'assume_32_bit_indexing': False}, 'local_cache_dir': None, 'fast_moe_cold_start': False, 'static_all_moe_layers': []}, kernel_config=KernelConfig(ir_op_priority=IrOpPriorityConfig(rms_norm=['native'], fused_add_rms_norm=['native']), enable_flashinfer_autotune=True, moe_backend='auto', linear_backend='auto')
+(EngineCore pid=585) INFO 07-26 07:29:46 [parallel_state.py:1568] world_size=1 rank=0 local_rank=0 distributed_init_method=tcp://172.18.0.9:41123 backend=nccl
+(EngineCore pid=585) INFO 07-26 07:29:46 [parallel_state.py:1903] rank 0 in world size 1 is assigned as DP rank 0, PP rank 0, PCP rank 0, TP rank 0, EP rank 0, EPLB rank N/A
+(EngineCore pid=585) INFO 07-26 07:29:47 [gpu_model_runner.py:5098] Starting to load model /models/gpt-oss-20b...
+(EngineCore pid=585) INFO 07-26 07:29:48 [rocm.py:644] Found incompatible backend(s) [ROCM_ATTN, TURBOQUANT] with AttentionType.DECODER. Overriding with ROCM_AITER_UNIFIED_ATTN out of potential backends: ['ROCM_AITER_UNIFIED_ATTN', 'TRITON_ATTN'].
+(EngineCore pid=585) INFO 07-26 07:29:48 [rocm_aiter_unified_attn.py:129] Using aiter unified attention for RocmAiterUnifiedAttentionImpl
+(EngineCore pid=585) INFO 07-26 07:29:48 [mxfp4.py:479] Using 'TRITON' Mxfp4 MoE backend.
+(EngineCore pid=585) WARNING 07-26 07:29:48 [compilation.py:1301] Op 'sparse_attn_indexer' not present in model, enabling with '+sparse_attn_indexer' has no effect
+(EngineCore pid=585) INFO 07-26 07:29:48 [weight_utils.py:850] Filesystem type for checkpoints: EXT4. Checkpoint size: 12.82 GiB. Available RAM: 103.51 GiB.
+(EngineCore pid=585) INFO 07-26 07:29:48 [weight_utils.py:873] Auto-prefetch is disabled because the filesystem (EXT4) is not a recognized network FS (NFS/Lustre). If you want to force prefetching, start vLLM with --safetensors-load-strategy=prefetch.
+(EngineCore pid=585) 
+Loading safetensors checkpoint shards:   0% Completed | 0/3 [00:00<?, ?it/s]
+(EngineCore pid=585) 
+Loading safetensors checkpoint shards:  33% Completed | 1/3 [00:03<00:07,  3.84s/it]
+(EngineCore pid=585) 
+Loading safetensors checkpoint shards:  67% Completed | 2/3 [00:07<00:03,  3.53s/it]
+(EngineCore pid=585) 
+Loading safetensors checkpoint shards: 100% Completed | 3/3 [00:09<00:00,  3.08s/it]
+(EngineCore pid=585) 
+Loading safetensors checkpoint shards: 100% Completed | 3/3 [00:09<00:00,  3.23s/it]
+(EngineCore pid=585) 
+(EngineCore pid=585) INFO 07-26 07:29:58 [default_loader.py:397] Loading weights took 9.81 seconds
+(EngineCore pid=585) INFO 07-26 07:29:58 [mxfp4.py:1611] Using MoEPrepareAndFinalizeNoDPEPMonolithic
+(EngineCore pid=585) INFO 07-26 07:29:59 [gpu_model_runner.py:5193] Model loading took 14.16 GiB memory and 10.754509 seconds
+(EngineCore pid=585) INFO 07-26 07:29:59 [interface.py:517] Setting kv cache block size to 64 for ROCM_AITER_UNIFIED_ATTN backend.
+(EngineCore pid=585) INFO 07-26 07:30:02 [backends.py:1089] Using cache directory: /root/.cache/vllm/torch_compile_cache/bd1b7d330f/rank_0_0/backbone for vLLM's torch.compile
+(EngineCore pid=585) INFO 07-26 07:30:02 [backends.py:1148] Dynamo bytecode transform time: 2.61 s
+(EngineCore pid=585) INFO 07-26 07:30:10 [backends.py:393] Compiling a graph for compile range (1, 8192) takes 7.14 s
+(EngineCore pid=585) INFO 07-26 07:30:11 [backends.py:915] collected artifacts: 25 entries, 3 artifacts, 4478877 bytes total
+(EngineCore pid=585) INFO 07-26 07:30:11 [decorators.py:708] saved AOT compiled function to /root/.cache/vllm/torch_compile_cache/torch_aot_compile/0dce41e1185ca898662928231ab3339005ddff3418d584dcfdad2121e576afea/rank_0_0/model
+(EngineCore pid=585) INFO 07-26 07:30:11 [monitor.py:53] torch.compile took 11.43 s in total
+(EngineCore pid=585) INFO 07-26 07:30:15 [monitor.py:81] Initial profiling/warmup run took 3.58 s
+(EngineCore pid=585) INFO 07-26 07:30:24 [gpu_worker.py:480] Available KV cache memory: 95.81 GiB
+(EngineCore pid=585) INFO 07-26 07:30:24 [kv_cache_utils.py:2078] GPU KV cache size: 3,934,445 tokens
+(EngineCore pid=585) INFO 07-26 07:30:24 [kv_cache_utils.py:2079] Maximum concurrency for 131,072 tokens per request: 30.02x
+(EngineCore pid=585) 
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):   0%|          | 0/83 [00:00<?, ?it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):   1%|          | 1/83 [00:02<03:35,  2.62s/it]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):   2%|▏         | 2/83 [00:03<02:05,  1.55s/it]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):   4%|▎         | 3/83 [00:04<01:47,  1.35s/it]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):   5%|▍         | 4/83 [00:05<01:28,  1.12s/it]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):   6%|▌         | 5/83 [00:06<01:24,  1.09s/it]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):   7%|▋         | 6/83 [00:07<01:15,  1.02it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):   8%|▊         | 7/83 [00:08<01:15,  1.00it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  10%|▉         | 8/83 [00:08<01:09,  1.07it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  11%|█         | 9/83 [00:10<01:17,  1.05s/it]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  12%|█▏        | 10/83 [00:10<01:09,  1.06it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  13%|█▎        | 11/83 [00:11<01:08,  1.06it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  14%|█▍        | 12/83 [00:12<01:02,  1.13it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  16%|█▌        | 13/83 [00:13<01:03,  1.10it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  17%|█▋        | 14/83 [00:14<00:58,  1.17it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  18%|█▊        | 15/83 [00:15<00:59,  1.13it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  19%|█▉        | 16/83 [00:17<01:17,  1.16s/it]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  20%|██        | 17/83 [00:17<01:10,  1.08s/it]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  22%|██▏       | 18/83 [00:18<01:00,  1.07it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  23%|██▎       | 19/83 [00:19<00:58,  1.10it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  24%|██▍       | 20/83 [00:20<00:52,  1.20it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  25%|██▌       | 21/83 [00:20<00:51,  1.19it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  27%|██▋       | 22/83 [00:21<00:47,  1.29it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  28%|██▊       | 23/83 [00:22<00:47,  1.26it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  29%|██▉       | 24/83 [00:23<00:43,  1.34it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  30%|███       | 25/83 [00:23<00:44,  1.32it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  31%|███▏      | 26/83 [00:24<00:40,  1.42it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  33%|███▎      | 27/83 [00:25<00:40,  1.37it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  34%|███▎      | 28/83 [00:25<00:37,  1.47it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  35%|███▍      | 29/83 [00:26<00:37,  1.43it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  36%|███▌      | 30/83 [00:26<00:34,  1.55it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  37%|███▋      | 31/83 [00:27<00:34,  1.49it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  39%|███▊      | 32/83 [00:28<00:31,  1.60it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  40%|███▉      | 33/83 [00:28<00:32,  1.56it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  41%|████      | 34/83 [00:29<00:28,  1.71it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  42%|████▏     | 35/83 [00:30<00:29,  1.63it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  43%|████▎     | 36/83 [00:30<00:26,  1.77it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  45%|████▍     | 37/83 [00:31<00:26,  1.70it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  46%|████▌     | 38/83 [00:31<00:24,  1.86it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  47%|████▋     | 39/83 [00:32<00:24,  1.76it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  48%|████▊     | 40/83 [00:32<00:22,  1.92it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  49%|████▉     | 41/83 [00:33<00:22,  1.85it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  51%|█████     | 42/83 [00:33<00:19,  2.05it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  52%|█████▏    | 43/83 [00:34<00:20,  1.94it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  53%|█████▎    | 44/83 [00:34<00:18,  2.13it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  54%|█████▍    | 45/83 [00:35<00:18,  2.04it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  55%|█████▌    | 46/83 [00:35<00:16,  2.31it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  57%|█████▋    | 47/83 [00:35<00:16,  2.18it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  58%|█████▊    | 48/83 [00:36<00:14,  2.43it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  59%|█████▉    | 49/83 [00:37<00:21,  1.55it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  60%|██████    | 50/83 [00:38<00:25,  1.31it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  61%|██████▏   | 51/83 [00:38<00:18,  1.72it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  63%|██████▎   | 52/83 [00:38<00:14,  2.21it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  64%|██████▍   | 53/83 [00:39<00:12,  2.33it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  65%|██████▌   | 54/83 [00:39<00:12,  2.41it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  66%|██████▋   | 55/83 [00:39<00:09,  2.99it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  67%|██████▋   | 56/83 [00:39<00:07,  3.60it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  69%|██████▊   | 57/83 [00:40<00:07,  3.29it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  70%|██████▉   | 58/83 [00:40<00:08,  3.09it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  71%|███████   | 59/83 [00:40<00:06,  3.74it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  72%|███████▏  | 60/83 [00:40<00:05,  4.37it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  73%|███████▎  | 61/83 [00:41<00:05,  3.74it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  75%|███████▍  | 62/83 [00:41<00:06,  3.42it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  76%|███████▌  | 63/83 [00:41<00:04,  4.13it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  77%|███████▋  | 64/83 [00:42<00:08,  2.22it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  78%|███████▊  | 65/83 [00:42<00:07,  2.36it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  80%|███████▉  | 66/83 [00:43<00:06,  2.48it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  81%|████████  | 67/83 [00:43<00:05,  3.13it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  82%|████████▏ | 68/83 [00:43<00:03,  3.85it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  83%|████████▎ | 69/83 [00:43<00:03,  3.50it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  84%|████████▍ | 70/83 [00:44<00:03,  3.37it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  87%|████████▋ | 72/83 [00:44<00:02,  4.97it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  88%|████████▊ | 73/83 [00:44<00:02,  4.38it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  89%|████████▉ | 74/83 [00:44<00:02,  4.01it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  92%|█████████▏| 76/83 [00:45<00:01,  5.72it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  93%|█████████▎| 77/83 [00:45<00:01,  4.48it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  94%|█████████▍| 78/83 [00:45<00:01,  4.13it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  96%|█████████▋| 80/83 [00:45<00:00,  5.97it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  98%|█████████▊| 81/83 [00:50<00:02,  1.10s/it]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  99%|█████████▉| 82/83 [00:54<00:01,  1.93s/it]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE): 100%|██████████| 83/83 [00:57<00:00,  2.18s/it]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE): 100%|██████████| 83/83 [00:57<00:00,  1.44it/s]
+(EngineCore pid=585) 
+Capturing CUDA graphs (decode, FULL):   0%|          | 0/11 [00:00<?, ?it/s]
+Capturing CUDA graphs (decode, FULL):   9%|▉         | 1/11 [00:01<00:13,  1.35s/it]
+Capturing CUDA graphs (decode, FULL):  18%|█▊        | 2/11 [00:02<00:11,  1.33s/it]
+Capturing CUDA graphs (decode, FULL):  36%|███▋      | 4/11 [00:02<00:03,  1.85it/s]
+Capturing CUDA graphs (decode, FULL):  55%|█████▍    | 6/11 [00:02<00:01,  3.18it/s]
+Capturing CUDA graphs (decode, FULL):  73%|███████▎  | 8/11 [00:03<00:00,  4.72it/s]
+Capturing CUDA graphs (decode, FULL):  91%|█████████ | 10/11 [00:03<00:00,  4.26it/s]
+Capturing CUDA graphs (decode, FULL): 100%|██████████| 11/11 [00:05<00:00,  1.88it/s]
+Capturing CUDA graphs (decode, FULL): 100%|██████████| 11/11 [00:05<00:00,  2.09it/s]
+(EngineCore pid=585) INFO 07-26 07:31:34 [gpu_model_runner.py:6594] Graph capturing finished in 64 secs, took 0.53 GiB
+(EngineCore pid=585) INFO 07-26 07:31:34 [jit_monitor.py:54] Kernel JIT monitor activated — Triton JIT compilations during inference will be logged as warnings.
+(EngineCore pid=585) INFO 07-26 07:31:34 [core.py:315] init engine (profile, create kv cache, warmup model) took 95.14 s (compilation: 11.43 s)
+(EngineCore pid=585) INFO 07-26 07:31:36 [vllm.py:998] Asynchronous scheduling is enabled.
+(EngineCore pid=585) INFO 07-26 07:31:36 [kernel.py:272] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['native'], fused_add_rms_norm=['native'])
+(EngineCore pid=585) WARNING 07-26 07:31:36 [vllm.py:1434] Auto-initialization of reasoning token IDs failed. Please check whether your reasoning parser has implemented the `reasoning_start_str` and `reasoning_end_str`.
+(APIServer pid=1) INFO 07-26 07:31:36 [api_server.py:572] Supported tasks: ['generate']
+(APIServer pid=1) INFO 07-26 07:31:36 [parser_manager.py:37] "auto" tool choice has been enabled.
+(APIServer pid=1) WARNING 07-26 07:31:36 [serving.py:221] For gpt-oss, we ignore --enable-auto-tool-choice and always enable tool use.
+(APIServer pid=1) INFO 07-26 07:31:37 [hf.py:548] Detected the chat template content format to be 'string'. You can set `--chat-template-content-format` to override this.
+(APIServer pid=1) INFO 07-26 07:31:37 [api_server.py:576] Starting vLLM server on http://0.0.0.0:8000
+(APIServer pid=1) INFO 07-26 07:31:37 [launcher.py:37] Available routes are:
+(APIServer pid=1) INFO 07-26 07:31:37 [launcher.py:46] Route: /openapi.json, Methods: GET, HEAD
+(APIServer pid=1) INFO 07-26 07:31:37 [launcher.py:46] Route: /docs, Methods: GET, HEAD
+(APIServer pid=1) INFO 07-26 07:31:37 [launcher.py:46] Route: /docs/oauth2-redirect, Methods: GET, HEAD
+(APIServer pid=1) INFO 07-26 07:31:37 [launcher.py:46] Route: /redoc, Methods: GET, HEAD
+(APIServer pid=1) INFO 07-26 07:31:37 [launcher.py:46] Route: /load, Methods: GET
+(APIServer pid=1) INFO 07-26 07:31:37 [launcher.py:46] Route: /version, Methods: GET
+(APIServer pid=1) INFO 07-26 07:31:37 [launcher.py:46] Route: /health, Methods: GET
+(APIServer pid=1) INFO 07-26 07:31:37 [launcher.py:46] Route: /metrics, Methods: GET
+(APIServer pid=1) INFO 07-26 07:31:37 [launcher.py:46] Route: /tokenize, Methods: POST
+(APIServer pid=1) INFO 07-26 07:31:37 [launcher.py:46] Route: /detokenize, Methods: POST
+(APIServer pid=1) INFO 07-26 07:31:37 [launcher.py:46] Route: /v1/models, Methods: GET
+(APIServer pid=1) INFO 07-26 07:31:37 [launcher.py:46] Route: /ping, Methods: GET
+(APIServer pid=1) INFO 07-26 07:31:37 [launcher.py:46] Route: /ping, Methods: POST
+(APIServer pid=1) INFO 07-26 07:31:37 [launcher.py:46] Route: /invocations, Methods: POST
+(APIServer pid=1) INFO 07-26 07:31:37 [launcher.py:46] Route: /v1/chat/completions, Methods: POST
+(APIServer pid=1) INFO 07-26 07:31:37 [launcher.py:46] Route: /v1/chat/completions/batch, Methods: POST
+(APIServer pid=1) INFO 07-26 07:31:37 [launcher.py:46] Route: /v1/responses, Methods: POST
+(APIServer pid=1) INFO 07-26 07:31:37 [launcher.py:46] Route: /v1/responses/{response_id}, Methods: GET
+(APIServer pid=1) INFO 07-26 07:31:37 [launcher.py:46] Route: /v1/responses/{response_id}/cancel, Methods: POST
+(APIServer pid=1) INFO 07-26 07:31:37 [launcher.py:46] Route: /v1/completions, Methods: POST
+(APIServer pid=1) INFO 07-26 07:31:37 [launcher.py:46] Route: /v1/messages, Methods: POST
+(APIServer pid=1) INFO 07-26 07:31:37 [launcher.py:46] Route: /v1/messages/count_tokens, Methods: POST
+(APIServer pid=1) INFO 07-26 07:31:37 [launcher.py:46] Route: /generative_scoring, Methods: POST
+(APIServer pid=1) INFO 07-26 07:31:37 [launcher.py:46] Route: /inference/v1/generate, Methods: POST
+(APIServer pid=1) INFO 07-26 07:31:37 [launcher.py:46] Route: /scale_elastic_ep, Methods: POST
+(APIServer pid=1) INFO 07-26 07:31:37 [launcher.py:46] Route: /is_scaling_elastic_ep, Methods: POST
+(APIServer pid=1) INFO 07-26 07:31:37 [launcher.py:46] Route: /v1/chat/completions/render, Methods: POST
+(APIServer pid=1) INFO 07-26 07:31:37 [launcher.py:46] Route: /v1/completions/render, Methods: POST
+(APIServer pid=1) INFO 07-26 07:31:37 [launcher.py:46] Route: /v1/chat/completions/derender, Methods: POST
+(APIServer pid=1) INFO 07-26 07:31:37 [launcher.py:46] Route: /v1/completions/derender, Methods: POST
+(APIServer pid=1) INFO:     Started server process [1]
+(APIServer pid=1) INFO:     Waiting for application startup.
+(APIServer pid=1) INFO:     Application startup complete.
+(APIServer pid=1) INFO:     172.18.0.1:32990 - "GET /health HTTP/1.1" 200 OK
