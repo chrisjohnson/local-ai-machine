@@ -113,6 +113,17 @@ card's result.
    start/stop instead of `swap_model_start.sh`/`swap_model_stop.sh`.
    DONE — removed standing-vs-swappable split, added compose parsing
    helpers, all builds go through `docker compose up -d <service>`.
+9. [ ] Validate `set-role.sh` end-to-end: run `set-role.sh coder
+   gemma-4-26b-a4b-it--vllm-therock-gfx1151-v1`, confirm litellm config
+   updated, restart litellm, verify `curl localhost:4000/v1/models` shows
+   the gemma model routed to :8008.
+10. [ ] Validate litellm connectivity: send a chat completion request
+    through litellm (port 4000) to the gemma model and confirm a valid
+    response comes back.
+11. [ ] Validate orchestrator benchmark flow end-to-end: run
+    `benchmark_orchestrator.py --only <build-id>` against a single build
+    (e.g. gemma-4-26b-a4b-it--vllm-therock-gfx1151-v1) and confirm it
+    completes the speed + coding legs without errors.
 
 ## Signals
 <!-- append-only. Leave signals for other agents. Format:
@@ -123,6 +134,7 @@ card's result.
 <!-- signal: gentle-genet-star 2026-07-26T14:15Z — PR #1 open (docker-compose + litellm config). Chris wants gemma-4-26b-a4b-it brought up after work completes. -->
 <!-- signal: gentle-genet-star 2026-07-27T02:55Z — PR merged, all 7 plan items done. gemma-4-26b-a4b-it verified healthy on :8008. Card ready for done/. -->
 <!-- signal: gentle-genet-star 2026-07-27T14:30Z — orchestrator refactor done: removed swap_model_start/stop.sh calls, all vLLM builds go through compose services. Syntax verified. -->
+<!-- signal: gentle-genet-star 2026-07-27T15:00Z — added validation steps 9-11: set-role.sh, litellm connectivity, orchestrator benchmark e2e. PR #2 rebased. -->
 
 ## Decision log
 <!-- append-only, one line per entry, newest last. Never move this card to done/
