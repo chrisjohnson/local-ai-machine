@@ -87,10 +87,9 @@ card's result.
 
 ## Plan
 <!-- ordered checklist -->
-1. [ ] Decide and document the port-allocation convention (propose one, get
-   it recorded, don't improvise per-build).
-2. [ ] Decide and document the `model.local_path`/`model.files`
-   keep-or-remove call from above.
+1. [x] Decide and document the port-allocation convention — DONE (see Decision log).
+2. [x] Decide and document the `model.local_path`/`model.files`
+   keep-or-remove call — DONE (see Decision log).
 3. [ ] For every `WORKING`/`UNTESTED-BUT-DOWNLOADED` build (skip `BROKEN`),
    write its `docker-compose.yml` service entry — vLLM, llama.cpp, and
    Ollama all need real definitions, not just vLLM.
@@ -111,10 +110,30 @@ card's result.
 <!-- append-only. Leave signals for other agents. Format:
      <!-- signal: <pet-name> <ISO8601-UTC> — <short message> -->
 <!-- signal: gentle-genet-star 2026-07-26T14:00Z — claiming, starting recon -->
+<!-- signal: gentle-genet-star 2026-07-26T14:05Z — decisions made: port scheme (8100-8199 vllm, 8200 llamacpp, 11434 ollama), local_path/files kept, llamacpp benchmarker builds excluded from compose. Starting implementation. -->
 
 ## Decision log
 <!-- append-only, one line per entry, newest last. Never move this card to done/
      without a line here explaining why. -->
+- 2026-07-26T14:05Z — **Port allocation**: per-engine-family ranges.
+  vLLM builds → 8100-8199 (sequential per build). llamacpp-server builds →
+  8200-8299. Ollama builds → 11434 (shared; only one runs at a time).
+  Existing 8000/8001 stay reserved for standing primary/judge. Infrastructure
+  ports (4000, 8080, 9090, 3000, 3001) untouched. Rationale: simple,
+  extensible, no collisions between engine families; within a family only
+  one build runs at a time so sequential offsets suffice.
+- 2026-07-26T14:05Z — **local_path/files keep-or-remove**: KEEP in catalog.
+  These are identity/provenance fields (which HF repo, which quantization,
+  which files on disk), not deployment detail. Needed to cross-reference
+  `configuration.nix` download entries. Deployment detail that moves to
+  compose-only: `build_specific_flags`, `build_specific_env`,
+  `compose_service`, `served_model_name`.
+- 2026-07-26T14:05Z — **llamacpp benchmarker builds**: 10 of11 llamacpp
+  builds use engine `llamacpp-vulkan-radv-v1` (llama-bench, single-shot
+  benchmarking tool that exits after running). These cannot be standing
+  compose services. Only `llamacpp-vulkan-radv-server-v1` (llama-server,
+  HTTP API) gets a compose entry. Decision: skip benchmarker builds for
+  compose; document this in OPERATIONS.md.
 - 2026-07-26 — filed per Chris's direct request; design decided in
   conversation (docker-compose stays one big checked-in file, not
   generated; catalog trims to benchmark-relevant fields; build `id` is the
@@ -122,4 +141,7 @@ card's result.
 
 ## Handoff notes
 <!-- what's half-done, what the next agent picking this up should do first. -->
-Not started. Nothing to hand off yet.
+Decisions made (port allocation, local_path/files kept, llamacpp benchmarker
+exclusion). Next: write docker-compose.yml service entries for all WORKING/
+UNTESTED vllm builds (11 new) + llamacpp-server (1 new) + ollama (3 new),
+then trim catalog files, update litellm config, verify deploys.
