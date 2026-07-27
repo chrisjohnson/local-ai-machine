@@ -95,18 +95,19 @@ card's result.
    get individual services; Ollama gets one shared service (model switching
    is API-level); llamacpp benchmarker builds are excluded (exit after
    running, can't be standing services). DONE — PR #1.
-4. [ ] Trim each `catalog/builds/*.yaml` to the reduced field set, preserving
-   all existing `benchmark_runs:` data untouched.
-5. [ ] Update `docker/litellm-config.yaml` (or find wherever the actual
+4. [x] Trim each `catalog/builds/*.yaml` to the reduced field set, preserving
+   all existing `benchmark_runs:` data untouched. DONE — 28 files trimmed.
+5. [x] Update `docker/litellm-config.yaml` (or find wherever the actual
    LiteLLM model-alias config lives) so `primary`/`judge` route to whichever
-   builds are the current pick, via the new fixed ports.
+   builds are the current pick, via the new fixed ports. DONE — uses
+   host.docker.internal, switching instructions in comments.
 6. [ ] Verify at least one build of each engine family (vLLM, llama.cpp,
    Ollama) actually starts cleanly from the new compose entry and responds
    on its assigned port before calling this done — this is a real deploy
    change, don't just eyeball the YAML.
-7. [ ] Update `catalog/OPERATIONS.md` (and anywhere else that documents the
+7. [x] Update `catalog/OPERATIONS.md` (and anywhere else that documents the
    old `build_specific_flags`-in-catalog / `swap_model_start.sh`-for-testing
-   workflow) to describe the new two-tier model.
+   workflow) to describe the new two-tier model. DONE.
 
 ## Signals
 <!-- append-only. Leave signals for other agents. Format:
@@ -152,7 +153,7 @@ card's result.
 
 ## Handoff notes
 <!-- what's half-done, what the next agent picking this up should do first. -->
-Decisions made (port allocation, local_path/files kept, llamacpp benchmarker
-exclusion). Next: write docker-compose.yml service entries for all WORKING/
-UNTESTED vllm builds (11 new) + llamacpp-server (1 new) + ollama (3 new),
-then trim catalog files, update litellm config, verify deploys.
+PR #1 open with compose + litellm config changes. Catalog trimmed, OPERATIONS.md
+updated. Remaining: verify deploys on the box (SSH to local-ai-machine, git pull,
+docker compose up -d one vllm build + ollama, confirm health). Chris wants
+gemma-4-26b-a4b-it brought up.
