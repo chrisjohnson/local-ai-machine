@@ -75,9 +75,12 @@ let
     # checkpoint, irrelevant on this hardware) despite the exclude glob,
     # crash-looping forever on "Invalid value. The file is too large to be
     # downloaded using the regular download method... Install hf_xet"
-    # (HF_HUB_DISABLE_XET=1 is set globally above, deliberately, because Xet
-    # hangs repeatedly on this network path for other models — not
-    # something to compromise for one repo). Root cause not fully isolated
+    # (HF_HUB_DISABLE_XET=1 was set globally at the time, deliberately,
+    # because Xet hung repeatedly on this network path for other models —
+    # not something to compromise for one repo; Xet has since been
+    # re-enabled globally, see environment.variables comment below, so this
+    # specific failure mode no longer applies, but the hfFiles allowlist
+    # fix below remains correct/more-robust regardless). Root cause not fully isolated
     # (hf-cli version drift in nixpkgs since this was first verified working
     # is the leading theory), but an explicit hfFiles allowlist sidesteps
     # the exclude-glob mechanism entirely and is more robust regardless —
@@ -150,7 +153,26 @@ let
     # rendered page). Official ggml-org (llama.cpp's own org) repack,
     # single-file native MXFP4 GGUF - a different artifact from the
     # vLLM-format openai/gpt-oss-120b already on disk.
-    { name = "llamacpp-gpt-oss-120b"; repo = "ggml-org/gpt-oss-120b-GGUF"; }
+    #
+    # Blocked all weekend (through 2026-07-26): this repo's one real weight
+    # file, gpt-oss-120b-MXFP4.gguf (~63GB, confirmed via the HF API's
+    # `siblings` listing - NOT metal/model.bin, that filename belongs to a
+    # different repo/failure mode, see the openai/gpt-oss-120b comment
+    # above), is large enough that HF's regular HTTP download path outright
+    # refuses to serve it ("Invalid value. The file is too large to be
+    # downloaded using the regular download method... Install hf_xet") -
+    # unrelated to the exclude-glob bug above, this repo has no metal/
+    # or original/ subdirs to exclude in the first place. With
+    # HF_HUB_DISABLE_XET=1 globally set (the pre-2026-07-27 default), there
+    # was no way to fetch this file at all. Resolved by re-enabling Xet
+    # (see environment.variables comment) once Chris confirmed the earlier
+    # network-contention root cause was fixed - retested directly against
+    # this exact file on 2026-07-27 with real sustained progress, no hang.
+    # hfFiles here is an explicit single-file allowlist (matches this repo's
+    # own convention for other single-file GGUF entries) rather than a bare
+    # repo pull, so a future repo restructure can't silently pull in
+    # unrelated large files again.
+    { name = "llamacpp-gpt-oss-120b"; repo = "ggml-org/gpt-oss-120b-GGUF"; hfFiles = [ "gpt-oss-120b-MXFP4.gguf" ]; }
     # Phase 5.6 llama.cpp-direct candidates, verified real against kyuz0's
     # raw results.json (not just trusted from a cold LLM query) and
     # approved by Chris 2026-07-24 despite the real concern that a 120B-
@@ -366,12 +388,23 @@ in
     "d /var/lib/ai-models 0755 chris users - -"
   ];
 
-  # huggingface_hub tuning: hf-xet (the newer accelerated transfer backend)
-  # hangs repeatedly on this network path — disabling it and falling back to
-  # plain HTTP fixed multi-hour stalls during model downloads. Not secrets,
-  # so these live directly in tracked config.
+  # huggingface_hub tuning. hf-xet (the newer accelerated transfer backend)
+  # was globally disabled here for months after repeatedly hanging on this
+  # network path (multi-hour stalls during model downloads, fixed at the time
+  # by falling back to plain HTTP). Chris confirmed 2026-07-26 the underlying
+  # network contention was fixed at the network level outside this repo, and
+  # asked to re-enable Xet. Re-tested directly against the exact download
+  # that was blocked without it (llamacpp-gpt-oss-120b's single 63GB GGUF,
+  # which HF's regular HTTP path refuses to serve at all above its size
+  # threshold — "Install hf_xet") on 2026-07-27: real, sustained multi-hundred-
+  # MB/interval growth via `du -sb`, no stall, same metric the download
+  # services' own watchdog (below) uses — so this reverses the earlier
+  # disable rather than just patching around it for one repo. hf-xet also
+  # has to be present in every `nix shell` invocation that runs `hf download`
+  # (see mkModelDownloadService below) — the env var alone only controls
+  # whether hf *tries* to use it, not whether the package is available. Not
+  # secrets, so these live directly in tracked config.
   environment.variables = {
-    HF_HUB_DISABLE_XET = "1";
     HF_HUB_DOWNLOAD_TIMEOUT = "120";
     HF_HUB_ETAG_TIMEOUT = "900";
   };
@@ -438,8 +471,11 @@ in
   # alone. Each service is idempotent via a completion marker file, not just
   # "does the directory exist" — a partial/interrupted download would
   # otherwise look done on the next boot and never retry. Reuses the exact
-  # HF_HUB_DISABLE_XET / timeout env vars and `nix shell ... hf download`
-  # invocation already proven to work reliably on this network path.
+  # timeout env vars and `nix shell ... hf download` invocation already
+  # proven to work reliably on this network path (Xet re-enabled 2026-07-27,
+  # see environment.variables comment above — no per-download override needed
+  # anymore, both the global default and this script's own nix-shell package
+  # list now include hf-xet support).
   #
   # hfFiles (optional): pull specific file(s) instead of the whole repo -
   # needed for GGUF repos, which typically bundle many quant variants as
@@ -501,12 +537,11 @@ in
         exec 200>/var/lib/ai-models/.download.lock
         ${pkgs.util-linux}/bin/flock -x 200
 
-        export HF_HUB_DISABLE_XET=1
         export HF_HUB_DOWNLOAD_TIMEOUT=120
         export HF_HUB_ETAG_TIMEOUT=900
         DEST=/var/lib/ai-models/${name}
         set +e
-        ${pkgs.nix}/bin/nix --extra-experimental-features "nix-command flakes" shell nixpkgs#python3Packages.huggingface-hub \
+        ${pkgs.nix}/bin/nix --extra-experimental-features "nix-command flakes" shell nixpkgs#python3Packages.huggingface-hub nixpkgs#python3Packages.hf-xet \
           --command hf download ${repo} \
           ${lib.concatMapStringsSep " " (f: "'${f}'") hfFiles} \
           --local-dir "$DEST" \
