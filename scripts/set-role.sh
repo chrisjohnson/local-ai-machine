@@ -92,7 +92,7 @@ echo "Setting ${ROLE} -> ${MODEL_NAME} on port ${PORT}"
 # Update the role's block (model_name: ${ROLE}) to point at the new model.
 # Two edits within the role's YAML block:
 #   1. model: openai/<old> → model: openai/${MODEL_NAME}
-#   2. api_base: http://... → api_base: http://127.0.0.1:${PORT}/v1
+#   2. api_base: http://... → api_base: http://host.docker.internal:${PORT}/v1
 # Uses temp file + mv for GNU/BSD sed portability.
 
 TMPFILE=$(mktemp)
@@ -106,7 +106,7 @@ mv "$TMPFILE" "$LITELLM_CONFIG"
 if sed -n "/model_name: ${ROLE}/,/model_name:/p" "$LITELLM_CONFIG" |
    grep -q 'api_base:'; then
   TMPFILE=$(mktemp)
-  sed "/model_name: ${ROLE}/,/model_name:/{s|api_base:.*|api_base: http://127.0.0.1:${PORT}/v1|}" "$LITELLM_CONFIG" > "$TMPFILE"
+  sed "/model_name: ${ROLE}/,/model_name:/{s|api_base:.*|api_base: http://host.docker.internal:${PORT}/v1|}" "$LITELLM_CONFIG" > "$TMPFILE"
   mv "$TMPFILE" "$LITELLM_CONFIG"
   echo "  Updated model + api_base for ${ROLE} -> ${MODEL_NAME} on :${PORT}"
 else
@@ -114,7 +114,7 @@ else
   TMPFILE=$(mktemp)
   awk -v role="$ROLE" -v port="$PORT" '
     /model_name: role/ { found=1 }
-    found && /model: openai/ { print; printf "        api_base: http://127.0.0.1:%s/v1\n", port; found=0; next }
+    found && /model: openai/ { print;   printf "        api_base: http://host.docker.internal:%s/v1\n", port; found=0; next }
     { print }
   ' "$LITELLM_CONFIG" > "$TMPFILE"
   mv "$TMPFILE" "$LITELLM_CONFIG"
