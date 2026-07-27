@@ -36,6 +36,12 @@ You have full authority to manage the box's OS/services to get work done — sta
 containers, run `nixos-rebuild`, pause/resume downloads, run benchmarks — this is not
 timid, ask-first territory. Drive it through git, not raw SSH edits.
 
+**IMPORTANT NOTE**: Prefer scripted autonomous solutions to driving things directly over
+SSH. Use SSH primarily to inspect, kick things that are stuck (and then improve the code
+to self-kick for next time), start and stop services, or as a last resort if nothing else
+is working. Assume the agent will crash regularly or suffer flaky connection with the
+machine.
+
 ## Hard stops — need Chris directly, no exceptions
 
 - **Any new model download beyond what's been explicitly approved in the moment.** A
