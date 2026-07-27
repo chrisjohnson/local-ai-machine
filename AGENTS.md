@@ -1,16 +1,5 @@
 # AGENTS.md — local-ai-machine
 
-This repo now uses the agentic-fleet workflow (`.fleet/board/`) instead of tracking
-agentic state/next-steps in `README.md`. The global fleet protocol (worker/orchestrator
-roles, board mechanics, claim/signal conventions) lives in the agentic-fleet repo's own
-`AGENTS.md` and applies here automatically once `.fleet/` exists — this file only covers
-what's specific to *this* repo.
-
-**Note:** `README.md`'s "Open Next Steps"/operational-state sections predate this fleet
-setup (2026-07-26) and are being phased out in favor of fleet cards. Don't treat README
-as the current source of truth for in-flight work — check `.fleet/board/` instead. Full
-migration of README's remaining agentic content is tracked as its own card (see board).
-
 ## What this repo is
 
 Config-as-code + benchmark catalog for a local AI inference box (`local-ai-machine`, AMD
@@ -29,13 +18,10 @@ GitHub deploy key specifically so it can pull (and, for automated jobs like the 
 orchestrator, push its own results) without ever needing a manual edit.
 
 Workflow for any change that needs to land on the box:
-1. Edit locally (wherever you're actually working — Mac checkout or the box's own
-   checkout, doesn't matter which side originates a commit, but never both diverging).
+1. Edit locally (Mac checkout or the box's own checkout — doesn't matter which side
+   originates a commit, but never let both diverge).
 2. Commit, push to `main`. **Direct pushes to `main` are explicitly authorized in this
-   repo** (Chris, 2026-07-25) — no PR workflow, no worktree-branch requirement, despite
-   what the global fleet AGENTS.md says for repos in general (that rule is gated on
-   fleet's own worktree conventions, which this repo doesn't use for source/config
-   changes — board changes still follow the global board-commit convention).
+   repo** (Chris, 2026-07-25) — no PR workflow, no worktree-branch requirement.
 3. `ssh local-ai-machine 'cd /home/chris/local-ai-machine && git pull --ff-only'`.
 4. Deploy:
    - NixOS config changes (`configuration.nix`, `flake.nix`): `sudo -n
@@ -63,10 +49,6 @@ timid, ask-first territory. Drive it through git, not raw SSH edits.
   default is Chris's call regardless of how compelling the data looks.
 - **The FastFlowLM IOMMU/reboot tradeoff** — a real, measured performance-vs-availability
   tradeoff Chris has explicitly deferred deciding on. Stays deferred until he revisits it.
-- **Anything destructive or hard to reverse** — force-push, wiping data, rebuilding the
-  box from scratch. Standard fleet-wide rule, repeated here because this repo's box-access
-  authority makes it easy to reach for something destructive by accident while
-  troubleshooting.
 - **Upgrading Ollama's version.** Currently pinned at 0.17.7; at least one known chat-
   template fix (Gemma-4 family) needs 0.20.0+. Upgrading is a real behavior-change
   decision (affects every registered model, not just the one being fixed), not a
@@ -85,6 +67,5 @@ timid, ask-first territory. Drive it through git, not raw SSH edits.
   identity + results (undergoing restructuring per the board — check `.fleet/board/` for
   the current target schema before assuming today's shape is final).
 - **`HANDOFF.md`** — historical session-handoff log (decisions made, bugs found/fixed,
-  judgment calls) from before the fleet board existed. Being superseded by fleet cards'
-  own Decision logs going forward; still useful as archaeology for *why* something is the
-  way it is.
+  judgment calls) from before the fleet board existed. Still useful as archaeology for
+  *why* something is the way it is.
