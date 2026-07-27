@@ -75,12 +75,13 @@ let
     # checkpoint, irrelevant on this hardware) despite the exclude glob,
     # crash-looping forever on "Invalid value. The file is too large to be
     # downloaded using the regular download method... Install hf_xet"
-    # (HF_HUB_DISABLE_XET=1 was set globally at the time, deliberately,
-    # because Xet hung repeatedly on this network path for other models —
-    # not something to compromise for one repo; Xet has since been
-    # re-enabled globally, see environment.variables comment below, so this
-    # specific failure mode no longer applies, but the hfFiles allowlist
-    # fix below remains correct/more-robust regardless). Root cause not fully isolated
+    # (HF_HUB_DISABLE_XET=1 is set globally, deliberately, because Xet hung
+    # repeatedly on this network path for other models - not something to
+    # compromise for one repo; a 2026-07-27 re-test after Chris fixed the
+    # network-level contention still found Xet unsafe here, this time via
+    # OOM-kill rather than a hang, see environment.variables comment below -
+    # so this stays disabled and this specific failure mode still applies).
+    # Root cause not fully isolated
     # (hf-cli version drift in nixpkgs since this was first verified working
     # is the leading theory), but an explicit hfFiles allowlist sidesteps
     # the exclude-glob mechanism entirely and is more robust regardless —
@@ -154,24 +155,33 @@ let
     # single-file native MXFP4 GGUF - a different artifact from the
     # vLLM-format openai/gpt-oss-120b already on disk.
     #
-    # Blocked all weekend (through 2026-07-26): this repo's one real weight
-    # file, gpt-oss-120b-MXFP4.gguf (~63GB, confirmed via the HF API's
-    # `siblings` listing - NOT metal/model.bin, that filename belongs to a
-    # different repo/failure mode, see the openai/gpt-oss-120b comment
-    # above), is large enough that HF's regular HTTP download path outright
-    # refuses to serve it ("Invalid value. The file is too large to be
-    # downloaded using the regular download method... Install hf_xet") -
-    # unrelated to the exclude-glob bug above, this repo has no metal/
-    # or original/ subdirs to exclude in the first place. With
-    # HF_HUB_DISABLE_XET=1 globally set (the pre-2026-07-27 default), there
-    # was no way to fetch this file at all. Resolved by re-enabling Xet
-    # (see environment.variables comment) once Chris confirmed the earlier
-    # network-contention root cause was fixed - retested directly against
-    # this exact file on 2026-07-27 with real sustained progress, no hang.
-    # hfFiles here is an explicit single-file allowlist (matches this repo's
-    # own convention for other single-file GGUF entries) rather than a bare
-    # repo pull, so a future repo restructure can't silently pull in
-    # unrelated large files again.
+    # Blocked all weekend (through 2026-07-26) and still blocked as of
+    # 2026-07-27: this repo's one real weight file, gpt-oss-120b-MXFP4.gguf
+    # (~63GB, confirmed via the HF API's `siblings` listing - NOT
+    # metal/model.bin, that filename belongs to a different repo/failure
+    # mode, see the openai/gpt-oss-120b comment above), is large enough that
+    # HF's regular HTTP download path outright refuses to serve it ("Invalid
+    # value. The file is too large to be downloaded using the regular
+    # download method... Install hf_xet") - unrelated to the exclude-glob
+    # bug above, this repo has no metal/ or original/ subdirs to exclude in
+    # the first place. HF_HUB_DISABLE_XET=1 stays globally set (see
+    # environment.variables comment - a 2026-07-27 re-test with Xet enabled
+    # transferred real data but OOM-killed and took the standing
+    # vllm-primary container down with it 3 times), so this file genuinely
+    # cannot be fetched by this service as currently configured. A partial
+    # resumable download (~3GB) is sitting in
+    # /var/lib/ai-models/llamacpp-gpt-oss-120b/.cache/huggingface/download/
+    # from the 2026-07-27 test; the download-model-llamacpp-gpt-oss-120b
+    # timer was manually stopped after that test and needs to be manually
+    # re-started (`systemctl start download-model-llamacpp-gpt-oss-120b.timer`)
+    # once there's a memory-safe way to retry (e.g. stop vllm-primary/judge
+    # first, or find/set an hf-xet memory cap) - reported to Chris directly
+    # rather than guessing further. hfFiles here is an explicit single-file
+    # allowlist (matches this repo's own convention for other single-file
+    # GGUF entries) rather than a bare repo pull, so a future repo
+    # restructure can't silently pull in unrelated large files again -
+    # unrelated to the Xet blocker, just a robustness improvement made
+    # alongside it.
     { name = "llamacpp-gpt-oss-120b"; repo = "ggml-org/gpt-oss-120b-GGUF"; hfFiles = [ "gpt-oss-120b-MXFP4.gguf" ]; }
     # Phase 5.6 llama.cpp-direct candidates, verified real against kyuz0's
     # raw results.json (not just trusted from a cold LLM query) and
@@ -388,23 +398,36 @@ in
     "d /var/lib/ai-models 0755 chris users - -"
   ];
 
-  # huggingface_hub tuning. hf-xet (the newer accelerated transfer backend)
-  # was globally disabled here for months after repeatedly hanging on this
-  # network path (multi-hour stalls during model downloads, fixed at the time
-  # by falling back to plain HTTP). Chris confirmed 2026-07-26 the underlying
-  # network contention was fixed at the network level outside this repo, and
-  # asked to re-enable Xet. Re-tested directly against the exact download
-  # that was blocked without it (llamacpp-gpt-oss-120b's single 63GB GGUF,
-  # which HF's regular HTTP path refuses to serve at all above its size
-  # threshold — "Install hf_xet") on 2026-07-27: real, sustained multi-hundred-
-  # MB/interval growth via `du -sb`, no stall, same metric the download
-  # services' own watchdog (below) uses — so this reverses the earlier
-  # disable rather than just patching around it for one repo. hf-xet also
-  # has to be present in every `nix shell` invocation that runs `hf download`
-  # (see mkModelDownloadService below) — the env var alone only controls
-  # whether hf *tries* to use it, not whether the package is available. Not
-  # secrets, so these live directly in tracked config.
+  # huggingface_hub tuning: hf-xet (the newer accelerated transfer backend)
+  # hangs repeatedly on this network path — disabling it and falling back to
+  # plain HTTP fixed multi-hour stalls during model downloads. Not secrets,
+  # so these live directly in tracked config.
+  #
+  # 2026-07-27 re-test: Chris confirmed 2026-07-26 the network-contention
+  # root cause behind the original hang was fixed, and asked to re-enable
+  # Xet. Re-tested directly against llamacpp-gpt-oss-120b's blocked ~63GB
+  # GGUF (the file HF's regular HTTP path refuses to serve without Xet —
+  # "Install hf_xet"): no hang this time, real sustained transfer (confirmed
+  # via CAS/S3 logs and `du -sb` growth), BUT the download process's own
+  # memory footprint climbed to ~5GB peak and the kernel OOM-killer fired
+  # (`systemd ... The kernel OOM killer killed some processes in this unit`)
+  # on a box that already runs ~106GB/124GB committed to the two standing
+  # vLLM services — collateral damage confirmed: vllm-primary's container
+  # was killed and auto-restarted 3 times during the ~18min the download
+  # ran (vllm-judge unaffected). This is a materially different and worse
+  # failure mode than the original silent-hang problem the stall watchdog
+  # below was built for — an OOM kill isn't a stall, so the watchdog can't
+  # prevent it, and it risks the standing production services, not just the
+  # download itself. Left disabled per the explicit fallback instruction:
+  # don't flip this default while Xet still misbehaves. hf-xet package
+  # availability (see mkModelDownloadService's nix-shell invocation below)
+  # was left in place so a future retry doesn't need a second package-name
+  # lookup, but the env var stays "1" until this is revisited — e.g. with
+  # vLLM services stopped first, or after confirming Xet's memory ceiling
+  # can be bounded. Reported back to Chris directly rather than guessing
+  # further at a memory-safe workaround.
   environment.variables = {
+    HF_HUB_DISABLE_XET = "1";
     HF_HUB_DOWNLOAD_TIMEOUT = "120";
     HF_HUB_ETAG_TIMEOUT = "900";
   };
@@ -471,11 +494,14 @@ in
   # alone. Each service is idempotent via a completion marker file, not just
   # "does the directory exist" — a partial/interrupted download would
   # otherwise look done on the next boot and never retry. Reuses the exact
-  # timeout env vars and `nix shell ... hf download` invocation already
-  # proven to work reliably on this network path (Xet re-enabled 2026-07-27,
-  # see environment.variables comment above — no per-download override needed
-  # anymore, both the global default and this script's own nix-shell package
-  # list now include hf-xet support).
+  # HF_HUB_DISABLE_XET / timeout env vars and `nix shell ... hf download`
+  # invocation already proven to work reliably on this network path. The
+  # nix-shell invocation also carries nixpkgs#python3Packages.hf-xet
+  # alongside huggingface-hub (added 2026-07-27) so the package is available
+  # if a future scoped retry re-enables Xet per-download — see
+  # environment.variables comment above for why the global default is still
+  # "1" despite that (2026-07-27 re-test caused an OOM-kill that restarted
+  # the standing vllm-primary container 3 times).
   #
   # hfFiles (optional): pull specific file(s) instead of the whole repo -
   # needed for GGUF repos, which typically bundle many quant variants as
@@ -537,6 +563,7 @@ in
         exec 200>/var/lib/ai-models/.download.lock
         ${pkgs.util-linux}/bin/flock -x 200
 
+        export HF_HUB_DISABLE_XET=1
         export HF_HUB_DOWNLOAD_TIMEOUT=120
         export HF_HUB_ETAG_TIMEOUT=900
         DEST=/var/lib/ai-models/${name}
