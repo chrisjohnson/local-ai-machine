@@ -19,10 +19,6 @@ model:
     - UD-Q3_K_S/MiniMax-M2.7-UD-Q3_K_S-00003-of-00003.gguf
   local_path: /var/lib/ai-models/llamacpp-minimax-m2.7
   size_on_disk_gb: 93.6
-served_model_name: null
-build_specific_flags: []
-build_specific_env: {}
-compose_service: null
 notes: >
   Not yet measured locally. Reference figure from kyuz0's raw results.json:
   31.08 tok/s TG128, confirmed single-node viable (rpc:false in the source

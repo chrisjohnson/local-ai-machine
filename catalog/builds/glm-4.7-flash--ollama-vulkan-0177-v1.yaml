@@ -16,10 +16,6 @@ model:
   files: [GLM-4.7-Flash-Q4_K_M.gguf]
   local_path: /var/lib/ai-models/ollama-glm-4.7-flash
   size_on_disk_gb: 18.31
-served_model_name: glm-4.7-flash-gguf   # ollama model tag
-build_specific_flags: []
-build_specific_env: {}
-compose_service: null   # ollama itself is a standing service, but per-GGUF registration isn't a distinct compose entry
 notes: >
   ~13 tok/s generation (rough measurement, vllm-primary running concurrently
   so conservative/pessimistic, not a clean isolated test), vs. llama.cpp

@@ -16,10 +16,6 @@ model:
   files: [GLM-4.7-Flash-Q4_K_M.gguf]
   local_path: /var/lib/ai-models/ollama-glm-4.7-flash
   size_on_disk_gb: 18.31
-served_model_name: glm-4.7-flash-gguf
-build_specific_flags: []
-build_specific_env: {}
-compose_service: null
 notes: >
   GPU detection at startup looked correct, but the first real generate
   request crashed with "cudaMalloc failed: out of memory" — see the engine

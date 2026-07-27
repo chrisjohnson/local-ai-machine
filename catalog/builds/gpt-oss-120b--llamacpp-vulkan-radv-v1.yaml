@@ -16,10 +16,6 @@ model:
   files: null   # single ~59GB file
   local_path: /var/lib/ai-models/llamacpp-gpt-oss-120b
   size_on_disk_gb: 59
-served_model_name: null
-build_specific_flags: []
-build_specific_env: {}
-compose_service: null
 notes: >
   Not yet run on this machine. kyuz0's own results.json (same chip family,
   independently verified, not just the rendered page) reports: ROCm 51-52

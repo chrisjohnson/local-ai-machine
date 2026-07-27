@@ -16,22 +16,6 @@ model:
   files: null   # full HF safetensors set, not individually enumerated in prior notes
   local_path: /var/lib/ai-models/qwen3.6-35b-a3b
   size_on_disk_gb: null
-served_model_name: qwen3.6-35b-a3b
-build_specific_flags:
-  - --port 8000
-  - --gpu-memory-utilization 0.70   # co-resident with judge slot at 0.20; standalone swap-in benchmarks used 0.90
-  - --max-num-seqs 64
-  - --max-model-len 131072
-  - --enable-auto-tool-choice
-  - --tool-call-parser qwen3_coder
-  - --reasoning-parser qwen3
-build_specific_env: {}
-compose_service:
-  container_name: vllm-primary
-  port_mapping: "127.0.0.1:8000:8000"
-  extra_volumes:
-    - vllm_primary_cache:/root/.cache/vllm
-  restart: unless-stopped
 notes: >
   Standing docker-compose.yml service. FP8 checkpoint was deliberately not
   used (gfx1151 has no FP8 matrix-core hardware; real-world reports confirm
