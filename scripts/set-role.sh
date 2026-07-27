@@ -61,7 +61,7 @@ MODEL_NAME=$(
 )
 
 # Fallback: direct grep (more robust for multiline YAML strings)
-if [[ -z "$MODEL_NAME" ]]; then
+if [[ -z "$MODEL_NAME" || "$MODEL_NAME" == "null" ]]; then
   MODEL_NAME=$(
     yq -r ".services.\"${SERVICE}\".command // \"\"" "$COMPOSE_FILE" 2>/dev/null |
     tr '\n' ' ' |
@@ -69,7 +69,7 @@ if [[ -z "$MODEL_NAME" ]]; then
   )
 fi
 
-if [[ -z "$MODEL_NAME" ]]; then
+if [[ -z "$MODEL_NAME" || "$MODEL_NAME" == "null" ]]; then
   echo "ERROR: Could not find --served-model-name in service '${SERVICE}' command" >&2
   echo "This script only supports services with a --served-model-name flag (vLLM)." >&2
   echo "For Ollama or other backends, update the litellm config manually." >&2
