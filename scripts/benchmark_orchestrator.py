@@ -7,8 +7,13 @@ Design constraints (see HANDOFF.md / OPERATIONS.md for full rationale):
   - Runs ON THE BOX (needs docker, sudo -n systemctl, the GPU). Not meant to
     be piloted over SSH from the Mac, though nothing stops that for --dry-run
     inspection.
-  - Skips ollama-* engine builds entirely (known-bad chat template, out of
-    scope for this pass — see HANDOFF.md decision log).
+  - Ollama builds are no longer hard-skipped (re-enabled 2026-07-26 — 3 of 4
+    registered Ollama models had their broken chat template fixed via
+    RENDERER/PARSER Modelfile directives; see HANDOFF.md decision log). The
+    remaining genuinely-broken build (gemma-4-26b-a4b-gguf, unsupported GGUF
+    architecture on this pinned Ollama version) and the documented -rocm
+    crash build are excluded the same way every other broken build is:
+    status: BROKEN, checked below — no Ollama-specific carve-out needed.
   - Skips status: BROKEN builds and the MTP build/benchmark (no successful
     run exists yet anywhere).
   - Skips builds whose model isn't fully downloaded yet (checked live via
@@ -22,7 +27,12 @@ Design constraints (see HANDOFF.md / OPERATIONS.md for full rationale):
   - Swappable candidates (compose_service null) go through
     swap_model_start.sh / swap_model_stop.sh for vLLM, or ad hoc `docker run`
     for llama.cpp (llama-bench and llama-server are separate container
-    lifecycles, never merged).
+    lifecycles, never merged). Ollama's registered model tags are always
+    served by the one standing `ollama` container (docker-compose, restart:
+    unless-stopped) — there is no swap-in/swap-out lifecycle for Ollama,
+    only picking which registered tag to send a request to. Same GPU-
+    contention risk as llama.cpp applies though, so vLLM is still stopped
+    for the duration of the run.
   - Does NOT write yaml.safe_dump over a whole build file — appends into the
     literal `benchmark_runs: []` (or the tail of an existing list) via text
     surgery, to avoid reformatting hand-written YAML.
@@ -57,6 +67,10 @@ VLLM_SPEED_BENCHMARK_ID = "vllm-speed-c1c8-v2"
 CODING_BENCHMARK_ID = "seven-tier-coding-v2"
 LLAMACPP_BENCH_ID = "llamacpp-bench-v1"
 LLAMACPP_SERVER_CONCURRENT_ID = "llamacpp-server-concurrent-v1"
+OLLAMA_WARM_REQUEST_ID = "ollama-warm-request-v2"
+
+OLLAMA_CONTAINER = "ollama"
+OLLAMA_PORT = 11434
 
 # Builds excluded from this pass regardless of anything else.
 EXCLUDED_BUILD_IDS = {
@@ -153,11 +167,9 @@ def gather_plan(only_build_id=None):
         skip_reason = None
         if build_id in EXCLUDED_BUILD_IDS:
             skip_reason = "excluded (BROKEN/MTP, out of scope this pass)"
-        elif family == "ollama":
-            skip_reason = "ollama engine — known-bad chat template, skipped this pass"
         elif build.get("status") == "BROKEN":
             skip_reason = "status: BROKEN"
-        elif family not in ("vllm", "llamacpp"):
+        elif family not in ("vllm", "llamacpp", "ollama"):
             skip_reason = f"unrecognized engine family for engine={engine_id!r}"
         elif not model_download_complete(local_path):
             skip_reason = f"model not fully downloaded yet (.download-complete missing at {local_path})"
@@ -1070,6 +1082,164 @@ def process_llamacpp_build(build_id, build_path, build, dry_run, downloads_pause
 
 
 # --------------------------------------------------------------------------
+# Ollama: /api/generate against the one standing `ollama` container
+# (registered model tags, not swapped containers) — ollama-warm-request-v2
+# methodology (1 cold + 3 warm requests, headline tok/s from the warm mean).
+# --------------------------------------------------------------------------
+
+def ollama_generate_request(served_name, prompt, timeout=600):
+    """POST /api/generate (non-streaming) against the standing ollama
+    container, return the parsed JSON body. Raises on any non-2xx/timeout
+    so a failed request can never be silently treated as a valid (if odd)
+    sample — same discipline as run_vllm_bench_serve_trial's zero-completed
+    check."""
+    import urllib.request
+
+    payload = json.dumps({
+        "model": served_name,
+        "prompt": prompt,
+        "stream": False,
+    }).encode()
+    req = urllib.request.Request(
+        f"http://localhost:{OLLAMA_PORT}/api/generate", data=payload,
+        headers={"Content-Type": "application/json"}, method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        body = json.loads(resp.read())
+    if "eval_count" not in body or "eval_duration" not in body:
+        raise RuntimeError(f"ollama /api/generate response missing eval_count/eval_duration: {body}")
+    return body
+
+
+def summarize_ollama_trial(body):
+    eval_count = body.get("eval_count")
+    eval_duration = body.get("eval_duration")  # nanoseconds
+    tok_s = (eval_count / (eval_duration / 1e9)) if eval_count and eval_duration else None
+    return {
+        "eval_count": eval_count,
+        "eval_duration_ns": eval_duration,
+        "prompt_eval_count": body.get("prompt_eval_count"),
+        "prompt_eval_duration_ns": body.get("prompt_eval_duration"),
+        "load_duration_ns": body.get("load_duration"),
+        "total_duration_ns": body.get("total_duration"),
+        "tok_s": tok_s,
+    }
+
+
+OLLAMA_WARM_REQUEST_PROMPT = (
+    "Write a short essay (roughly 400-600 words) about the history and cultural "
+    "significance of coffee, covering its origins, spread, and modern-day role."
+)
+
+
+def run_ollama_warm_request(build_id, served_name, timestamp, dry_run):
+    log(f"[{build_id}] Running Ollama warm-request benchmark ({OLLAMA_WARM_REQUEST_ID}) against {served_name}.")
+    if dry_run:
+        log(f"[dry-run] would run 1 cold + 3 warm /api/generate requests against {served_name}")
+        return None
+
+    import statistics
+
+    log(f"[{build_id}] Cold trial (first request after registration/idle — includes load time by design) ...")
+    cold_body = ollama_generate_request(served_name, OLLAMA_WARM_REQUEST_PROMPT)
+    cold_summary = summarize_ollama_trial(cold_body)
+
+    warm_summaries = []
+    for trial_n in range(1, 4):
+        log(f"[{build_id}] Warm trial {trial_n}/3 ...")
+        body = ollama_generate_request(served_name, OLLAMA_WARM_REQUEST_PROMPT)
+        warm_summaries.append(summarize_ollama_trial(body))
+
+    warm_tok_s = [w["tok_s"] for w in warm_summaries if w["tok_s"] is not None]
+    result = {
+        "cold": cold_summary,
+        "warm_trials": warm_summaries,
+        "warm_tok_s_mean": statistics.mean(warm_tok_s) if warm_tok_s else None,
+        "warm_tok_s_stddev": statistics.stdev(warm_tok_s) if len(warm_tok_s) > 1 else 0.0 if warm_tok_s else None,
+    }
+
+    raw_out = RAW_DIR / f"{build_id}--{OLLAMA_WARM_REQUEST_ID}--{timestamp}.json"
+    raw_out.write_text(json.dumps(result, indent=2))
+    result["raw_file"] = str(raw_out.relative_to(REPO_ROOT))
+    return result
+
+
+def ollama_version(container=OLLAMA_CONTAINER):
+    # `ollama --version` prints a client-vs-server-mismatch warning line
+    # ahead of the real version on some builds — take the last non-empty
+    # line, mirroring vllm_image_digest_and_version's approach for vLLM.
+    out = run(["docker", "exec", container, "ollama", "--version"], check=False).stdout.strip()
+    lines = [ln for ln in out.splitlines() if ln.strip()]
+    return lines[-1] if lines else out
+
+
+def ollama_image_digest(container=OLLAMA_CONTAINER):
+    image_id = run(["docker", "inspect", container, "--format", "{{.Image}}"]).stdout.strip()
+    return run(["docker", "inspect", image_id, "--format", "{{.RepoDigests}}"]).stdout.strip()
+
+
+def process_ollama_build(build_id, build_path, build, dry_run, downloads_paused, kernel, repo_commit, gpu_driver):
+    served_name = build.get("served_model_name")
+    if not served_name:
+        raise RuntimeError(f"{build_id}: no served_model_name — cannot address this build's Ollama model tag")
+
+    timestamp = utcnow_iso().replace(":", "").replace("-", "")
+    window_start = utcnow_iso()
+
+    log(f"[{build_id}] Ollama build — stopping standard stack for the full GPU budget "
+        f"(same GPU-contention risk as llama.cpp; Ollama itself keeps running, only vLLM is stopped).")
+    if dry_run:
+        log(f"[dry-run] would stop vllm-primary/vllm-judge, run 1 cold + 3 warm /api/generate against "
+            f"{served_name} on the standing ollama container, then restore stack")
+        return
+
+    warm_already_done = already_has_run(build, OLLAMA_WARM_REQUEST_ID)
+    if warm_already_done:
+        log(f"[{build_id}] {OLLAMA_WARM_REQUEST_ID} already recorded — nothing to do "
+            f"(shouldn't normally reach here; the plan-level skip should have caught this).")
+        return
+
+    check_no_other_benchmark_activity()
+    stop_standard_stack()
+    vllm_stopped_for_run = True
+
+    try:
+        engine_ver = ollama_version()
+        digest = ollama_image_digest()
+
+        result = run_ollama_warm_request(build_id, served_name, timestamp, dry_run)
+
+        window_end = utcnow_iso()
+        fingerprint = build_fingerprint_base(kernel, repo_commit, gpu_driver, "n/a", window_start)
+        fingerprint["host_metrics_window"]["end"] = window_end
+        fingerprint["image_digest"] = digest
+        fingerprint["engine_version"] = engine_ver
+        fingerprint["concurrent_load"] = {
+            "downloads_paused": bool(downloads_paused),
+            "vllm_co_resident_or_stopped": "stopped_for_run",
+        }
+
+        append_benchmark_run(build_path, {
+            "timestamp": window_start,
+            "benchmark_id": OLLAMA_WARM_REQUEST_ID,
+            "fingerprint": fingerprint,
+            "result": result,
+        })
+
+        raw_new_files = list(RAW_DIR.glob(f"{build_id}--*{timestamp}*"))
+        git_commit_and_push(
+            [build_path, *raw_new_files],
+            f"Record {OLLAMA_WARM_REQUEST_ID} results for {build_id}",
+            dry_run=dry_run,
+        )
+    finally:
+        # Same reasoning as process_llamacpp_build: download resume is owned
+        # by main()'s per-build loop, not here — exactly one resume per pause.
+        log(f"[{build_id}] Restoring standard stack.")
+        restore_standard_stack_and_confirm_healthy()
+
+
+# --------------------------------------------------------------------------
 # Main
 # --------------------------------------------------------------------------
 
@@ -1101,11 +1271,15 @@ def main():
         # that leg would never get picked up.
         is_server_variant = build.get("engine") == "llamacpp-vulkan-radv-server-v1"
         concurrent_done = already_has_run(build, LLAMACPP_SERVER_CONCURRENT_ID) if is_server_variant else True
+        ollama_warm_done = already_has_run(build, OLLAMA_WARM_REQUEST_ID) if family == "ollama" else True
         if family == "vllm" and vllm_done and coding_done:
             log(f"  SKIP  {build_id}  (already has {VLLM_SPEED_BENCHMARK_ID} + {CODING_BENCHMARK_ID} runs)")
             continue
         if family == "llamacpp" and bench_done and coding_done and concurrent_done:
             log(f"  SKIP  {build_id}  (already has {LLAMACPP_BENCH_ID} + {CODING_BENCHMARK_ID}{' + ' + LLAMACPP_SERVER_CONCURRENT_ID if is_server_variant else ''} runs)")
+            continue
+        if family == "ollama" and ollama_warm_done:
+            log(f"  SKIP  {build_id}  (already has {OLLAMA_WARM_REQUEST_ID} run)")
             continue
         log(f"  RUN   {build_id}  (engine family: {family})")
         runnable.append((build_id, path, build, family))
@@ -1125,10 +1299,13 @@ def main():
     gpu_driver = capture_gpu_driver_via_toolbox() if not args.dry_run else "not-captured-dry-run"
 
     # Batch by engine family to minimize container churn (vLLM builds first,
-    # since standing services are already up; llamacpp builds need the
-    # standard stack down for the whole batch).
+    # since standing services are already up; llamacpp/ollama builds both
+    # need the standard stack down for their whole batch — grouped together
+    # for the same reason llamacpp builds are grouped, minimize vLLM
+    # stop/start churn across the batch).
     vllm_builds = [b for b in runnable if b[3] == "vllm"]
     llamacpp_builds = [b for b in runnable if b[3] == "llamacpp"]
+    ollama_builds = [b for b in runnable if b[3] == "ollama"]
 
     for build_id, path, build, family in vllm_builds:
         log(f"\n=== {build_id} (vllm) ===")
@@ -1153,6 +1330,23 @@ def main():
             # is a safe no-op (docker compose up -d on an already-running,
             # healthy container does nothing) in case the exception fired
             # before that point.
+            log(f"[{build_id}] FAILED: {e}")
+            if not args.dry_run:
+                restore_standard_stack_and_confirm_healthy()
+        finally:
+            if not args.dry_run:
+                resume_downloads(downloads_paused)
+
+    for build_id, path, build, family in ollama_builds:
+        log(f"\n=== {build_id} (ollama) ===")
+        downloads_paused = pause_downloads() if not args.dry_run else []
+        try:
+            process_ollama_build(build_id, path, build, args.dry_run, downloads_paused, kernel, repo_commit, gpu_driver)
+        except Exception as e:  # noqa: BLE001
+            # Same reasoning as the llamacpp branch above: process_ollama_build's
+            # own finally already restores the standard stack unconditionally
+            # once past the initial stop_standard_stack() call — restore here
+            # too is a safe no-op in case the exception fired before that point.
             log(f"[{build_id}] FAILED: {e}")
             if not args.dry_run:
                 restore_standard_stack_and_confirm_healthy()
