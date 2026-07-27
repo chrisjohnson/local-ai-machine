@@ -91,8 +91,10 @@ card's result.
 2. [x] Decide and document the `model.local_path`/`model.files`
    keep-or-remove call — DONE (see Decision log).
 3. [ ] For every `WORKING`/`UNTESTED-BUT-DOWNLOADED` build (skip `BROKEN`),
-   write its `docker-compose.yml` service entry — vLLM, llama.cpp, and
-   Ollama all need real definitions, not just vLLM.
+   write its `docker-compose.yml` service entry — vLLM and llamacpp-server
+   get individual services; Ollama gets one shared service (model switching
+   is API-level); llamacpp benchmarker builds are excluded (exit after
+   running, can't be standing services).
 4. [ ] Trim each `catalog/builds/*.yaml` to the reduced field set, preserving
    all existing `benchmark_runs:` data untouched.
 5. [ ] Update `docker/litellm-config.yaml` (or find wherever the actual
@@ -110,18 +112,20 @@ card's result.
 <!-- append-only. Leave signals for other agents. Format:
      <!-- signal: <pet-name> <ISO8601-UTC> — <short message> -->
 <!-- signal: gentle-genet-star 2026-07-26T14:00Z — claiming, starting recon -->
-<!-- signal: gentle-genet-star 2026-07-26T14:05Z — decisions made: port scheme (8100-8199 vllm, 8200 llamacpp, 11434 ollama), local_path/files kept, llamacpp benchmarker builds excluded from compose. Starting implementation. -->
+<!-- signal: gentle-genet-star 2026-07-26T14:05Z — decisions made: port scheme (8000-8099 vllm, 8100 llamacpp, 11434 ollama), local_path/files kept, llamacpp benchmarker builds excluded from compose. Starting implementation. -->
+<!-- signal: gentle-genet-star 2026-07-26T14:10Z — revised: no standing primary/judge. Every build is its own compose service. LiteLLM aliases roles to localhost:<port>. Ollama = single shared service. Writing compose now. -->
 
 ## Decision log
 <!-- append-only, one line per entry, newest last. Never move this card to done/
      without a line here explaining why. -->
 - 2026-07-26T14:05Z — **Port allocation**: per-engine-family ranges.
-  vLLM builds → 8100-8199 (sequential per build). llamacpp-server builds →
-  8200-8299. Ollama builds → 11434 (shared; only one runs at a time).
-  Existing 8000/8001 stay reserved for standing primary/judge. Infrastructure
-  ports (4000, 8080, 9090, 3000, 3001) untouched. Rationale: simple,
-  extensible, no collisions between engine families; within a family only
-  one build runs at a time so sequential offsets suffice.
+  vLLM builds → 8000-8099 (sequential per build). llamacpp-server builds →
+  8100-8199. Ollama → shared single service at 11434 (only one Ollama
+  instance fits on one port; model switching is API-level, not compose-level).
+  No standing primary/judge — every build is its own compose service; LiteLLM
+  aliases role names to whichever `localhost:<port>` is the current pick.
+  Infrastructure ports (4000, 8080, 9090, 3000, 3001) untouched. Rationale:
+  simple, extensible, no collisions between engine families.
 - 2026-07-26T14:05Z — **local_path/files keep-or-remove**: KEEP in catalog.
   These are identity/provenance fields (which HF repo, which quantization,
   which files on disk), not deployment detail. Needed to cross-reference
@@ -134,6 +138,12 @@ card's result.
   compose services. Only `llamacpp-vulkan-radv-server-v1` (llama-server,
   HTTP API) gets a compose entry. Decision: skip benchmarker builds for
   compose; document this in OPERATIONS.md.
+- 2026-07-26T14:10Z — **Ollama builds**: single shared compose service at
+  port 11434. Ollama can only serve one instance on one port; model
+  switching is API-level (`ollama run <model>` or `ollama pull <model>`).
+  Individual catalog builds document which model to use; compose doesn't
+  need per-build entries. Standing primary/judge eliminated entirely —
+  every vllm build is its own service; LiteLLM aliases roles.
 - 2026-07-26 — filed per Chris's direct request; design decided in
   conversation (docker-compose stays one big checked-in file, not
   generated; catalog trims to benchmark-relevant fields; build `id` is the
