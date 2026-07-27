@@ -2,8 +2,8 @@
 id: M-022
 title: Resume benchmark sweep now that all downloads are complete
 initiative_id: null
-claimed_by: null
-claimed_at: null
+claimed_by: claude
+claimed_at: "2026-07-27T23:30:00Z"
 blocks: null
 blocked_by: null
 status: null
