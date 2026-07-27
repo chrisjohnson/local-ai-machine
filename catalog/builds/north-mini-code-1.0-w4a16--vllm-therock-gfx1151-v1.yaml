@@ -1,6 +1,6 @@
 id: north-mini-code-1.0-w4a16--vllm-therock-gfx1151-v1
 engine: vllm-therock-gfx1151-v1
-role: UNTESTED — download in progress as of 2026-07-24, planned config only
+role: UNTESTED — model files fully downloaded as of 2026-07-24, config now filled in (was a `<tbd>` placeholder blocking the orchestrator until 2026-07-27)
 model:
   display_name: North-Mini-Code-1.0
   family: North-Mini-Code
@@ -11,23 +11,52 @@ model:
   active_params: 3e9
   num_experts: null
   quantization: W4A16 (weight-only, bf16 activations)
-  context_length_native: null   # not yet confirmed
+  context_length_native: 320000   # confirmed from the model's own HF README/model
+                                   # card (config.json's raw max_position_embeddings
+                                   # is 500000, the architectural ceiling, but the
+                                   # model card's own recommended vLLM invocation —
+                                   # and the "Context length: 256K" line — targets
+                                   # 320000; using the vendor-recommended figure, not
+                                   # the raw architectural max, same reasoning as the
+                                   # gemma-4 builds' "bumped from the toolbox's
+                                   # proven-but-conservative default" comments
   modality: text
   files: null
   local_path: /var/lib/ai-models/north-mini-code-1.0-w4a16
   size_on_disk_gb: 19.4   # full repo size, download in progress
 served_model_name: north-mini-code-1.0
 build_specific_flags:
-  - --max-model-len <tbd>
+  - --max-model-len 320000   # vendor-recommended value from the model's own README
+                              # (`vllm serve ... --max-model-len 320000 ...`), not a
+                              # guess — this is the model's documented supported
+                              # length, not the raw 500000 architectural max
+  - --enable-auto-tool-choice   # required alongside --tool-call-parser, not optional —
+                                 # per the project-wide bug found 2026-07-24/25 where
+                                 # several builds 400'd every Tier B request with the
+                                 # parser alone (gemma-4-26b, gemma-4-31b, glm-4.7-flash,
+                                 # qwen3.5-122b-a10b-awq4bit); added here preemptively
+                                 # before this build's first real serve attempt
+  - --tool-call-parser cohere_command4   # native parser per the model's own README
+                                          # and this project's earlier research notes
+  - --reasoning-parser cohere_command4   # model card uses the same parser name for
+                                          # both tool-call and reasoning parsing
+  - --gpu-memory-utilization 0.90   # standalone swap-in, matches sibling
+                                     # dense/MoE swap-in builds (qwen3.6-27b,
+                                     # gpt-oss-120b, gpt-oss-20b)
 build_specific_env: {}
 compose_service: null
 notes: >
-  Native vLLM cohere_command4 tool-call parser expected, not yet exercised.
-  No TP requirement expected. Same "theoretical fit, needs real testing"
-  position GPT-OSS was in before it got tested — flags above are a plan,
-  not a proven config; expect this build file to need real edits once the
-  download finishes and a first serve attempt is made.
+  Flags now match the model's own HF README recommended vLLM invocation
+  (`vllm serve CohereLabs/North-Mini-Code-1.0-w4a16 -tp 1 --max-model-len 320000
+  --tool-call-parser cohere_command4 --reasoning-parser cohere_command4
+  --enable-auto-tool-choice`), verified directly against
+  /var/lib/ai-models/north-mini-code-1.0-w4a16/README.md on the box — not
+  copied from a sibling build by architecture-family guess like qwen3.6-27b's
+  flags were. -tp 1 not added as an explicit flag since no other single-GPU
+  build in this catalog sets it explicitly either (default is already TP=1).
+  Still genuinely untested on this hardware (no gfx1151-specific evidence) —
+  status stays UNTESTED-BUT-DOWNLOADED until a real serve/benchmark pass.
 status: UNTESTED-BUT-DOWNLOADED
 created: "2026-07-24"
-last_verified: "2026-07-24"
+last_verified: "2026-07-27"
 benchmark_runs: []
