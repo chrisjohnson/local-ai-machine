@@ -2,8 +2,8 @@
 id: M-001
 title: Migrate existing catalog + docker-compose to the new two-tier design
 initiative_id: null
-claimed_by: null
-claimed_at: null
+claimed_by: gentle-genet-star
+claimed_at: 2026-07-26T14:00:00Z
 blocks: M-002
 blocked_by: null
 status: null
@@ -110,7 +110,7 @@ card's result.
 ## Signals
 <!-- append-only. Leave signals for other agents. Format:
      <!-- signal: <pet-name> <ISO8601-UTC> — <short message> -->
--->
+<!-- signal: gentle-genet-star 2026-07-26T14:00Z — claiming, starting recon -->
 
 ## Decision log
 <!-- append-only, one line per entry, newest last. Never move this card to done/
