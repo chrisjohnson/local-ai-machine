@@ -12,7 +12,8 @@ version: '3.8'
 #   Infrastructure:       4000 (LiteLLM), 8080 (Turnstone), 9090 (Prometheus),
 #                         3000 (Grafana), 3001 (Open WebUI)
 #
-# All model-serving ports bind to 127.0.0.1 only. See vllm-primary comment
+# All model-serving ports bind to 127.0.0.1 only. LiteLLM uses
+# network_mode: host to reach them directly. See vllm-primary comment
 # block (now removed, preserved in git history) for the NixOS firewall
 # reasoning. Reach via SSH tunnel or LiteLLM on 4000.
 #
@@ -502,6 +503,8 @@ services:
     image: postgres:16-alpine
     container_name: litellm-db
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:5432:5432"
     environment:
       POSTGRES_DB: litellm
       POSTGRES_USER: litellm_user
@@ -513,16 +516,13 @@ services:
     image: ghcr.io/berriai/litellm:main-latest
     container_name: litellm-proxy
     restart: unless-stopped
-    ports:
-      - "4000:4000"
+    network_mode: host
     volumes:
       - ./litellm/config.yaml:/app/config.yaml
     environment:
       - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - DATABASE_URL=postgresql://litellm_user:${LITELLM_DB_PASSWORD}@litellm-db:5432/litellm
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - DATABASE_URL=postgresql://litellm_user:${LITELLM_DB_PASSWORD}@127.0.0.1:5432/litellm
     command: ["--config", "/app/config.yaml", "--port", "4000"]
     depends_on:
       - litellm-db
@@ -550,8 +550,10 @@ services:
       TURNSTONE_JWT_SECRET: ${TURNSTONE_JWT_SECRET}
       TURNSTONE_DB_BACKEND: postgresql
       TURNSTONE_DB_URL: postgresql+psycopg://turnstone:${DB_PASSWORD}@turnstone-db:5432/turnstone
-      LLM_BASE_URL: http://litellm:4000/v1
+      LLM_BASE_URL: http://host.docker.internal:4000/v1
       OPENAI_API_KEY: ${LITELLM_MASTER_KEY}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - turnstone-db
       - litellm
