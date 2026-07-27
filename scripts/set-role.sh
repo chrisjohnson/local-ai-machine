@@ -89,23 +89,25 @@ fi
 echo "Setting ${ROLE} -> ${MODEL_NAME} on port ${PORT}"
 
 # --- Update litellm config ---
-# Strategy: sed to replace or insert the api_base line in the model's block.
-# 1. If api_base exists in the model's litellm_params, replace it.
-# 2. If not, insert it after the model: line.
+# Update the role's block (model_name: ${ROLE}) to point at the new model.
+# Two edits within the role's YAML block:
+#   1. model: openai/<old> → model: openai/${MODEL_NAME}
+#   2. api_base: http://... → api_base: http://127.0.0.1:${PORT}/v1
 
-ESCAPED_MODEL=$(printf '%s' "$MODEL_NAME" | sed 's/[[\.*^$()+?{|]/\\&/g')
+# Replace model: line within the role's block
+sed -i '' "/model_name: ${ROLE}/,/model_name:/{s|model: openai/.*|model: openai/${MODEL_NAME}|}" "$LITELLM_CONFIG"
 
-# Try to replace existing api_base
-if sed -n "/model_name: ${ESCAPED_MODEL}/,/model_name:/p" "$LITELLM_CONFIG" |
+# Replace or add api_base: line within the role's block
+if sed -n "/model_name: ${ROLE}/,/model_name:/p" "$LITELLM_CONFIG" |
    grep -q 'api_base:'; then
-  sed -i '' "/model_name: ${ESCAPED_MODEL}/,/model_name:/{s|api_base:.*|api_base: http://127.0.0.1:${PORT}/v1|}" "$LITELLM_CONFIG"
-  echo "  Updated existing api_base for ${MODEL_NAME}"
+  sed -i '' "/model_name: ${ROLE}/,/model_name:/{s|api_base:.*|api_base: http://127.0.0.1:${PORT}/v1|}" "$LITELLM_CONFIG"
+  echo "  Updated model + api_base for ${ROLE} -> ${MODEL_NAME} on :${PORT}"
 else
   # Insert api_base after model: line
-  sed -i '' "/model_name: ${ESCAPED_MODEL}/a\\
+  sed -i '' "/model_name: ${ROLE}/a\\
 \\        api_base: http://127.0.0.1:${PORT}/v1
 " "$LITELLM_CONFIG"
-  echo "  Added api_base for ${MODEL_NAME}"
+  echo "  Updated model, added api_base for ${ROLE} -> ${MODEL_NAME} on :${PORT}"
 fi
 
 # --- Restart litellm ---
