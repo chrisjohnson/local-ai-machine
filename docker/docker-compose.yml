@@ -1,28 +1,45 @@
 version: '3.8'
 
+# Two-tier design (M-001): every verified model+engine build is its own compose
+# service with a fixed port. LiteLLM aliases role names (coder, judge) to
+# whichever localhost:<port> is the current pick — switching roles is a LiteLLM
+# config edit + reload, not a compose change.
+#
+# Port allocation (per-engine-family, sequential within family):
+#   vLLM builds:          8000-8099
+#   llama.cpp-server:     8100-8199
+#   Ollama:               11434 (single shared instance, model switch via API)
+#   Infrastructure:       4000 (LiteLLM), 8080 (Turnstone), 9090 (Prometheus),
+#                         3000 (Grafana), 3001 (Open WebUI)
+#
+# All model-serving ports bind to 127.0.0.1 only. See vllm-primary comment
+# block (now removed, preserved in git history) for the NixOS firewall
+# reasoning. Reach via SSH tunnel or LiteLLM on 4000.
+#
+# Only start the service you want — everything else stays defined-but-stopped.
+# GPU contention means at most one vLLM + one llama-server can co-reside;
+# Ollama is always safe alongside either (small GPU footprint).
+
 services:
-  # Primary: Qwen3.6-35B-A3B (bf16, MoE). NOT Qwen3-Coder-Next-FP8 — gfx1151
-  # (RDNA3.5) has no FP8 matrix-core hardware at all, and every real-world
-  # report of Qwen3-Next-family FP8 checkpoints on this exact toolbox/hardware
-  # fails to load or stalls (see git history for the full investigation).
-  # Qwen3.6-35B-A3B is proven working at bf16 here via this exact toolbox's
-  # own model table, and benchmarks ahead of gpt-oss-120b on coding despite
-  # being a third the size. Flags below mirror that proven table entry
-  # (max_num_seqs 64, qwen3_coder tool parser, qwen3 reasoning parser),
-  # not reinvented from scratch.
-  #
-  # Image: docker.io/kyuz0/vllm-therock-gfx1151 (NOT kyuz0/amd-strix-halo-vllm,
-  # which doesn't exist — that was a bad reference caught when `docker compose
-  # up` failed with a pull error). This image has no ENTRYPOINT and puts vllm
-  # on PATH via /opt/venv, so `vllm serve ...` runs headless exactly like this
-  # without needing the project's interactive toolbox/distrobox flow.
-  # gpu-memory-utilization is split between primary/judge (0.70/0.20) since
-  # both share one physical GPU and vLLM's percentage is computed against
-  # total device memory, not what's already free — two processes at 0.90 each
-  # would have the second OOM on startup.
-  vllm-primary:
+
+  # ---------------------------------------------------------------------------
+  # vLLM builds (kyuz0/vllm-therock-gfx1151) — ports 8000-8012
+  # ---------------------------------------------------------------------------
+  # Common vLLM config (from catalog/engines/vllm-therock-gfx1151-v1.yaml):
+  #   image: kyuz0/vllm-therock-gfx1151:latest
+  #   devices: /dev/kfd, /dev/dri
+  #   group_add: video, render (named groups — image has them)
+  #   security_opt: seccomp:unconfined
+  #   ipc: host
+  #   volumes: /var/lib/ai-models:/models
+  #   common_flags: --host 0.0.0.0, --trust-remote-code, --enable-prefix-caching,
+  #                 --dtype auto, --tensor-parallel-size 1
+  # Each service below adds build-specific flags from its catalog entry.
+  # Container always listens on :8000 internally; host port varies.
+
+  qwen3.6-35b-a3b--vllm-therock-gfx1151-v1:
     image: docker.io/kyuz0/vllm-therock-gfx1151:latest
-    container_name: vllm-primary
+    container_name: qwen3.6-35b-a3b--vllm-therock-gfx1151-v1
     restart: unless-stopped
     devices:
       - /dev/kfd:/dev/kfd
@@ -35,7 +52,7 @@ services:
     ipc: host
     volumes:
       - /var/lib/ai-models:/models
-      - vllm_primary_cache:/root/.cache/vllm
+      - vllm-qwen3.6-35b-a3b-cache:/root/.cache/vllm
     command: >
       vllm serve /models/qwen3.6-35b-a3b
       --served-model-name qwen3.6-35b-a3b
@@ -51,26 +68,12 @@ services:
       --enable-auto-tool-choice
       --tool-call-parser qwen3_coder
       --reasoning-parser qwen3
-    # Bound to loopback only, not 0.0.0.0 — the real fix for a root-caused
-    # gap (2026-07-23): NixOS's firewall module has a built-in, unconditional
-    # `ct status dnat accept` rule in the forward chain, which accepts ANY
-    # DNAT'd (i.e. any Docker `-p`-published) connection regardless of
-    # allowedTCPPorts. It's evaluated before extraForwardRules and is a
-    # terminal accept, so that rule was never actually protecting published
-    # ports at all — confirmed directly by reading the live nftables
-    # ruleset. Loopback binding sidesteps the whole forward-chain question:
-    # a 127.0.0.1-bound port isn't reachable from the LAN by basic IP
-    # routing, no matter what the forward chain does. Reach this port via
-    # SSH tunnel (`ssh -L 8000:localhost:8000 ...`) or LiteLLM on 4000.
     ports:
       - "127.0.0.1:8000:8000"
 
-  # Judge / quick-tasks: Qwen3.5-4B (BF16, tiny footprint). Same Qwen
-  # tokenizer/tool-call format as the primary slot for consistent behavior
-  # when Turnstone routes governed calls through it.
-  vllm-judge:
+  qwen3.5-4b--vllm-therock-gfx1151-v1:
     image: docker.io/kyuz0/vllm-therock-gfx1151:latest
-    container_name: vllm-judge
+    container_name: qwen3.5-4b--vllm-therock-gfx1151-v1
     restart: unless-stopped
     devices:
       - /dev/kfd:/dev/kfd
@@ -83,12 +86,12 @@ services:
     ipc: host
     volumes:
       - /var/lib/ai-models:/models
-      - vllm_judge_cache:/root/.cache/vllm
+      - vllm-qwen3.5-4b-cache:/root/.cache/vllm
     command: >
       vllm serve /models/qwen3.5-4b
       --served-model-name qwen3.5-4b-judge
       --host 0.0.0.0
-      --port 8001
+      --port 8000
       --tensor-parallel-size 1
       --gpu-memory-utilization 0.20
       --dtype auto
@@ -99,14 +102,402 @@ services:
       --enable-auto-tool-choice
       --tool-call-parser qwen3_coder
       --reasoning-parser qwen3
-    # Same loopback-only reasoning as vllm-primary above.
     ports:
-      - "127.0.0.1:8001:8001"
+      - "127.0.0.1:8001:8000"
 
-  # Unified API Gateway
-  # Virtual keys (sk-chris-master, sk-drew-edge, etc.) are NOT declared in
-  # config.yaml — LiteLLM persists them in Postgres and they're generated
-  # at runtime via the /key/generate API (Task 3.6), not static YAML.
+  qwen3.6-27b--vllm-therock-gfx1151-v1:
+    image: docker.io/kyuz0/vllm-therock-gfx1151:latest
+    container_name: qwen3.6-27b--vllm-therock-gfx1151-v1
+    restart: unless-stopped
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - video
+      - render
+    security_opt:
+      - seccomp:unconfined
+    ipc: host
+    volumes:
+      - /var/lib/ai-models:/models
+      - vllm-qwen3.6-27b-cache:/root/.cache/vllm
+    command: >
+      vllm serve /models/qwen3.6-27b
+      --served-model-name qwen3.6-27b
+      --host 0.0.0.0
+      --port 8000
+      --tensor-parallel-size 1
+      --gpu-memory-utilization 0.90
+      --dtype auto
+      --trust-remote-code
+      --enable-prefix-caching
+      --max-model-len 131072
+      --enable-auto-tool-choice
+      --tool-call-parser qwen3_coder
+      --reasoning-parser qwen3
+    ports:
+      - "127.0.0.1:8002:8000"
+
+  glm-4.7-flash-awq--vllm-therock-gfx1151-v1:
+    image: docker.io/kyuz0/vllm-therock-gfx1151:latest
+    container_name: glm-4.7-flash-awq--vllm-therock-gfx1151-v1
+    restart: unless-stopped
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - video
+      - render
+    security_opt:
+      - seccomp:unconfined
+    ipc: host
+    volumes:
+      - /var/lib/ai-models:/models
+      - vllm-glm-4.7-flash-awq-cache:/root/.cache/vllm
+    command: >
+      vllm serve /models/glm-4.7-flash-awq
+      --served-model-name glm-4.7-flash-awq
+      --host 0.0.0.0
+      --port 8000
+      --tensor-parallel-size 1
+      --dtype auto
+      --trust-remote-code
+      --enable-prefix-caching
+      --enable-auto-tool-choice
+      --tool-call-parser glm47
+      --reasoning-parser glm45
+      --max-model-len 65536
+    ports:
+      - "127.0.0.1:8003:8000"
+
+  qwen3-coder-next-gptq4bit--vllm-therock-gfx1151-v1:
+    image: docker.io/kyuz0/vllm-therock-gfx1151:latest
+    container_name: qwen3-coder-next-gptq4bit--vllm-therock-gfx1151-v1
+    restart: unless-stopped
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - video
+      - render
+    security_opt:
+      - seccomp:unconfined
+    ipc: host
+    volumes:
+      - /var/lib/ai-models:/models
+      - vllm-qwen3-coder-next-gptq4bit-cache:/root/.cache/vllm
+    command: >
+      vllm serve /models/qwen3-coder-next-gptq4bit
+      --served-model-name qwen3-coder-next-gptq4bit
+      --host 0.0.0.0
+      --port 8000
+      --tensor-parallel-size 1
+      --gpu-memory-utilization 0.70
+      --dtype auto
+      --trust-remote-code
+      --enable-prefix-caching
+      --max-model-len 131072
+      --enable-auto-tool-choice
+      --tool-call-parser qwen3_coder
+    ports:
+      - "127.0.0.1:8004:8000"
+
+  gpt-oss-20b--vllm-therock-gfx1151-v1:
+    image: docker.io/kyuz0/vllm-therock-gfx1151:latest
+    container_name: gpt-oss-20b--vllm-therock-gfx1151-v1
+    restart: unless-stopped
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - video
+      - render
+    security_opt:
+      - seccomp:unconfined
+    ipc: host
+    volumes:
+      - /var/lib/ai-models:/models
+      - vllm-gpt-oss-20b-cache:/root/.cache/vllm
+    command: >
+      vllm serve /models/gpt-oss-20b
+      --served-model-name gpt-oss-20b
+      --host 0.0.0.0
+      --port 8000
+      --tensor-parallel-size 1
+      --gpu-memory-utilization 0.90
+      --dtype auto
+      --trust-remote-code
+      --enable-prefix-caching
+      --max-model-len 131072
+      --enable-auto-tool-choice
+      --tool-call-parser openai
+      --reasoning-parser openai_gptoss
+    ports:
+      - "127.0.0.1:8005:8000"
+
+  gpt-oss-120b--vllm-therock-gfx1151-v1:
+    image: docker.io/kyuz0/vllm-therock-gfx1151:latest
+    container_name: gpt-oss-120b--vllm-therock-gfx1151-v1
+    restart: unless-stopped
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - video
+      - render
+    security_opt:
+      - seccomp:unconfined
+    ipc: host
+    volumes:
+      - /var/lib/ai-models:/models
+      - vllm-gpt-oss-120b-cache:/root/.cache/vllm
+    command: >
+      vllm serve /models/gpt-oss-120b
+      --served-model-name gpt-oss-120b
+      --host 0.0.0.0
+      --port 8000
+      --tensor-parallel-size 1
+      --gpu-memory-utilization 0.90
+      --dtype auto
+      --trust-remote-code
+      --enable-prefix-caching
+      --max-model-len 131072
+      --enable-auto-tool-choice
+      --tool-call-parser openai
+      --reasoning-parser openai_gptoss
+    ports:
+      - "127.0.0.1:8006:8000"
+
+  qwen3.5-122b-a10b-awq4bit--vllm-therock-gfx1151-v1:
+    image: docker.io/kyuz0/vllm-therock-gfx1151:latest
+    container_name: qwen3.5-122b-a10b-awq4bit--vllm-therock-gfx1151-v1
+    restart: unless-stopped
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - video
+      - render
+    security_opt:
+      - seccomp:unconfined
+    ipc: host
+    volumes:
+      - /var/lib/ai-models:/models
+      - vllm-qwen3.5-122b-a10b-awq4bit-cache:/root/.cache/vllm
+    environment:
+      - VLLM_USE_TRITON_AWQ=1
+    command: >
+      vllm serve /models/qwen3.5-122b-a10b-awq4bit
+      --served-model-name qwen3.5-122b-a10b-awq4bit
+      --host 0.0.0.0
+      --port 8000
+      --tensor-parallel-size 1
+      --dtype auto
+      --trust-remote-code
+      --enable-prefix-caching
+      --enable-auto-tool-choice
+      --tool-call-parser qwen3_coder
+      --reasoning-parser qwen3
+      --max-model-len 65536
+    ports:
+      - "127.0.0.1:8007:8000"
+
+  gemma-4-26b-a4b-it--vllm-therock-gfx1151-v1:
+    image: docker.io/kyuz0/vllm-therock-gfx1151:latest
+    container_name: gemma-4-26b-a4b-it--vllm-therock-gfx1151-v1
+    restart: unless-stopped
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - video
+      - render
+    security_opt:
+      - seccomp:unconfined
+    ipc: host
+    volumes:
+      - /var/lib/ai-models:/models
+      - vllm-gemma-4-26b-a4b-it-cache:/root/.cache/vllm
+    command: >
+      vllm serve /models/gemma-4-26b-a4b-it
+      --served-model-name gemma-4-26b-a4b-it
+      --host 0.0.0.0
+      --port 8000
+      --tensor-parallel-size 1
+      --gpu-memory-utilization 0.90
+      --dtype auto
+      --trust-remote-code
+      --enable-prefix-caching
+      --max-model-len 65536
+      --enable-auto-tool-choice
+      --tool-call-parser gemma4
+      --reasoning-parser gemma4
+    ports:
+      - "127.0.0.1:8008:8000"
+
+  gemma-4-31b-it--vllm-therock-gfx1151-v1:
+    image: docker.io/kyuz0/vllm-therock-gfx1151:latest
+    container_name: gemma-4-31b-it--vllm-therock-gfx1151-v1
+    restart: unless-stopped
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - video
+      - render
+    security_opt:
+      - seccomp:unconfined
+    ipc: host
+    volumes:
+      - /var/lib/ai-models:/models
+      - vllm-gemma-4-31b-it-cache:/root/.cache/vllm
+    command: >
+      vllm serve /models/gemma-4-31b-it
+      --served-model-name gemma-4-31b-it
+      --host 0.0.0.0
+      --port 8000
+      --tensor-parallel-size 1
+      --gpu-memory-utilization 0.90
+      --dtype auto
+      --trust-remote-code
+      --enable-prefix-caching
+      --max-model-len 65536
+      --enable-auto-tool-choice
+      --tool-call-parser gemma4
+      --reasoning-parser gemma4
+    ports:
+      - "127.0.0.1:8009:8000"
+
+  qwen2.5-vl-7b-instruct--vllm-therock-gfx1151-v1:
+    image: docker.io/kyuz0/vllm-therock-gfx1151:latest
+    container_name: qwen2.5-vl-7b-instruct--vllm-therock-gfx1151-v1
+    restart: unless-stopped
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - video
+      - render
+    security_opt:
+      - seccomp:unconfined
+    ipc: host
+    volumes:
+      - /var/lib/ai-models:/models
+      - vllm-qwen2.5-vl-7b-instruct-cache:/root/.cache/vllm
+    command: >
+      vllm serve /models/qwen2.5-vl-7b-instruct
+      --served-model-name qwen2.5-vl-7b-instruct
+      --host 0.0.0.0
+      --port 8000
+      --tensor-parallel-size 1
+      --dtype auto
+      --trust-remote-code
+      --enable-prefix-caching
+      --max-model-len 32768
+    ports:
+      - "127.0.0.1:8010:8000"
+
+  north-mini-code-1.0-w4a16--vllm-therock-gfx1151-v1:
+    image: docker.io/kyuz0/vllm-therock-gfx1151:latest
+    container_name: north-mini-code-1.0-w4a16--vllm-therock-gfx1151-v1
+    restart: unless-stopped
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - video
+      - render
+    security_opt:
+      - seccomp:unconfined
+    ipc: host
+    volumes:
+      - /var/lib/ai-models:/models
+      - vllm-north-mini-code-1.0-w4a16-cache:/root/.cache/vllm
+    command: >
+      vllm serve /models/north-mini-code-1.0-w4a16
+      --served-model-name north-mini-code-1.0
+      --host 0.0.0.0
+      --port 8000
+      --tensor-parallel-size 1
+      --gpu-memory-utilization 0.90
+      --dtype auto
+      --trust-remote-code
+      --enable-prefix-caching
+      --max-model-len 320000
+      --enable-auto-tool-choice
+      --tool-call-parser cohere_command4
+    ports:
+      - "127.0.0.1:8011:8000"
+
+  # ---------------------------------------------------------------------------
+  # llama.cpp-server build — port 8100
+  # ---------------------------------------------------------------------------
+  # Engine: llamacpp-vulkan-radv-server-v1 (llama-server, OpenAI-compatible
+  # HTTP API with continuous batching / parallel slots). Only llamacpp build
+  # that can run as a standing service — the other 10 use llama-bench
+  # (single-shot benchmarking tool that exits after running).
+  qwen3.6-27b--llamacpp-vulkan-radv-server-v1:
+    image: docker.io/kyuz0/amd-strix-halo-toolboxes:vulkan-radv
+    container_name: qwen3.6-27b--llamacpp-vulkan-radv-server-v1
+    restart: unless-stopped
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - "26"
+      - "303"
+    volumes:
+      - /var/lib/ai-models/ollama-qwen3.6-27b:/models:ro
+    command: >
+      llama-server
+      -m /models/Qwen3.6-27B-Q4_K_M.gguf
+      -ngl 999
+      -fa 1
+      -lm none
+      -cb
+      -kvu
+      --host 0.0.0.0
+      --port 8080
+      -np 4
+      -c 32768
+    ports:
+      - "127.0.0.1:8100:8080"
+
+  # ---------------------------------------------------------------------------
+  # Ollama — shared single instance, port 11434
+  # ---------------------------------------------------------------------------
+  # Ollama can only serve one instance on one port. Model switching is
+  # API-level: `ollama run <model>` or `ollama pull <model>` via the
+  # container's API. Individual catalog builds document which model to use.
+  # Plain tag, NOT :0.17.7-rocm — the -rocm tag crashes on gfx1151 and
+  # doesn't even bundle Vulkan libs.
+  ollama:
+    image: ollama/ollama:0.17.7
+    container_name: ollama
+    restart: unless-stopped
+    environment:
+      - OLLAMA_VULKAN=1
+      - HIP_VISIBLE_DEVICES=-1
+      - ROCR_VISIBLE_DEVICES=-1
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - "26"
+      - "303"
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+      - /var/lib/ai-models:/gguf-source:ro
+
+  # ---------------------------------------------------------------------------
+  # Infrastructure — role-agnostic services
+  # ---------------------------------------------------------------------------
+
+  # Unified API Gateway — aliases role names to concrete model ports.
+  # Virtual keys (sk-chris-master, sk-drew-edge) are generated at runtime
+  # via /key/generate, not declared in config.yaml.
   litellm-db:
     image: postgres:16-alpine
     container_name: litellm-db
@@ -130,22 +521,13 @@ services:
       - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - DATABASE_URL=postgresql://litellm_user:${LITELLM_DB_PASSWORD}@litellm-db:5432/litellm
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     command: ["--config", "/app/config.yaml", "--port", "4000"]
     depends_on:
       - litellm-db
-      - vllm-primary
-      - vllm-judge
 
   # Turnstone Database & Governance Server.
-  # Image/env corrected against turnstonelabs/turnstone's actual docs —
-  # turnstonelabs/turnstone:latest doesn't exist on Docker Hub; the real
-  # image is ghcr.io/turnstonelabs/turnstone. Config is TOML at
-  # ~/.config/turnstone/config.toml (0600), not a mounted config.yaml — no
-  # such file existed on disk anyway, so the old bind mount would have
-  # silently created an empty directory rather than erroring.
-  # turnstone-db uses pgautoupgrade (Turnstone's own upstream compose choice,
-  # not plain postgres) so future major-version Postgres upgrades don't
-  # require a manual dump/restore.
   turnstone-db:
     image: pgautoupgrade/pgautoupgrade:18-alpine
     container_name: turnstone-db
@@ -157,12 +539,6 @@ services:
     volumes:
       - turnstone_postgres_data:/var/lib/postgresql/data
 
-  # No TLS/Caddy sidecar yet — this is plain HTTP on 8080 for now (fine on
-  # the trusted home LAN), not the HTTPS-only 8443 dashboard the upstream
-  # prod stack normally fronts with Caddy. Judge/reranker role assignment
-  # (wiring vllm-judge in as Turnstone's safety judge) has no env-var
-  # equivalent — it's TOML/console-UI only, so that's real remaining work
-  # for Task 3.5, not just plumbing.
   turnstone:
     image: ghcr.io/turnstonelabs/turnstone:latest
     container_name: turnstone-server
@@ -192,12 +568,6 @@ services:
     depends_on:
       - node-exporter
 
-  # Host-level CPU/memory/disk metrics — the "node" Prometheus scrape target
-  # pointed at this container name for a while with nothing actually behind
-  # it. Standard node_exporter Docker pattern: bind-mount the host's /proc,
-  # /sys, and root filesystem read-only rather than relying on the
-  # container's own limited view. No published port — only reachable from
-  # Prometheus over the internal docker network.
   node-exporter:
     image: prom/node-exporter:latest
     container_name: node-exporter
@@ -207,9 +577,6 @@ services:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
       - /:/rootfs:ro
-      # amdgpu-specific metrics (GPU busy %, GTT/VRAM) written here by the
-      # amdgpu-metrics systemd timer (every 10s) - not standard hwmon
-      # values, so the hwmon collector alone doesn't cover them.
       - /var/lib/node-exporter-textfile:/textfile:ro
     command:
       - "--path.procfs=/host/proc"
@@ -233,12 +600,7 @@ services:
     depends_on:
       - prometheus
 
-  # Browser chat UI — points at LiteLLM's unified OpenAI-compatible endpoint
-  # rather than any vLLM server directly, so every model alias (coder/judge/
-  # governed_coder) is reachable from one place without per-model wiring.
-  # Port 3001 (not 8080, which Turnstone already owns) — kept in the 3xxx
-  # range alongside Grafana as the other human-facing web UI, distinct from
-  # the 8xxx/4000 API ports.
+  # Browser chat UI — points at LiteLLM, not any model server directly.
   open-webui:
     image: ghcr.io/open-webui/open-webui:main
     container_name: open-webui
@@ -254,83 +616,25 @@ services:
     depends_on:
       - litellm
 
-  # Alternate serving path (Phase 5.6) — a llama.cpp-backed alternative to
-  # vLLM, evaluated because its backend showed materially different
-  # (sometimes better, sometimes worse) numbers than vLLM/ROCm in the
-  # kyuz0 toolbox data gathered this session. Pinned to 0.17.7-rocm, NOT
-  # `:rocm`/`latest` — two open upstream issues (ollama/ollama#13589,
-  # #15336) report gfx1151-on-Linux silently falling back to CPU, with
-  # #15336 specifically identifying 0.18.x+ as a regression from a
-  # working 0.17.7. Real, not assumed: any benchmark data from this
-  # container must be checked against actual GPU utilization
-  # (node_amdgpu_busy_percent via Grafana, or amdgpu_top) before trusting
-  # it, since silent CPU fallback is the exact reported failure mode on
-  # this exact chip. No models pulled yet - staged empty pending Chris's
-  # separate go-ahead per the standing download-approval rule. Bound to
-  # loopback only, same reasoning as vllm-primary/judge above.
-  ollama:
-    # Plain tag, NOT :0.17.7-rocm - real bug found 2026-07-24: the -rocm
-    # tag's ROCm backend crashes outright on this chip ("cudaMalloc
-    # failed: out of memory" despite <200MiB of 124GiB actually in use),
-    # and worse, the -rocm image doesn't even bundle Vulkan libraries at
-    # all (confirmed directly - no libvulkan/libggml-vulkan.so anywhere
-    # in that image), so hiding ROCm devices on it just falls through to
-    # CPU, not Vulkan. This plain tag DOES bundle real Vulkan libs
-    # (libvulkan_radeon.so / RADV, libggml-vulkan.so - confirmed via
-    # `find`), the same driver already proven working for llama.cpp
-    # direct on this exact hardware.
-    image: ollama/ollama:0.17.7
-    container_name: ollama
-    restart: unless-stopped
-    # OLLAMA_VULKAN=1 alone doesn't select Vulkan: Ollama's backend
-    # picker ranks ROCm above Vulkan whenever a ROCm device is enumerable
-    # at all, regardless of this var. Research into ollama/ollama#14855
-    # (a community workaround, not an official documented flag combo)
-    # found the actual fix: hide ROCm devices from Ollama's discovery
-    # entirely via HIP_VISIBLE_DEVICES=-1 (and ROCR_VISIBLE_DEVICES=-1
-    # for safety across versions), forcing the picker to fall through to
-    # Vulkan since nothing ROCm-capable is visible to enumerate.
-    environment:
-      - OLLAMA_VULKAN=1
-      - HIP_VISIBLE_DEVICES=-1
-      - ROCR_VISIBLE_DEVICES=-1
-    devices:
-      - /dev/kfd:/dev/kfd
-      - /dev/dri:/dev/dri
-    # Numeric GIDs, not names ("video"/"render") - unlike the kyuz0 vLLM
-    # image, this image's own /etc/group doesn't define those group names,
-    # and `group_add` by name requires the name to exist inside the
-    # container (confirmed directly: "unable to find group render: no
-    # matching entries in group file"). Numeric GIDs sidestep that
-    # entirely - these are this host's actual video/render GIDs
-    # (`getent group video render` on the target).
-    group_add:
-      - "26"
-      - "303"
-    ports:
-      - "127.0.0.1:11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-      # Read-only access to the GGUF files downloaded for the Ollama
-      # benchmark batch (ollama-* entries in configuration.nix's models
-      # list) - lets `ollama create <name> -f Modelfile` register them
-      # directly without a redundant copy into ollama_data.
-      - /var/lib/ai-models:/gguf-source:ro
-
 volumes:
   turnstone_postgres_data:
   litellm_postgres_data:
-  vllm_primary_cache:
-  vllm_judge_cache:
+  vllm-qwen3.6-35b-a3b-cache:
+  vllm-qwen3.5-4b-cache:
+  vllm-qwen3.6-27b-cache:
+  vllm-glm-4.7-flash-awq-cache:
+  vllm-qwen3-coder-next-gptq4bit-cache:
+  vllm-gpt-oss-20b-cache:
+  vllm-gpt-oss-120b-cache:
+  vllm-qwen3.5-122b-a10b-awq4bit-cache:
+  vllm-gemma-4-26b-a4b-it-cache:
+  vllm-gemma-4-31b-it-cache:
+  vllm-qwen2.5-vl-7b-instruct-cache:
+  vllm-north-mini-code-1.0-w4a16-cache:
   open_webui_data:
   grafana_data:
   ollama_data:
 
-# Fixed bridge interface name, not docker-compose's default auto-generated
-# one (br-<hash of the network ID>, different every time the network is
-# created). networking.firewall.trustedInterfaces in configuration.nix
-# needs a stable name to reference declaratively — an auto-generated one
-# would silently break on a fresh install once the hash inevitably differs.
 networks:
   default:
     driver: bridge
