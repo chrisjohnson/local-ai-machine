@@ -90,11 +90,11 @@ card's result.
 1. [x] Decide and document the port-allocation convention — DONE (see Decision log).
 2. [x] Decide and document the `model.local_path`/`model.files`
    keep-or-remove call — DONE (see Decision log).
-3. [ ] For every `WORKING`/`UNTESTED-BUT-DOWNLOADED` build (skip `BROKEN`),
+3. [x] For every `WORKING`/`UNTESTED-BUT-DOWNLOADED` build (skip `BROKEN`),
    write its `docker-compose.yml` service entry — vLLM and llamacpp-server
    get individual services; Ollama gets one shared service (model switching
    is API-level); llamacpp benchmarker builds are excluded (exit after
-   running, can't be standing services).
+   running, can't be standing services). DONE — PR #1.
 4. [ ] Trim each `catalog/builds/*.yaml` to the reduced field set, preserving
    all existing `benchmark_runs:` data untouched.
 5. [ ] Update `docker/litellm-config.yaml` (or find wherever the actual
@@ -114,6 +114,7 @@ card's result.
 <!-- signal: gentle-genet-star 2026-07-26T14:00Z — claiming, starting recon -->
 <!-- signal: gentle-genet-star 2026-07-26T14:05Z — decisions made: port scheme (8000-8099 vllm, 8100 llamacpp, 11434 ollama), local_path/files kept, llamacpp benchmarker builds excluded from compose. Starting implementation. -->
 <!-- signal: gentle-genet-star 2026-07-26T14:10Z — revised: no standing primary/judge. Every build is its own compose service. LiteLLM aliases roles to localhost:<port>. Ollama = single shared service. Writing compose now. -->
+<!-- signal: gentle-genet-star 2026-07-26T14:15Z — PR #1 open (docker-compose + litellm config). Chris wants gemma-4-26b-a4b-it brought up after work completes. -->
 
 ## Decision log
 <!-- append-only, one line per entry, newest last. Never move this card to done/
