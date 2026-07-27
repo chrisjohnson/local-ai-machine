@@ -16,6 +16,7 @@ model:
   files: [gemma-4-26B-A4B-it-UD-Q4_K_M.gguf]
   local_path: /var/lib/ai-models/ollama-gemma-4-26b-a4b-it
   size_on_disk_gb: 15.77
+served_model_name: gemma-4-26b-a4b-gguf   # ollama model tag
 notes: >
   Registration succeeded fine (ollama create completed, ollama list shows
   the model, 16GB) — failure is only at inference time. Exact error:
