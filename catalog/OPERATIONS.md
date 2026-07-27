@@ -107,10 +107,24 @@ As of M-001, deployment detail lives exclusively in `docker-compose.yml`:
 
 ### Switching which model serves a role
 
-1. Start the desired build: `docker compose up -d <build-id>`
-2. Update `docker/litellm/config.yaml` — change the `api_base` port to match the build's
-   assigned port.
-3. Reload LiteLLM: `docker compose restart litellm`
+```
+docker compose up -d <service-name>
+./scripts/set-role.sh <role> <service-name>
+```
+
+Example — switch "coder" to Gemma-4-26B:
+```
+docker compose up -d gemma-4-26b-a4b-it--vllm-therock-gfx1151-v1
+./scripts/set-role.sh coder gemma-4-26b-a4b-it--vllm-therock-gfx1151-v1
+```
+
+The script reads the port and served-model-name from docker-compose.yml,
+updates the litellm config, and restarts the litellm container. No git
+commit required — this is a runtime selection, not a definition change.
+
+The service name is the exact docker-compose service name (which equals the
+catalog build `id`). Run `docker compose ps` to see what's running, or
+`docker compose config --services` to list all defined services.
 
 ### llama.cpp builds: benchmarker vs. server
 
