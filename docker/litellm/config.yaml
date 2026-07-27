@@ -1,44 +1,115 @@
+# LiteLLM config — two-tier design.
+#
+# Model definitions live here (the catalog of what's available).
+# Role selection (which model is "coder", which is "judge") is done at
+# runtime via scripts/set-role.sh — no git commit or config edit needed.
+#
+# To switch a role:
+#   docker compose up -d <service-name>
+#   ./scripts/set-role.sh <role> <service-name>
+
 model_list:
-  # Primary coder — points at host-side vLLM port via host.docker.internal.
-  # Switching "coder" to a different model = change this api_base + reload.
+  # Dynamic roles — updated by set-role.sh, starts pointing at defaults.
   - model_name: coder
     litellm_params:
       model: openai/qwen3.6-35b-a3b
-      api_base: http://host.docker.internal:8000/v1
+      api_base: http://127.0.0.1:8000/v1
       api_key: "none"
 
-  # Judge / fast quick-task model
   - model_name: judge
     litellm_params:
       model: openai/qwen3.5-4b-judge
-      api_base: http://host.docker.internal:8001/v1
+      api_base: http://127.0.0.1:8001/v1
       api_key: "none"
 
-  # Governed route (passes through Turnstone's safety judge)
+  # Static roles — not managed by set-role.sh.
   - model_name: governed_coder
     litellm_params:
       model: openai/coder
       api_base: http://turnstone:8080/v1
       api_key: "none"
 
-  # Cloud fallback route if local GPU is saturated
   - model_name: claude-sonnet
     litellm_params:
       model: anthropic/claude-3-5-sonnet-20241022
       api_key: os.environ/ANTHROPIC_API_KEY
 
+  # All vLLM builds — fixed ports, available for set-role.sh routing.
+  - model_name: qwen3.6-35b-a3b
+    litellm_params:
+      model: openai/qwen3.6-35b-a3b
+      api_base: http://127.0.0.1:8000/v1
+      api_key: "none"
+
+  - model_name: qwen3.5-4b-judge
+    litellm_params:
+      model: openai/qwen3.5-4b-judge
+      api_base: http://127.0.0.1:8001/v1
+      api_key: "none"
+
+  - model_name: qwen3.6-27b
+    litellm_params:
+      model: openai/qwen3.6-27b
+      api_base: http://127.0.0.1:8002/v1
+      api_key: "none"
+
+  - model_name: glm-4.7-flash-awq
+    litellm_params:
+      model: openai/glm-4.7-flash-awq
+      api_base: http://127.0.0.1:8003/v1
+      api_key: "none"
+
+  - model_name: qwen3-coder-next-gptq4bit
+    litellm_params:
+      model: openai/qwen3-coder-next-gptq4bit
+      api_base: http://127.0.0.1:8004/v1
+      api_key: "none"
+
+  - model_name: gpt-oss-20b
+    litellm_params:
+      model: openai/gpt-oss-20b
+      api_base: http://127.0.0.1:8005/v1
+      api_key: "none"
+
+  - model_name: gpt-oss-120b
+    litellm_params:
+      model: openai/gpt-oss-120b
+      api_base: http://127.0.0.1:8006/v1
+      api_key: "none"
+
+  - model_name: qwen3.5-122b-a10b-awq4bit
+    litellm_params:
+      model: openai/qwen3.5-122b-a10b-awq4bit
+      api_base: http://127.0.0.1:8007/v1
+      api_key: "none"
+
+  - model_name: gemma-4-26b-a4b-it
+    litellm_params:
+      model: openai/gemma-4-26b-a4b-it
+      api_base: http://127.0.0.1:8008/v1
+      api_key: "none"
+
+  - model_name: gemma-4-31b-it
+    litellm_params:
+      model: openai/gemma-4-31b-it
+      api_base: http://127.0.0.1:8009/v1
+      api_key: "none"
+
+  - model_name: qwen2.5-vl-7b-instruct
+    litellm_params:
+      model: openai/qwen2.5-vl-7b-instruct
+      api_base: http://127.0.0.1:8010/v1
+      api_key: "none"
+
+  - model_name: north-mini-code-1.0
+    litellm_params:
+      model: openai/north-mini-code-1.0
+      api_base: http://127.0.0.1:8011/v1
+      api_key: "none"
+
 router_settings:
   routing_strategy: usage-based-routing-v2
 
-# The /metrics route doesn't exist at all without the "prometheus" callback
-# enabled — disabling its auth requirement alone (below) does nothing if
-# the endpoint was never registered in the first place (confirmed: 404, not
-# 401, until this was added). Once registered, it otherwise demands a
-# Bearer token, which Prometheus's plain static_configs scraper never
-# sends — this endpoint only exposes aggregate request/latency counts (no
-# API keys, no conversation content), and is only reachable via the
-# internal docker network from Prometheus, so leaving it unauthenticated is
-# a reasonable tradeoff for observability.
 litellm_settings:
   callbacks: ["prometheus"]
   require_auth_for_metrics_endpoint: false
@@ -48,10 +119,4 @@ general_settings:
   database_url: os.environ/DATABASE_URL
 
 # Virtual keys (sk-chris-master, sk-drew-edge) are generated at runtime via
-# the /key/generate API against the master key, not declared here — see
-# Task 3.6 for the actual generation + verification steps.
-#
-# To switch which model serves as "coder" or "judge":
-#   1. Start the desired build: docker compose up -d <build-id>
-#   2. Update the api_base port above to match the build's assigned port
-#   3. Reload LiteLLM (docker compose restart litellm)
+# the /key/generate API against the master key, not declared here.

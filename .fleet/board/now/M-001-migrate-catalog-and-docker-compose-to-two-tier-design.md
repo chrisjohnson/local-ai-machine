@@ -109,6 +109,10 @@ card's result.
 7. [x] Update `catalog/OPERATIONS.md` (and anywhere else that documents the
    old `build_specific_flags`-in-catalog / `swap_model_start.sh`-for-testing
    workflow) to describe the new two-tier model. DONE.
+8. [x] Refactor `benchmark_orchestrator.py` to use compose-native
+   start/stop instead of `swap_model_start.sh`/`swap_model_stop.sh`.
+   DONE — removed standing-vs-swappable split, added compose parsing
+   helpers, all builds go through `docker compose up -d <service>`.
 
 ## Signals
 <!-- append-only. Leave signals for other agents. Format:
@@ -118,6 +122,7 @@ card's result.
 <!-- signal: gentle-genet-star 2026-07-26T14:10Z — revised: no standing primary/judge. Every build is its own compose service. LiteLLM aliases roles to localhost:<port>. Ollama = single shared service. Writing compose now. -->
 <!-- signal: gentle-genet-star 2026-07-26T14:15Z — PR #1 open (docker-compose + litellm config). Chris wants gemma-4-26b-a4b-it brought up after work completes. -->
 <!-- signal: gentle-genet-star 2026-07-27T02:55Z — PR merged, all 7 plan items done. gemma-4-26b-a4b-it verified healthy on :8008. Card ready for done/. -->
+<!-- signal: gentle-genet-star 2026-07-27T14:30Z — orchestrator refactor done: removed swap_model_start/stop.sh calls, all vLLM builds go through compose services. Syntax verified. -->
 
 ## Decision log
 <!-- append-only, one line per entry, newest last. Never move this card to done/
@@ -136,7 +141,7 @@ card's result.
   `configuration.nix` download entries. Deployment detail that moves to
   compose-only: `build_specific_flags`, `build_specific_env`,
   `compose_service`, `served_model_name`.
-- 2026-07-26T14:05Z — **llamacpp benchmarker builds**: 10 of11 llamacpp
+- 2026-07-26T14:05Z — **llamacpp benchmarker builds**: 10 of 11 llamacpp
   builds use engine `llamacpp-vulkan-radv-v1` (llama-bench, single-shot
   benchmarking tool that exits after running). These cannot be standing
   compose services. Only `llamacpp-vulkan-radv-server-v1` (llama-server,
@@ -148,6 +153,12 @@ card's result.
   Individual catalog builds document which model to use; compose doesn't
   need per-build entries. Standing primary/judge eliminated entirely —
   every vllm build is its own service; LiteLLM aliases roles.
+- 2026-07-27T14:30Z — **Orchestrator refactor**: removed swap_model_start.sh
+  / swap_model_stop.sh integration. All vLLM builds now go through compose
+  services — orchestrator parses docker-compose.yml to find service port and
+  served_model_name, stops all vLLM services to free GPU, starts target
+  service, benchmarks against its fixed port, restores previously-running
+  services. Standing-vs-swappable split eliminated.
 - 2026-07-26 — filed per Chris's direct request; design decided in
   conversation (docker-compose stays one big checked-in file, not
   generated; catalog trims to benchmark-relevant fields; build `id` is the
@@ -155,7 +166,8 @@ card's result.
 
 ## Handoff notes
 <!-- what's half-done, what the next agent picking this up should do first. -->
-PR #1 open with compose + litellm config changes. Catalog trimmed, OPERATIONS.md
-updated. Remaining: verify deploys on the box (SSH to local-ai-machine, git pull,
-docker compose up -d one vllm build + ollama, confirm health). Chris wants
-gemma-4-26b-a4b-it brought up.
+All 8 plan items done. Orchestrator refactor complete — syntax verified, diff
+reviewed. Needs: commit to worktree branch, push, merge to main. Then verify
+on box (pull, run `--dry-run` to confirm orchestrator starts clean). Legacy
+scripts (`swap_model_start.sh`, `swap_model_stop.sh`, `speed_benchmark_swap.sh`)
+are superseded but not deleted — Chris's call on whether to remove them.
