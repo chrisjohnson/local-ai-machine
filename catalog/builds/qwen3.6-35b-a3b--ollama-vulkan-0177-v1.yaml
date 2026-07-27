@@ -16,6 +16,7 @@ model:
   files: [Qwen3.6-35B-A3B-UD-Q4_K_M.gguf]
   local_path: /var/lib/ai-models/ollama-qwen3.6-35b-a3b
   size_on_disk_gb: 20.60
+served_model_name: qwen3.6-35b-a3b-gguf   # ollama model tag
 notes: >
   Single /api/generate request (first request after ollama create):
   eval_count 1511, eval_duration 135177304222ns -> 11.18 tok/s. Well below
