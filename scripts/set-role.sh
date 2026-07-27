@@ -14,7 +14,7 @@
 # The script reads:
 #   1. The host port from the service's port mapping
 #   2. The served model name from the service's --served-model-name flag
-# It then updates the corresponding model entry in the litellm config
+# It then updates the corresponding role entry in the litellm config
 # and restarts the litellm container.
 #
 # Prerequisites:
@@ -93,20 +93,31 @@ echo "Setting ${ROLE} -> ${MODEL_NAME} on port ${PORT}"
 # Two edits within the role's YAML block:
 #   1. model: openai/<old> → model: openai/${MODEL_NAME}
 #   2. api_base: http://... → api_base: http://127.0.0.1:${PORT}/v1
+# Uses temp file + mv for GNU/BSD sed portability.
+
+TMPFILE=$(mktemp)
+trap 'rm -f "$TMPFILE"' EXIT
 
 # Replace model: line within the role's block
-sed -i '' "/model_name: ${ROLE}/,/model_name:/{s|model: openai/.*|model: openai/${MODEL_NAME}|}" "$LITELLM_CONFIG"
+sed "/model_name: ${ROLE}/,/model_name:/{s|model: openai/.*|model: openai/${MODEL_NAME}|}" "$LITELLM_CONFIG" > "$TMPFILE"
+mv "$TMPFILE" "$LITELLM_CONFIG"
 
 # Replace or add api_base: line within the role's block
 if sed -n "/model_name: ${ROLE}/,/model_name:/p" "$LITELLM_CONFIG" |
    grep -q 'api_base:'; then
-  sed -i '' "/model_name: ${ROLE}/,/model_name:/{s|api_base:.*|api_base: http://127.0.0.1:${PORT}/v1|}" "$LITELLM_CONFIG"
+  TMPFILE=$(mktemp)
+  sed "/model_name: ${ROLE}/,/model_name:/{s|api_base:.*|api_base: http://127.0.0.1:${PORT}/v1|}" "$LITELLM_CONFIG" > "$TMPFILE"
+  mv "$TMPFILE" "$LITELLM_CONFIG"
   echo "  Updated model + api_base for ${ROLE} -> ${MODEL_NAME} on :${PORT}"
 else
-  # Insert api_base after model: line
-  sed -i '' "/model_name: ${ROLE}/a\\
-\\        api_base: http://127.0.0.1:${PORT}/v1
-" "$LITELLM_CONFIG"
+  # Insert api_base after model: line — use awk for portability
+  TMPFILE=$(mktemp)
+  awk -v role="$ROLE" -v port="$PORT" '
+    /model_name: role/ { found=1 }
+    found && /model: openai/ { print; printf "        api_base: http://127.0.0.1:%s/v1\n", port; found=0; next }
+    { print }
+  ' "$LITELLM_CONFIG" > "$TMPFILE"
+  mv "$TMPFILE" "$LITELLM_CONFIG"
   echo "  Updated model, added api_base for ${ROLE} -> ${MODEL_NAME} on :${PORT}"
 fi
 
