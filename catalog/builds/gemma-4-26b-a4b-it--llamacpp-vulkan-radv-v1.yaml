@@ -16,10 +16,6 @@ model:
   files: [gemma-4-26B-A4B-it-UD-Q4_K_M.gguf]
   local_path: /var/lib/ai-models/ollama-gemma-4-26b-a4b-it
   size_on_disk_gb: 15.77
-served_model_name: null
-build_specific_flags: []
-build_specific_env: {}
-compose_service: null
 notes: >
   Two runs 2026-07-24: first run contaminated by a concurrent background hf
   download — pp512 1192.75±11.10, tg128 54.50±0.29 tok/s. Clean re-run

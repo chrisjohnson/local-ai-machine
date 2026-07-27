@@ -16,22 +16,6 @@ model:
   files: null
   local_path: /var/lib/ai-models/qwen3.5-4b
   size_on_disk_gb: null
-served_model_name: qwen3.5-4b-judge
-build_specific_flags:
-  - --port 8001
-  - --gpu-memory-utilization 0.20   # shares GPU with vllm-primary at 0.70; two processes at 0.90 each would OOM the second on startup
-  - --max-num-seqs 64
-  - --max-model-len 131072
-  - --enable-auto-tool-choice
-  - --tool-call-parser qwen3_coder
-  - --reasoning-parser qwen3
-build_specific_env: {}
-compose_service:
-  container_name: vllm-judge
-  port_mapping: "127.0.0.1:8001:8001"
-  extra_volumes:
-    - vllm_judge_cache:/root/.cache/vllm
-  restart: unless-stopped
 notes: standing docker-compose.yml service.
 status: WORKING
 created: "2026-07-22"

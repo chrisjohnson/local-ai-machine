@@ -16,17 +16,6 @@ model:
   files: null
   local_path: /var/lib/ai-models/gemma-4-26b-a4b-it
   size_on_disk_gb: null
-served_model_name: gemma-4-26b-a4b-it
-build_specific_flags:
-  - --enable-auto-tool-choice   # added 2026-07-24 — orchestrator run found the parser alone
-                                 # wasn't enough (Tier B: 0/5, every request 400'd); the
-                                 # standing production services have both flags together
-  - --tool-call-parser gemma4
-  - --reasoning-parser gemma4
-  - --max-model-len 65536
-  - --gpu-memory-utilization 0.90   # standalone swap-in
-build_specific_env: {}
-compose_service: null
 notes: >
   Strongest combined speed + coding result of any vLLM-served model tested —
   not promoted to production primary (Chris's call, deliberately deferred;

@@ -16,11 +16,6 @@ model:
   files: null
   local_path: /var/lib/ai-models/qwen2.5-vl-7b-instruct
   size_on_disk_gb: 16
-served_model_name: qwen2.5-vl-7b-instruct
-build_specific_flags:
-  - --max-model-len 32768
-build_specific_env: {}
-compose_service: null
 notes: >
   No Qwen3 tool-call parser used (older generation, different template).
   Will need --limit-mm-per-prompt flags once actually used for real vision

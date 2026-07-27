@@ -16,10 +16,6 @@ model:
   files: [Qwen3.6-35B-A3B-UD-Q4_K_M.gguf]
   local_path: /var/lib/ai-models/ollama-qwen3.6-35b-a3b
   size_on_disk_gb: 20.60
-served_model_name: null
-build_specific_flags: []
-build_specific_env: {}
-compose_service: null
 notes: >
   pp512 1075.81±21.68 tok/s, tg128 63.43±0.30 tok/s (2026-07-24, download
   queue paused first, vllm-primary/judge already inactive). Fastest tg128

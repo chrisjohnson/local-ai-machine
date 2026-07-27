@@ -19,10 +19,6 @@ model:
     - UD-IQ2_XXS/DeepSeek-V4-Flash-UD-IQ2_XXS-00003-of-00003.gguf
   local_path: /var/lib/ai-models/llamacpp-deepseek-v4-flash-iq2xxs
   size_on_disk_gb: 84.62
-served_model_name: null
-build_specific_flags: []
-build_specific_env: {}
-compose_service: null
 notes: >
   Not yet run on this machine. Chris's explicit request 2026-07-26 to try an
   IQ2_XXS imatrix GGUF via llama.cpp — a different technical path than the

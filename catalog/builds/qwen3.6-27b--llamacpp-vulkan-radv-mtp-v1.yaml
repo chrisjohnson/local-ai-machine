@@ -16,10 +16,6 @@ model:
   files: [Qwen3.6-27B-Q4_K_M.gguf]
   local_path: /var/lib/ai-models/ollama-qwen3.6-27b
   size_on_disk_gb: 15.65
-served_model_name: null
-build_specific_flags: []
-build_specific_env: {}
-compose_service: null
 notes: >
   Exact error from llama_init_from_model: "context type MTP requested but
   model doesn't contain MTP layers." Server exits cleanly with code 1.

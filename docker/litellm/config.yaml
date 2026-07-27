@@ -1,16 +1,17 @@
 model_list:
-  # Primary coder
+  # Primary coder — points at host-side vLLM port via host.docker.internal.
+  # Switching "coder" to a different model = change this api_base + reload.
   - model_name: coder
     litellm_params:
       model: openai/qwen3.6-35b-a3b
-      api_base: http://vllm-primary:8000/v1
+      api_base: http://host.docker.internal:8000/v1
       api_key: "none"
 
   # Judge / fast quick-task model
   - model_name: judge
     litellm_params:
       model: openai/qwen3.5-4b-judge
-      api_base: http://vllm-judge:8001/v1
+      api_base: http://host.docker.internal:8001/v1
       api_key: "none"
 
   # Governed route (passes through Turnstone's safety judge)
@@ -49,3 +50,8 @@ general_settings:
 # Virtual keys (sk-chris-master, sk-drew-edge) are generated at runtime via
 # the /key/generate API against the master key, not declared here — see
 # Task 3.6 for the actual generation + verification steps.
+#
+# To switch which model serves as "coder" or "judge":
+#   1. Start the desired build: docker compose up -d <build-id>
+#   2. Update the api_base port above to match the build's assigned port
+#   3. Reload LiteLLM (docker compose restart litellm)

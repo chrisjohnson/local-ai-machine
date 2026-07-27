@@ -16,10 +16,6 @@ model:
   files: [Qwen3.6-27B-Q4_K_M.gguf]
   local_path: /var/lib/ai-models/ollama-qwen3.6-27b
   size_on_disk_gb: 15.65
-served_model_name: null
-build_specific_flags: []
-build_specific_env: {}
-compose_service: null
 notes: >
   pp512 342.55±14.41 tok/s, tg128 12.75±0.03 tok/s (2026-07-24, vllm-primary/
   judge stopped, download queue paused first). Markedly slower generation

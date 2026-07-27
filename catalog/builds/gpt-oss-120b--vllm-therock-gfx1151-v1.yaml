@@ -16,15 +16,6 @@ model:
   files: null   # NOT amd/gpt-oss-120b-w-mxfp4-a-fp8 — that quantizes activations to FP8, can't run on this hardware
   local_path: /var/lib/ai-models/gpt-oss-120b
   size_on_disk_gb: 65.3
-served_model_name: gpt-oss-120b
-build_specific_flags:
-  - --enable-auto-tool-choice
-  - --tool-call-parser openai
-  - --reasoning-parser openai_gptoss
-  - --max-model-len 131072
-  - --gpu-memory-utilization 0.90   # standalone swap-in
-build_specific_env: {}
-compose_service: null
 notes: >
   First real serve/benchmark of this model in any form on this machine,
   2026-07-24. Confirmed via --help=Frontend/--help=all inside the container

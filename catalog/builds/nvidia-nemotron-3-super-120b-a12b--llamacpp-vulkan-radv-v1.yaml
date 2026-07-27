@@ -19,10 +19,6 @@ model:
     - UD-Q4_K_XL/NVIDIA-Nemotron-3-Super-120B-A12B-UD-Q4_K_XL-00003-of-00003.gguf
   local_path: /var/lib/ai-models/llamacpp-nemotron-3-super-120b
   size_on_disk_gb: 83.8
-served_model_name: null
-build_specific_flags: []
-build_specific_env: {}
-compose_service: null
 notes: >
   Not yet measured locally. Reference figure from kyuz0's raw results.json:
   14.86 tok/s TG128.

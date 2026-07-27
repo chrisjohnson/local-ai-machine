@@ -16,15 +16,6 @@ model:
   files: null
   local_path: /var/lib/ai-models/qwen3.6-27b
   size_on_disk_gb: null
-served_model_name: qwen3.6-27b
-build_specific_flags:
-  - --gpu-memory-utilization 0.90   # standalone swap-in
-  - --max-model-len 131072
-  - --enable-auto-tool-choice
-  - --tool-call-parser qwen3_coder
-  - --reasoning-parser qwen3
-build_specific_env: {}
-compose_service: null
 notes: >
   No toolbox table entry exists for this exact model — flags copied from the
   35B-A3B primary entry (same model generation). Dense architecture makes it

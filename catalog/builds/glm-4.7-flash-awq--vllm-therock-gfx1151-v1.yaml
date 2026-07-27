@@ -16,16 +16,6 @@ model:
   files: null
   local_path: /var/lib/ai-models/glm-4.7-flash-awq
   size_on_disk_gb: 20   # under 20GB
-served_model_name: glm-4.7-flash-awq
-build_specific_flags:
-  - --enable-auto-tool-choice   # added 2026-07-24 — orchestrator run found the parser alone
-                                 # wasn't enough (Tier B: 0/5, every request 400'd); the
-                                 # standing production services have both flags together
-  - --tool-call-parser glm47   # dedicated parser, no AWQ workaround needed (unlike the 122B tier's VLLM_USE_TRITON_AWQ)
-  - --reasoning-parser glm45
-  - --max-model-len 65536
-build_specific_env: {}
-compose_service: null
 notes: >
   Healthy in ~190s at startup. Best concurrency headroom of any model tested
   (28.10x @65536) until GPT-OSS-20B later beat it (30.02x). Six-tier harness

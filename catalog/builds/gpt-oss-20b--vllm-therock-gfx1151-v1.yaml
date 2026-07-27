@@ -16,15 +16,6 @@ model:
   files: [model-00000-of-00002.safetensors, model-00001-of-00002.safetensors]
   local_path: /var/lib/ai-models/gpt-oss-20b
   size_on_disk_gb: 13.8
-served_model_name: gpt-oss-20b
-build_specific_flags:
-  - --enable-auto-tool-choice
-  - --tool-call-parser openai
-  - --reasoning-parser openai_gptoss
-  - --max-model-len 131072
-  - --gpu-memory-utilization 0.90   # standalone swap-in
-build_specific_env: {}
-compose_service: null
 notes: >
   First real serve/benchmark of this model in any form on this machine,
   2026-07-24, run immediately after GPT-OSS-120B in the same session

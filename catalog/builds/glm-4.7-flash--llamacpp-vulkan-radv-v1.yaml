@@ -16,10 +16,6 @@ model:
   files: [GLM-4.7-Flash-Q4_K_M.gguf]
   local_path: /var/lib/ai-models/ollama-glm-4.7-flash
   size_on_disk_gb: 18.31
-served_model_name: null   # ad hoc llama-bench invocation, no persistent serve name
-build_specific_flags: []   # engine's common_flags are sufficient — no model-specific overrides needed
-build_specific_env: {}
-compose_service: null
 notes: >
   81.3 tok/s prompt processing, 70.1 tok/s generation (256-token generation,
   single prompt) — ~3.7x faster generation than the same model's vLLM+AWQ

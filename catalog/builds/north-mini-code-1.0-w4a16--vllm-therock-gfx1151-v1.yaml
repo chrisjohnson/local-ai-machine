@@ -24,25 +24,6 @@ model:
   files: null
   local_path: /var/lib/ai-models/north-mini-code-1.0-w4a16
   size_on_disk_gb: 19.4   # full repo size, download in progress
-served_model_name: north-mini-code-1.0
-build_specific_flags:
-  - --max-model-len 320000   # vendor-recommended value from the model's own README
-                              # (`vllm serve ... --max-model-len 320000 ...`), not a
-                              # guess — this is the model's documented supported
-                              # length, not the raw 500000 architectural max
-  - --enable-auto-tool-choice   # required alongside --tool-call-parser, not optional —
-                                 # per the project-wide bug found 2026-07-24/25 where
-                                 # several builds 400'd every Tier B request with the
-                                 # parser alone (gemma-4-26b, gemma-4-31b, glm-4.7-flash,
-                                 # qwen3.5-122b-a10b-awq4bit); added here preemptively
-                                 # before this build's first real serve attempt
-  - --tool-call-parser cohere_command4   # native parser per the model's own README
-                                          # and this project's earlier research notes
-  - --gpu-memory-utilization 0.90   # standalone swap-in, matches sibling
-                                     # dense/MoE swap-in builds (qwen3.6-27b,
-                                     # gpt-oss-120b, gpt-oss-20b)
-build_specific_env: {}
-compose_service: null
 notes: >
   Smoke-tested 2026-07-27 (real docker run, not the orchestrator) — fails to
   load on this hardware. Two distinct issues found, in the order hit:
