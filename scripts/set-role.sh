@@ -34,7 +34,7 @@ LITELLM_CONTAINER="${LITELLM_CONTAINER:-litellm-proxy}"
 # --- Parse port from docker-compose.yml ---
 PORT=$(
   yq -r "
-    .services.\"${SERVICE}\".port[] |
+    .services.\"${SERVICE}\".ports[] |
     select(startswith(\"127.0.0.1:\")) |
     split(\":\")[1]
   " "$COMPOSE_FILE" 2>/dev/null | head -1
