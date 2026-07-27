@@ -113,13 +113,16 @@ card's result.
    start/stop instead of `swap_model_start.sh`/`swap_model_stop.sh`.
    DONE — removed standing-vs-swappable split, added compose parsing
    helpers, all builds go through `docker compose up -d <service>`.
-9. [ ] Validate `set-role.sh` end-to-end: run `set-role.sh coder
+9. [x] Validate `set-role.sh` end-to-end: run `set-role.sh coder
    gemma-4-26b-a4b-it--vllm-therock-gfx1151-v1`, confirm litellm config
    updated, restart litellm, verify `curl localhost:4000/v1/models` shows
-   the gemma model routed to :8008.
-10. [ ] Validate litellm connectivity: send a chat completion request
+   the gemma model routed to :8008. DONE — fixed GNU/BSD sed portability,
+   fixed sed targeting role block not model block, validated on box.
+10. [x] Validate litellm connectivity: send a chat completion request
     through litellm (port 4000) to the gemma model and confirm a valid
-    response comes back.
+    response comes back. DONE — `coder` role and direct model access both
+    work through litellm. Required network_mode: host for litellm (see
+    Decision log).
 11. [ ] Validate orchestrator benchmark flow end-to-end: run
     `benchmark_orchestrator.py --only <build-id>` against a single build
     (e.g. gemma-4-26b-a4b-it--vllm-therock-gfx1151-v1) and confirm it
@@ -135,6 +138,7 @@ card's result.
 <!-- signal: gentle-genet-star 2026-07-27T02:55Z — PR merged, all 7 plan items done. gemma-4-26b-a4b-it verified healthy on :8008. Card ready for done/. -->
 <!-- signal: gentle-genet-star 2026-07-27T14:30Z — orchestrator refactor done: removed swap_model_start/stop.sh calls, all vLLM builds go through compose services. Syntax verified. -->
 <!-- signal: gentle-genet-star 2026-07-27T15:00Z — added validation steps 9-11: set-role.sh, litellm connectivity, orchestrator benchmark e2e. PR #2 rebased. -->
+<!-- signal: gentle-genet-star 2026-07-27T04:10Z — set-role.sh + litellm connectivity validated. Fixed: sed GNU/BSD portability, sed targeting role block, litellm network_mode: host for loopback access. Chat completion works end-to-end through litellm. -->
 
 ## Decision log
 <!-- append-only, one line per entry, newest last. Never move this card to done/
@@ -171,6 +175,14 @@ card's result.
   served_model_name, stops all vLLM services to free GPU, starts target
   service, benchmarks against its fixed port, restores previously-running
   services. Standing-vs-swappable split eliminated.
+- 2026-07-27T04:10Z — **litellm networking**: `host.docker.internal` doesn't
+  resolve on NixOS Docker (`extra_hosts: host-gateway` is a no-op). vLLM
+  services bind to `127.0.0.1` (security posture — NixOS firewall).
+  Solution: litellm uses `network_mode: host` to reach loopback directly.
+  Tradeoffs: litellm-db port published to `127.0.0.1:5432` for host-network
+  access; turnstone gets `extra_hosts` to reach litellm at
+  `host.docker.internal:4000`. All litellm config + set-role.sh use
+  `127.0.0.1` URLs (litellm is on host network).
 - 2026-07-26 — filed per Chris's direct request; design decided in
   conversation (docker-compose stays one big checked-in file, not
   generated; catalog trims to benchmark-relevant fields; build `id` is the
@@ -178,8 +190,10 @@ card's result.
 
 ## Handoff notes
 <!-- what's half-done, what the next agent picking this up should do first. -->
-All 8 plan items done. Orchestrator refactor complete — syntax verified, diff
-reviewed. Needs: commit to worktree branch, push, merge to main. Then verify
-on box (pull, run `--dry-run` to confirm orchestrator starts clean). Legacy
-scripts (`swap_model_start.sh`, `swap_model_stop.sh`, `speed_benchmark_swap.sh`)
-are superseded but not deleted — Chris's call on whether to remove them.
+10 of 11 plan items done. Remaining: orchestrator benchmark e2e validation
+(plan item 11) — run `benchmark_orchestrator.py --only
+gemma-4-26b-a4b-it--vllm-therock-gfx1151-v1` on the box and confirm it
+completes speed + coding legs. All code changes for this are in PR #2
+(worktree branch). Legacy scripts (`swap_model_start.sh`,
+`swap_model_stop.sh`, `speed_benchmark_swap.sh`) are superseded but not
+deleted — Chris's call on whether to remove them.
