@@ -31,29 +31,30 @@ the box" procedure, not tied to any one engine/build/benchmark. Those now live i
    exactly which units you stopped — resume the same list at teardown.
 3. Check no other benchmark/harness activity is already in flight (`ps aux` for
    `vllm bench serve`/`llama-bench`/`coding_benchmark.py`/`speed_benchmark_swap.sh`).
-4. Stop `vllm-primary`/`vllm-judge` if this benchmark needs the full GPU budget or GPU
-   contention would invalidate the numbers (`docker compose stop vllm-primary vllm-judge`
-   from `~/local-ai-machine/docker`). The swap scripts do this automatically — don't stop
-   manually first if using them.
+4. Stop any running model-serving compose services if this benchmark needs the full GPU
+   budget or GPU contention would invalidate the numbers (`docker compose stop <service>`
+   from `~/local-ai-machine/docker`). Check what's running: `docker compose ps`.
+   The swap scripts do this automatically — don't stop manually first if using them.
 
 ## Teardown — sequencing is mandatory and safety-critical
 
-**Real incident**: restarting `vllm-primary`/`vllm-judge` **concurrently** with resuming the
+**Real incident**: restarting model-serving containers **concurrently** with resuming the
 download queue overloaded host memory (`free -h` showed ~92GiB used / only ~2-7GiB free
 against a 124GiB pool while a 66.97GiB checkpoint was mid-load) and SIGKILLed both vLLM
 engine-core processes (OOM-killer, confirmed via `docker inspect --format RestartCount`
 showing 2 and 4 crash-restarts before caught).
 
-1. **Restart vLLM first**: `docker compose up -d vllm-primary vllm-judge`.
-2. **Confirm both healthy before touching anything else**: `curl -sf http://localhost:8000/health`
-   and `:8001/health` must both return 200. Do not resume downloads while waiting.
+1. **Restart the standing model services first**: `docker compose up -d <standing-services>`
+   (e.g. `docker compose up -d qwen3.6-35b-a3b--vllm-therock-gfx1151-v1`).
+2. **Confirm healthy before touching anything else**: `curl -sf http://localhost:<port>/health`
+   must return 200. Do not resume downloads while waiting.
 3. **Only then** resume the download queue, same unit list as paused: `sudo -n systemctl start <units>`.
    An "activating" unit reporting a control-process error right after resuming is normal
    (back to its own pre-existing flock-queue retry behavior) — confirm via the activating-unit
    count, not absence of error text.
 4. Confirm no leftover temp containers/volumes (`docker ps -a | grep vllm-bench-swap`).
 
-**Lesson**: vLLM restart → confirmed healthy → THEN download resume. Never simultaneously,
+**Lesson**: model restart → confirmed healthy → THEN download resume. Never simultaneously,
 especially right after a large (60GB+) model load.
 
 ## Run fingerprint — capture every one of these fields on every benchmark run
@@ -83,15 +84,37 @@ floating image tag or host state can drift between two runs of "the same" build 
 ## Build naming for config variants (e.g. different served context length)
 
 If the same model+engine pair is tested at more than one meaningfully different serving
-config (most commonly `--max-model-len`, but could be any build-specific flag that materially
-changes footprint/behavior), that's two different **builds**, not two runs of one build — a
-build's identity already includes its `build_specific_flags`, so this falls out naturally.
+config (most commonly `--max-model-len`, but could be any flag that materially changes
+footprint/behavior), that's two different **builds**, not two runs of one build.
 
 - File naming: `<model>--<engine>--<variant-tag>.yaml` (e.g. `--ctx65536` / `--ctx131072`),
   only when more than one variant exists for a model+engine pair — no suffix needed otherwise.
 - Add a `context_length_served: <N>` field at the top level of the build (not just buried
-  inside `build_specific_flags`), so it's queryable without string-parsing the flags list.
+  inside the compose service's command), so it's queryable without parsing compose YAML.
 - The `model:` block (repo, architecture, params, quantization) is duplicated verbatim across
   variant files — that's intentional, not an inconsistency to fix. The point of a build file is
   to be a single, complete, self-contained unit sufficient to reconstruct a docker-compose
   entry on its own; splitting `model:` out into a shared reference would break that property.
+
+## Two-tier model: catalog + compose
+
+As of M-001, deployment detail lives exclusively in `docker-compose.yml`:
+- `build_specific_flags`, `build_specific_env`, `compose_service`, `served_model_name`
+  have been removed from `catalog/builds/*.yaml`.
+- Each build's compose service name = its catalog `id` (exact match, the join key).
+- Port allocation: vLLM builds → 8000-8099, llama.cpp-server → 8100+, Ollama → 11434
+  (shared instance, model switch via API).
+
+### Switching which model serves a role
+
+1. Start the desired build: `docker compose up -d <build-id>`
+2. Update `docker/litellm/config.yaml` — change the `api_base` port to match the build's
+   assigned port.
+3. Reload LiteLLM: `docker compose restart litellm`
+
+### llama.cpp builds: benchmarker vs. server
+
+- `llamacpp-vulkan-radv-v1` builds use `llama-bench` (single-shot benchmarking tool that
+  exits after running). These **cannot** be standing compose services.
+- `llamacpp-vulkan-radv-server-v1` builds use `llama-server` (OpenAI-compatible HTTP API).
+  These get compose entries like vLLM builds.
