@@ -217,6 +217,50 @@ let
     # (unsloth/Qwen3.6-27B-GGUF lacks MTP tensors) - this is the separate,
     # confirmed MTP-bearing repo for the model that actually matters.
     { name = "llamacpp-qwen3.6-35b-a3b-mtp"; repo = "unsloth/Qwen3.6-35B-A3B-MTP-GGUF"; hfFiles = [ "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf" ]; }
+    # DeepSeek-V4-Flash, IQ2_XXS imatrix GGUF via llama.cpp — Chris's explicit
+    # request 2026-07-26. NOT a repeat of the earlier DeepSeek-V4-Flash
+    # disqualification (see the "100B+ tier" comment above): that one ruled
+    # out vLLM's native checkpoint (FP4/FP8-native experts, no compatible
+    # matrix-core hardware on gfx1151). This is a completely different
+    # artifact/path — an ultra-low-bit imatrix-calibrated GGUF run through
+    # llama.cpp/Vulkan, which never touches the FP4/FP8 kernel path at all —
+    # so the earlier "no" doesn't apply here.
+    #
+    # Repo confirmed real via HF API (200 OK): unsloth/DeepSeek-V4-Flash-GGUF,
+    # tagged "imatrix" (Unsloth's standard Dynamic 2.0 quant methodology is
+    # imatrix-calibrated across their whole GGUF lineup, same as every other
+    # unsloth/*-GGUF entry already trusted in this file). Directory tree
+    # confirmed directly against the HF API's recursive tree listing (not
+    # guessed): UD-IQ2_XXS/ contains exactly 3 shards, real total 90,860,736,128
+    # bytes (~84.62 GiB). hfFiles is an explicit allowlist of just those 3
+    # shards — this repo hosts 9 other quant levels (UD-IQ1_S through
+    # UD-Q8_K_XL) side by side in the same tree, so a bare repo pull or glob
+    # exclude would risk pulling many hundreds of GB of unwanted variants
+    # (same reasoning as every other hfFiles entry in this file; hfExclude is
+    # avoided project-wide per the gpt-oss-120b comment above).
+    #
+    # Feasibility, done honestly rather than "does it fit on disk": weights
+    # alone are ~84.6 GiB against this box's 124GiB unified-memory ceiling
+    # (amdgpu.gttsize reservation carved from the same 130GB system RAM pool
+    # -- confirmed via /proc/meminfo, this is not separate VRAM). The
+    # remaining ~39GiB headroom is enough because DeepSeek-V4-Flash uses the
+    # same MLA (multi-head latent attention) design as DeepSeek-V2/V3 (per
+    # its own config.json: q_lora_rank/o_lora_rank=1024, num_key_value_heads=1,
+    # qk_rope_head_dim=64) — KV cache is a small compressed latent per token,
+    # not full per-head K/V, so it stays cheap even at real context lengths
+    # (~48KB/token estimated from the config's own dimensions -> ~3GiB at
+    # 65K context, ~6GiB at 131K). Weights + KV cache + llama.cpp/OS overhead
+    # comfortably clears 124GiB standalone, with real headroom left over —
+    # genuinely usable, not just barely fitting. 284B total / 13B active
+    # params confirmed via deepseek-ai/DeepSeek-V4-Flash's own model card.
+    # Disk: 796GB free on /var/lib/ai-models at time of adding, ~85GiB needed
+    # — comfortable. Run standalone (not concurrent with vllm-primary/judge),
+    # same practice as the other 100B+-class llama.cpp entries above.
+    { name = "llamacpp-deepseek-v4-flash-iq2xxs"; repo = "unsloth/DeepSeek-V4-Flash-GGUF"; hfFiles = [
+        "UD-IQ2_XXS/DeepSeek-V4-Flash-UD-IQ2_XXS-00001-of-00003.gguf"
+        "UD-IQ2_XXS/DeepSeek-V4-Flash-UD-IQ2_XXS-00002-of-00003.gguf"
+        "UD-IQ2_XXS/DeepSeek-V4-Flash-UD-IQ2_XXS-00003-of-00003.gguf"
+      ]; }
   ];
 in
 {
