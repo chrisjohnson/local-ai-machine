@@ -71,6 +71,14 @@ later review (2026-07-27) — same posture as the original weekend sweep.
   benchmark pass now that downloads are complete. Worked in strict
   succession with M-021 (not concurrently) per Chris's explicit instruction
   and the standing "no concurrent work during benchmarks" rule.
+- 2026-07-27 — `--dry-run` plan came back broader than expected: not just
+  the 2 new llama.cpp builds, but also 3 Ollama builds
+  (glm-4.7-flash/qwen3.6-27b/qwen3.6-35b-a3b--ollama-vulkan-0177-v1), which
+  legitimately have `benchmark_runs: []` too — the earlier Ollama-enablement
+  work only ever dry-run tested them, the real pass never actually executed
+  before downloads paused everything. Correct/expected given the resumability
+  logic, just wider scope than the card's initial framing assumed. Proceeding
+  with the full 5-build plan as shown, not narrowing it.
 
 ## Handoff notes
 <!-- what's half-done, what the next agent picking this up should do first. -->
