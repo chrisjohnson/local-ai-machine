@@ -1,6 +1,6 @@
 id: north-mini-code-1.0-w4a16--vllm-therock-gfx1151-v1
 engine: vllm-therock-gfx1151-v1
-role: UNTESTED — model files fully downloaded as of 2026-07-24, config now filled in (was a `<tbd>` placeholder blocking the orchestrator until 2026-07-27)
+role: BROKEN — smoke-tested 2026-07-27, fails to load on this hardware (real NVFP4-kernel gap, not a config issue — see notes)
 model:
   display_name: North-Mini-Code-1.0
   family: North-Mini-Code
@@ -38,25 +38,40 @@ build_specific_flags:
                                  # before this build's first real serve attempt
   - --tool-call-parser cohere_command4   # native parser per the model's own README
                                           # and this project's earlier research notes
-  - --reasoning-parser cohere_command4   # model card uses the same parser name for
-                                          # both tool-call and reasoning parsing
   - --gpu-memory-utilization 0.90   # standalone swap-in, matches sibling
                                      # dense/MoE swap-in builds (qwen3.6-27b,
                                      # gpt-oss-120b, gpt-oss-20b)
 build_specific_env: {}
 compose_service: null
 notes: >
-  Flags now match the model's own HF README recommended vLLM invocation
-  (`vllm serve CohereLabs/North-Mini-Code-1.0-w4a16 -tp 1 --max-model-len 320000
-  --tool-call-parser cohere_command4 --reasoning-parser cohere_command4
-  --enable-auto-tool-choice`), verified directly against
-  /var/lib/ai-models/north-mini-code-1.0-w4a16/README.md on the box — not
-  copied from a sibling build by architecture-family guess like qwen3.6-27b's
-  flags were. -tp 1 not added as an explicit flag since no other single-GPU
-  build in this catalog sets it explicitly either (default is already TP=1).
-  Still genuinely untested on this hardware (no gfx1151-specific evidence) —
-  status stays UNTESTED-BUT-DOWNLOADED until a real serve/benchmark pass.
-status: UNTESTED-BUT-DOWNLOADED
+  Smoke-tested 2026-07-27 (real docker run, not the orchestrator) — fails to
+  load on this hardware. Two distinct issues found, in the order hit:
+  (1) `--reasoning-parser cohere_command4` (present in the model's own HF
+  README invocation) fails immediately: `ImportError: The Cohere reasoning
+  parser requires the cohere_melody package, which is not installed` — this
+  toolbox image's vLLM build doesn't ship it. Dropped from build_specific_flags
+  above since it's a hard import failure, not optional.
+  (2) Even without that flag, the model still fails during weight loading with
+  `NotImplementedError: No NvFp4 MoE backend supports the deployment
+  configuration.` — despite the repo name/quantization field saying "w4a16",
+  this model's MoE layers are internally NVFP4-formatted, an NVIDIA-specific
+  FP4 format requiring NVIDIA Blackwell-class matrix-core hardware. This
+  AMD/gfx1151 box's vLLM build has no NvFp4 kernel backend at all — same class
+  of hard-blocker as the FP8 checkpoint issue already documented for other
+  models on this hardware (see the primary's own build notes on FP8), not
+  something fixable via flags or the cohere_melody package. Full traceback
+  captured, confirms this is the root cause (not the earlier import error,
+  not a memory issue, not a benchmark-orchestrator quirk).
+  Root-caused via `docker logs` on a manually-run (non---rm) container after
+  the benchmark orchestrator's own --tail 100 log capture scrolled the real
+  error out — worth knowing if this needs debugging again:
+  `scripts/swap_model_start.sh` only captures the last 100 lines on failure,
+  which isn't enough for a model that gets deep into weight loading before
+  crashing.
+  Likely not fixable on this hardware without a different (non-NVFP4) build
+  of this model, if one exists — not investigated further, out of scope for
+  a smoke test.
+status: BROKEN
 created: "2026-07-24"
 last_verified: "2026-07-27"
 benchmark_runs: []
