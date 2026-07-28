@@ -37,4 +37,62 @@ notes: >
 status: UNTESTED-BUT-DOWNLOADED
 created: "2026-07-26"
 last_verified: "2026-07-26"
-benchmark_runs: []
+benchmark_runs:
+  - timestamp: '2026-07-27T23:50:25Z'
+    benchmark_id: llamacpp-bench-v1
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: 5d062fe623a6a4dbe8ce871f73ba152ad5ecc0ec
+      host_gpu_driver: Mesa 25.3.6
+      concurrent_load:
+        downloads_paused: false
+        vllm_co_resident_or_stopped: stopped_for_run
+      host_metrics_window:
+        start: '2026-07-27T23:50:25Z'
+        end: '2026-07-27T23:53:52Z'
+      image_digest: '[kyuz0/amd-strix-halo-toolboxes@sha256:1648e4195154aef5dc975253d962e1e1b8358af26b0e54b4faf89a156131c320]'
+      engine_version: 0e4a03622 (10154)
+    result:
+      pp512_tok_s: 141.31 ± 2.71
+      tg128_tok_s: 13.23 ± 0.01
+      engine_build: 0e4a03622 (10154)
+      raw_stdout_file: catalog/raw/deepseek-v4-flash-iq2xxs--llamacpp-vulkan-radv-v1--llamacpp-bench-v1--20260727T235025Z.txt
+
+  - timestamp: '2026-07-27T23:50:25Z'
+    benchmark_id: seven-tier-coding-v2
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: 5d062fe623a6a4dbe8ce871f73ba152ad5ecc0ec
+      host_gpu_driver: Mesa 25.3.6
+      concurrent_load:
+        downloads_paused: false
+        vllm_co_resident_or_stopped: stopped_for_run
+      host_metrics_window:
+        start: '2026-07-27T23:54:52Z'
+        end: '2026-07-28T00:10:33Z'
+      image_digest: '[kyuz0/amd-strix-halo-toolboxes@sha256:1648e4195154aef5dc975253d962e1e1b8358af26b0e54b4faf89a156131c320]'
+      engine_version: null
+    result:
+      tier_scores:
+        a:
+          pass: 3
+          total: 3
+        b:
+          pass: 5
+          total: 5
+        j:
+          pass: 8
+          total: 8
+        p:
+          pass: 2
+          total: 2
+        d:
+          pass: 1
+          total: 1
+        q:
+          pass: 2
+          total: 2
+        l:
+          pass: 1
+          total: 1
+      raw_file: catalog/raw/deepseek-v4-flash-iq2xxs--llamacpp-vulkan-radv-v1--seven-tier-coding-v2--20260727T235025Z.json
