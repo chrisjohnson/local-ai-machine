@@ -26,6 +26,21 @@ set -euo pipefail
 #   set -a; source secrets/gh-agentic-test-repo-token.env; set +a
 #   scripts/reset_agentic_test_repo.sh
 #
+# Real gap found 2026-07-28 (M-021 harness smoke testing): this fine-grained
+# PAT can READ the Git Data API (GET .../git/refs/...) fine but cannot WRITE
+# to it -- PATCH (force-update a ref) and DELETE (delete a ref) both return
+# "403 Resource not accessible by personal access token", confirmed directly
+# against this exact repo/token, despite `permissions.push: true` showing at
+# the repo level. This is a documented-elsewhere fine-grained-PAT quirk (the
+# low-level Git Data API's ref-mutation endpoints are more restricted than
+# the Contents/Pulls REST APIs for this token type), not a scope Chris
+# forgot to grant. Branch delete and the main-branch force-reset below
+# therefore go over plain `git push` via SSH (the account-level deploy key,
+# already confirmed working for push/pull against this repo in M-021's own
+# auth investigation) instead of `gh api .../git/refs/...` PATCH/DELETE.
+# PR listing/closing still goes through `gh` (Pulls API, not Git Data API --
+# confirmed working with this token, untouched by this gap).
+#
 # Usage:
 #   scripts/reset_agentic_test_repo.sh [--repo OWNER/NAME] [--baseline-ref REF]
 
@@ -44,6 +59,9 @@ while [[ $# -gt 0 ]]; do
       exit 1 ;;
   esac
 done
+
+# SSH_REMOTE derived AFTER arg parsing so a --repo override is respected.
+SSH_REMOTE="git@github.com:${REPO}.git"
 
 command -v gh >/dev/null || { echo "gh CLI is required" >&2; exit 1; }
 command -v git >/dev/null || { echo "git is required" >&2; exit 1; }
@@ -70,7 +88,10 @@ if [[ -n "$other_branches" ]]; then
   while IFS= read -r branch; do
     [[ -z "$branch" ]] && continue
     echo "   deleting branch $branch"
-    gh api -X DELETE "repos/$REPO/git/refs/heads/$branch" >/dev/null 2>&1 || \
+    # git push --delete over SSH, NOT `gh api -X DELETE .../git/refs/...` --
+    # the latter 403s with this fine-grained PAT (see the auth note at the
+    # top of this file), confirmed directly 2026-07-28.
+    git push "$SSH_REMOTE" --delete "$branch" >/dev/null 2>&1 || \
       echo "   (already gone: $branch)"
   done <<< "$other_branches"
 else
@@ -87,8 +108,16 @@ if [[ "$baseline_type" == "tag" ]]; then
 fi
 echo "   baseline commit: $baseline_sha"
 
-gh api -X PATCH "repos/$REPO/git/refs/heads/$DEFAULT_BRANCH" \
-  -f sha="$baseline_sha" -F force=true >/dev/null
+# git push --force over SSH, NOT `gh api -X PATCH .../git/refs/heads/main`
+# -- the latter 403s with this fine-grained PAT (see the auth note at the
+# top of this file: this token can read the Git Data API but not write to
+# it), confirmed directly 2026-07-28. Uses a local bare-ish temp clone
+# rather than pushing from any existing on-box checkout, so this never
+# touches/depends on this repo's own working tree.
+reset_tmpdir="$(mktemp -d)"
+trap 'rm -rf "$reset_tmpdir"' EXIT
+git clone --quiet --no-checkout "$SSH_REMOTE" "$reset_tmpdir" >/dev/null 2>&1
+git -C "$reset_tmpdir" push --force "$SSH_REMOTE" "${baseline_sha}:refs/heads/${DEFAULT_BRANCH}" >/dev/null
 
 echo "-- Verifying clean state --"
 remaining_prs="$(gh pr list -R "$REPO" --state open --json number -q '. | length')"
