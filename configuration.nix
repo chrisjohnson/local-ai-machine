@@ -493,6 +493,23 @@ in
     # scripts/benchmark_orchestrator.py can run directly on the box (no more
     # Mac-side SSH-tunnel dependency for the coding harness).
     (pkgs.python3.withPackages (ps: [ ps.pyyaml ]))
+    # opencode (M-021, scripts/agentic_coding_benchmark.py): the first of the
+    # two agentic-coding-session harnesses. Package exists in nixpkgs
+    # (pkgs.by-name/op/opencode) — added here (rather than a per-invocation
+    # `nix shell nixpkgs#opencode`) so it's always on PATH for the harness's
+    # subprocess calls without needing nix-command/flakes experimental
+    # features enabled at all (this repo's existing per-invocation `nix
+    # shell` uses, e.g. the huggingface-hub download service above, already
+    # pass --extra-experimental-features explicitly each time — fine for a
+    # rare one-shot, not for a tool invoked repeatedly across ~20 models x
+    # 3 tasks).
+    opencode
+    # nodejs_22: needed to `npm install -g @mariozechner/pi-coding-agent`
+    # (the second M-021 harness, "Pi" — no nixpkgs package exists for it,
+    # confirmed via nix-env -qaP search 2026-07-28, so it's installed as a
+    # global npm package post-deploy rather than declared here — this just
+    # provides the node/npm runtime it needs).
+    nodejs_22
   ];
 
   # Herdr agent-multiplexer daemon (per-user, persists across SSH
