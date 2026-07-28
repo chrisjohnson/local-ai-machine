@@ -25,8 +25,39 @@ metric** — the existing benchmark data is "just the foundation" (his words).
 
 Design decisions confirmed via two rounds of questions (2026-07-27/28):
 
-1. **Harness: opencode itself**, run headless (`opencode run`) against each
-   candidate model via the litellm proxy.
+1. **Harness: opencode AND Pi agent, both, compared head-to-head** (revised
+   2026-07-28 — originally opencode-only). Chris wants a second benchmark
+   using Pi agent (`@mariozechner/pi-coding-agent`, `badlogic/pi-mono`) run
+   against the *same* task set/criteria, specifically to see how the two
+   harnesses compare, not just the models. Both run headless against each
+   candidate model via the litellm proxy. Recorded as two separate
+   benchmark_ids per build (e.g. `agentic-coding-session-opencode-v1` /
+   `agentic-coding-session-pi-v1`), not merged into one metric — the whole
+   point is to compare them, not average them away.
+
+   Pi CLI mechanics researched 2026-07-28 (real, verified via its GitHub
+   README/docs, not guessed):
+   - Headless: `pi -p "<prompt>"` (print mode, text out) or
+     `pi --mode json "<prompt>"` (full JSON event stream — this is what the
+     harness should use, matches wanting a full transcript per point 5
+     above).
+   - Model targeting: `--model <pattern>`; custom OpenAI-compatible
+     endpoints (litellm) supported via a model's `baseUrl` config, same
+     mechanism used for Ollama/vLLM/SGLang per its own docs — needs a
+     config entry per candidate model/alias, similar to opencode's
+     provider-config requirement.
+   - No documented sandboxing — full filesystem access by default (same as
+     opencode), confirmed via its own README; there's a known community
+     concern about blast radius (a "pi-less-yolo" Docker wrapper project
+     exists specifically because of this). Scratch-workspace-per-run
+     confinement (already planned regardless, for the hidden-test
+     mechanism) covers this, but worth being deliberate about — don't rely
+     on Pi to self-restrict.
+   - Exit codes, max-turns/step limits, and timeout flags were **not**
+     found documented anywhere — the harness will likely need to enforce
+     the 45min ceiling itself externally (process-level timeout/kill)
+     rather than relying on a built-in Pi flag. Needs confirming during
+     implementation, not assumed solved.
 2. **Hidden tests, never visible to the agent.** The grading suite must live
    entirely outside the scratch workspace the agent operates in (opencode
    has full filesystem/shell access inside it, so anything present could be
@@ -129,34 +160,42 @@ task-2 implementation:
 <!-- ordered checklist -->
 1. [x] Get Chris's call on the git/PR/CI substrate question — real GitHub,
    one shared long-lived repo, harness-owned reset (see above).
-2. [ ] Research opencode headless invocation mechanics: exact `opencode run`
-   flags/exit codes/output format, full session transcript/log capture
-   format, how to target a specific provider/model per invocation without
-   interactive `/models`, and whether tool-call/turn counts are exposed
-   anywhere parseable.
-3. [ ] Set up `local-ai-machine-test` repo auth (deploy key or scoped PAT,
+2. [x] Research opencode headless invocation mechanics (see prior session's
+   findings: `opencode run --model provider/model "<prompt>"`, requires
+   `opencode.json` custom-provider config pointing at litellm).
+3. [x] Research Pi agent headless invocation mechanics (see point 1 above:
+   `pi --mode json`, `baseUrl` config, no documented exit-code/timeout
+   conventions — harness must self-enforce the 45min ceiling for both
+   tools, don't assume either has a built-in one).
+4. [ ] Set up `local-ai-machine-test` repo auth (deploy key or scoped PAT,
    separate from the main repo's key) and the baseline/reset mechanism
    (template branch, reset routine).
-4. [ ] Build the 3 task scaffolds (docs-research, git/PR/CI, docker
+5. [ ] Build the 3 task scaffolds (docs-research, git/PR/CI, docker
    lifecycle) under `catalog/agentic-tasks/`, each with hidden grading
-   checks that live outside the agent's workspace until graded.
-5. [ ] Build the harness script (e.g. `scripts/agentic_coding_benchmark.py`):
-   per task/model, clean workspace + reset the shared test repo/any docker
-   sandbox to baseline, run opencode headless with a 45min ceiling, capture
-   full session log, grade via hidden checks after the fact, record
-   pass_count/total_count + wall-clock + full log path.
-6. [ ] New methodology file `catalog/benchmarks/agentic-coding-session-v1.yaml`
-   documenting harness, tasks, grading, metrics_schema — matching the
-   existing `seven-tier-coding-v2.yaml` style.
-7. [ ] Wire into `scripts/benchmark_orchestrator.py` — new benchmark_id,
-   relies on M-023's `expected_benchmark_ids`/`missing_benchmark_ids`
-   registry (PR #3, merged) for correct idempotent pickup across
-   already-benchmarked builds, appropriate GPU-contention sequencing.
-8. [ ] Smoke test against 1-2 already-benchmarked models before running the
-   full matrix.
-9. [ ] Dashboard: make this the headline/primary-sort metric — confirmed
-   direction, exact visual treatment still open, revisit once data shape
-   is known.
+   checks that live outside the agent's workspace until graded — harness-
+   and model-agnostic, since both opencode and Pi run the identical tasks.
+6. [ ] Build the harness script (e.g. `scripts/agentic_coding_benchmark.py`):
+   per task/model/**harness** (opencode, Pi — both), clean workspace +
+   reset the shared test repo/any docker sandbox to baseline, run the
+   harness headless with a 45min ceiling (externally enforced), capture
+   full session log/transcript, grade via hidden checks after the fact,
+   record pass_count/total_count + wall-clock + full log path, tagged by
+   which harness produced it.
+7. [ ] Two new methodology files (or one file covering both, TBD during
+   implementation): `agentic-coding-session-opencode-v1` and
+   `agentic-coding-session-pi-v1` — same tasks/grading/metrics_schema,
+   different benchmark_id per harness so results are directly comparable
+   side by side, not blended.
+8. [ ] Wire into `scripts/benchmark_orchestrator.py` — both new
+   benchmark_ids, relies on M-023's `expected_benchmark_ids`/
+   `missing_benchmark_ids` registry (PR #3, merged) for correct idempotent
+   pickup across already-benchmarked builds, appropriate GPU-contention
+   sequencing.
+9. [ ] Smoke test both harnesses against 1-2 already-benchmarked models
+   before running the full matrix.
+10. [ ] Dashboard: make this the headline/primary-sort metric, with
+    opencode vs. Pi shown as a direct comparison (not averaged) — exact
+    visual treatment still open, revisit once data shape is known.
 
 ## Signals
 <!-- append-only. Leave signals for other agents. Format:
@@ -179,10 +218,18 @@ task-2 implementation:
   it's one long-lived repo shared across all runs that he won't clean up —
   the harness must own resetting it to baseline before/after every model's
   run, not a per-run disposable repo as originally sketched.
+- 2026-07-28 — Scope widened again: benchmark Pi agent alongside opencode,
+  same tasks/criteria, recorded as separate benchmark_ids so the two
+  harnesses are directly comparable, not just the models. Pi's CLI mechanics
+  researched and recorded above (point 1) — real gaps found (no documented
+  exit codes, no built-in timeout/max-turns), harness will need to enforce
+  the time budget itself for both tools rather than trusting either one's
+  internals.
 
 ## Handoff notes
 <!-- what's half-done, what the next agent picking this up should do first. -->
-Not started. Repo created and git/PR/CI substrate decision made. Next real
-step is step 2 (opencode headless-mechanics research) and step 3 (repo auth
-+ baseline/reset mechanism design) — can proceed in parallel, neither
-blocks the other.
+Not started on implementation. Repo created, git/PR/CI substrate decided,
+both harnesses (opencode + Pi) researched at the CLI-mechanics level. Next
+real steps: step 4 (repo auth + reset mechanism) and step 5 (task scaffold
+design/build) — can proceed in parallel, neither blocks the other. Step 6
+(harness script) needs both done first since it drives both.
