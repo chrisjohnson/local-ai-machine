@@ -82,4 +82,18 @@ later review (2026-07-27) — same posture as the original weekend sweep.
 
 ## Handoff notes
 <!-- what's half-done, what the next agent picking this up should do first. -->
-Not started. Step 1 (dry-run) is next.
+In progress. Started via `systemctl start benchmark-orchestrator.service` at
+2026-07-27T23:39:43Z, running persistently on the box independent of any
+agent session — check `journalctl -u benchmark-orchestrator.service` for
+live status, `systemctl is-active benchmark-orchestrator.service` for
+done/still-running. Plan is 5 builds (see decision log): 2 llama.cpp
+(deepseek-v4-flash-iq2xxs, gpt-oss-120b) + 3 Ollama
+(glm-4.7-flash/qwen3.6-27b/qwen3.6-35b-a3b). First build
+(deepseek-v4-flash-iq2xxs) confirmed loading and running the coding harness
+as of 2026-07-27T23:54:52Z — startup took ~10min for the standing default
+services' cold vLLM start (normal torch.compile/cudagraph capture time on
+this GPU, not a stall) before the orchestrator could stop them and hand the
+full GPU budget to llama.cpp. Next agent: check status, don't restart if
+already active, move to done/ once all 5 builds show real recorded
+benchmark_runs and step 4/5 (catalog status updates + dashboard regen) are
+done.
