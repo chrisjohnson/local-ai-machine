@@ -396,6 +396,25 @@ def run_harness_process(cmd: list, cwd: Path, env: dict, transcript_path: Path,
     Returns (terminated_reason, wall_clock_s, returncode_or_None).
     terminated_reason is one of "completed" | "timeout" | "error".
     """
+    # Real bug found during harness smoke-testing (2026-07-28): passing
+    # cwd=<workspace> to Popen changes the OS-level working directory, but
+    # opencode additionally resolves its own "project directory" from the
+    # inherited PWD *environment variable* (used internally for an
+    # instance-registry/dedup mechanism) rather than trusting the process's
+    # actual cwd — if PWD is stale (e.g. still pointing at the calling
+    # shell's directory, which is exactly what a plain os.environ.copy()
+    # preserves), opencode silently creates a SECOND internal "instance"
+    # rooted at that stale directory and runs the prompt there instead,
+    # against whatever (or no) opencode.json that stale directory has —
+    # observed directly as an instant (<1s) "ProviderModelNotFoundError:
+    # Model not found" failure, since the real per-run opencode.json (with
+    # this run's provider/model registered) only exists in the intended
+    # workspace, not at the stale PWD. Explicitly overriding PWD to match
+    # cwd fixes this — confirmed by reproducing the failure with a stale
+    # PWD and then re-running identically except for this override.
+    env = dict(env)
+    env["PWD"] = str(cwd)
+
     start = time.monotonic()
     with open(transcript_path, "wb") as logf:
         try:
