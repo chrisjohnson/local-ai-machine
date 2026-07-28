@@ -1,0 +1,22 @@
+services:
+  backend:
+    build: ./backend
+    container_name: wordcount-backend
+    ports:
+      - "9100:9100"
+    restart: "no"
+
+  frontend:
+    build: ./frontend
+    container_name: wordcount-frontend
+    ports:
+      - "9200:9200"
+    environment:
+      # BUG: wrong port -- the backend service actually listens on 9100
+      # (see backend/Dockerfile / backend/server.py), not 9101. This is
+      # exactly the kind of misconfigured-env-var issue described in the
+      # task -- fix the port here, not in the frontend's Python code.
+      - BACKEND_URL=http://backend:9101
+    depends_on:
+      - backend
+    restart: "no"
