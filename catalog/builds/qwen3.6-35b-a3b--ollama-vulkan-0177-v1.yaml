@@ -30,4 +30,52 @@ notes: >
 status: WORKING
 created: "2026-07-24"
 last_verified: "2026-07-24"
-benchmark_runs: []
+benchmark_runs:
+  - timestamp: '2026-07-28T01:08:44Z'
+    benchmark_id: ollama-warm-request-v2
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: 5d062fe623a6a4dbe8ce871f73ba152ad5ecc0ec
+      host_gpu_driver: Mesa 25.3.6
+      concurrent_load:
+        downloads_paused: false
+        vllm_co_resident_or_stopped: stopped_for_run
+      host_metrics_window:
+        start: '2026-07-28T01:08:44Z'
+        end: '2026-07-28T01:13:02Z'
+      image_digest: '[ollama/ollama@sha256:0ff452f6a4c3c5bb4ab063a1db190b261d5834741a519189ed5301d50e4434d1]'
+      engine_version: ollama version is 0.17.7
+    result:
+      cold:
+        eval_count: 1762
+        eval_duration_ns: 42474517630
+        prompt_eval_count: 47
+        prompt_eval_duration_ns: 268834674
+        load_duration_ns: 26116718106
+        total_duration_ns: 71035706485
+        tok_s: 41.483696538921706
+      warm_trials:
+      - eval_count: 2209
+        eval_duration_ns: 53448010339
+        prompt_eval_count: 47
+        prompt_eval_duration_ns: 224105337
+        load_duration_ns: 112241374
+        total_duration_ns: 56529135260
+        tok_s: 41.3298827400528
+      - eval_count: 2670
+        eval_duration_ns: 64703936781
+        prompt_eval_count: 47
+        prompt_eval_duration_ns: 228538507
+        load_duration_ns: 106643019
+        total_duration_ns: 68356279104
+        tok_s: 41.26487711307286
+      - eval_count: 2338
+        eval_duration_ns: 56745017860
+        prompt_eval_count: 47
+        prompt_eval_duration_ns: 226928471
+        load_duration_ns: 98194142
+        total_duration_ns: 59945122303
+        tok_s: 41.201855038062725
+      warm_tok_s_mean: 41.2655382970628
+      warm_tok_s_stddev: 0.0640164118989534
+      raw_file: catalog/raw/qwen3.6-35b-a3b--ollama-vulkan-0177-v1--ollama-warm-request-v2--20260728T010844Z.json

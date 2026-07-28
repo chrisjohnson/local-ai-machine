@@ -1,0 +1,42 @@
+{
+  "cold": {
+    "eval_count": 1762,
+    "eval_duration_ns": 42474517630,
+    "prompt_eval_count": 47,
+    "prompt_eval_duration_ns": 268834674,
+    "load_duration_ns": 26116718106,
+    "total_duration_ns": 71035706485,
+    "tok_s": 41.483696538921706
+  },
+  "warm_trials": [
+    {
+      "eval_count": 2209,
+      "eval_duration_ns": 53448010339,
+      "prompt_eval_count": 47,
+      "prompt_eval_duration_ns": 224105337,
+      "load_duration_ns": 112241374,
+      "total_duration_ns": 56529135260,
+      "tok_s": 41.3298827400528
+    },
+    {
+      "eval_count": 2670,
+      "eval_duration_ns": 64703936781,
+      "prompt_eval_count": 47,
+      "prompt_eval_duration_ns": 228538507,
+      "load_duration_ns": 106643019,
+      "total_duration_ns": 68356279104,
+      "tok_s": 41.26487711307286
+    },
+    {
+      "eval_count": 2338,
+      "eval_duration_ns": 56745017860,
+      "prompt_eval_count": 47,
+      "prompt_eval_duration_ns": 226928471,
+      "load_duration_ns": 98194142,
+      "total_duration_ns": 59945122303,
+      "tok_s": 41.201855038062725
+    }
+  ],
+  "warm_tok_s_mean": 41.2655382970628,
+  "warm_tok_s_stddev": 0.0640164118989534
+}
