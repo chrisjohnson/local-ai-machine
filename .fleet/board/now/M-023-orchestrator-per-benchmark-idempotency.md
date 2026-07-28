@@ -2,8 +2,8 @@
 id: M-023
 title: Verify/harden benchmark_orchestrator.py idempotency at the per-benchmark-id level
 initiative_id: null
-claimed_by: null
-claimed_at: null
+claimed_by: sub-agent (implement)
+claimed_at: 2026-07-28T14:00Z
 blocks: null
 blocked_by: null
 status: null
@@ -36,18 +36,18 @@ convention — his call for this specific change).
 
 ## Plan
 <!-- ordered checklist -->
-1. [ ] Read `gather_plan()`, `already_has_run()`, and every
+1. [x] Read `gather_plan()`, `already_has_run()`, and every
    `process_*_build()` function in `scripts/benchmark_orchestrator.py` in
    full.
-2. [ ] Determine definitively whether a build with some-but-not-all expected
+2. [x] Determine definitively whether a build with some-but-not-all expected
    benchmark_ids recorded would currently be handled correctly (run only the
    missing ones) or incorrectly (skipped entirely, or re-run entirely).
-3. [ ] If there's a gap, fix it so each benchmark_id a build could produce is
+3. [x] If there's a gap, fix it so each benchmark_id a build could produce is
    independently checked via `already_has_run()` before being (re)run.
-4. [ ] Demonstrate the fix concretely (e.g. a synthetic/temporary extra
+4. [x] Demonstrate the fix concretely (e.g. a synthetic/temporary extra
    benchmark_id against a real already-benchmarked build, via --dry-run or a
    controlled real run) — not just an assertion that it's fine.
-5. [ ] Open a PR against main with the findings/fix. Do not merge, do not
+5. [x] Open a PR against main with the findings/fix. Do not merge, do not
    push to main directly.
 
 ## Signals
@@ -62,7 +62,40 @@ convention — his call for this specific change).
   M-021's new benchmark type. PR-based delivery is an explicit deviation
   from this repo's normal direct-push-to-main convention, per Chris's
   instruction for this specific change.
+- 2026-07-28 — read `gather_plan()`, `already_has_run()`, and all three
+  `process_*_build()` functions in full. Finding: for the *current* fixed
+  benchmark_id set, per-id gating was already correct everywhere
+  (`already_has_run()` checks exact benchmark_id match; each
+  `process_vllm_build`/`process_llamacpp_build` independently gates each
+  benchmark_id via `already_has_run()` before running it, not a looser
+  "has any data" check). The real gap was structural, not behavioral:
+  `main()`'s plan-level skip/run decision was a hand-assembled per-family
+  boolean chain (duplicating, not deriving from, the same benchmark_id
+  constants each `process_*_build()` checks) — so adding a new
+  benchmark_id later would require updating multiple call sites in
+  lockstep, and forgetting the plan-level check (the one furthest from the
+  dispatch code) would silently skip every already-partially-benchmarked
+  build forever once it had even one recorded id, exactly the failure mode
+  this card was worried about.
+- 2026-07-28 — fix: added `expected_benchmark_ids(build, family)` and
+  `missing_benchmark_ids(build, family)` as the single registry both
+  `main()`'s plan-level skip check and `process_ollama_build()`'s early
+  return now derive from (vLLM/llama.cpp process functions already gated
+  per-id correctly and were left untouched). Verified no regression:
+  `--dry-run` plan output is byte-for-byte identical before/after across
+  all 27 real `catalog/builds/*.yaml` entries. Verified the fix: simulated
+  a new benchmark_id added to every engine family and confirmed three
+  real, already-fully-benchmarked builds (one per family) correctly flip
+  from SKIP to RUN with "missing `<new-id>`, already has `<old ids>`",
+  exercised via both a standalone harness and the real `main()`
+  entrypoint directly. PR opened, not merged:
+  https://github.com/chrisjohnson/local-ai-machine/pull/3
 
 ## Handoff notes
 <!-- what's half-done, what the next agent picking this up should do first. -->
-Not started. Dispatched to a sub-agent working in an isolated worktree.
+Done from this sub-agent's side. PR #3
+(https://github.com/chrisjohnson/local-ai-machine/pull/3) is open against
+main, awaiting Chris's review — not merged. Nothing else pending; the
+card can move to done/ once Chris confirms the PR is merged (or move it
+there now if he'd rather track "PR merge" outside the fleet board — his
+call).
