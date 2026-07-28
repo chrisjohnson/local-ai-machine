@@ -55,7 +55,19 @@ Usage (standalone / smoke test):
   python3 agentic_orchestration_benchmark.py --harness opencode \\
       --base-url http://127.0.0.1:4000/v1 --served-name qwen3.5-4b-judge \\
       --build-id qwen3.5-4b--vllm-therock-gfx1151-v1 --api-key sk-... \\
-      --judge-base-url http://127.0.0.1:4000/v1 --judge-served-name qwen2.5-vl-7b-instruct
+      --judge-base-url http://127.0.0.1:4000 --judge-served-name qwen2.5-vl-7b-instruct
+
+  NOTE the two base-url flags intentionally take DIFFERENT conventions,
+  matching each of their real call sites elsewhere in this project:
+  --base-url needs a trailing /v1 (it feeds write_opencode_config's/
+  write_pi_models_config's baseURL directly, an OpenAI-SDK-style base).
+  --judge-base-url does NOT need one (call_judge appends /v1/chat/
+  completions itself, same convention as coding_benchmark.py's
+  call_model and every benchmark_orchestrator.py call site, e.g.
+  f"http://localhost:{port}"). call_judge() tolerates a trailing /v1
+  either way (strips it if present) since this asymmetry is easy to get
+  backwards — a real 404 from exactly this mixup was found and fixed
+  during this tier's own smoke test.
 
 Normal usage is as a library, imported by scripts/benchmark_orchestrator.py
 (run_orchestration_session()), same relationship agentic_coding_benchmark.py
@@ -311,8 +323,21 @@ def call_judge(judge_base_url: str, judge_served_name: str, judge_api_key: str,
     call_model). Returns a dict with the parsed rubric scores plus raw
     metadata (judge_served_name, elapsed_s, parse_error if applicable) —
     kept under its own top-level key by the caller, never merged with the
-    objective signals dict."""
+    objective signals dict.
+
+    judge_base_url tolerates a trailing /v1 or not (real bug found +
+    fixed during M-024's own smoke test: benchmark_orchestrator.py's own
+    call sites pass base_url WITHOUT a trailing /v1 (e.g.
+    f"http://localhost:{port}", matching coding_benchmark.py's call_model
+    convention), but this module's own --base-url CLI flag needs a
+    trailing /v1 for write_opencode_config's baseURL — passing the same
+    value to both, or a caller genuinely unsure which convention applies,
+    previously produced a double /v1/v1/chat/completions 404. Stripping
+    any trailing /v1 before appending it back once, here, makes this
+    function correct regardless of which convention the caller used)."""
     import urllib.request
+
+    normalized_judge_base_url = judge_base_url[:-3] if judge_base_url.endswith("/v1") else judge_base_url
 
     user_content = (
         f"Stub-tool invocation log (ground truth for what was actually called, not just claimed):\n"
@@ -331,7 +356,7 @@ def call_judge(judge_base_url: str, judge_served_name: str, judge_api_key: str,
         "temperature": 0.0,
     }
     req = urllib.request.Request(
-        f"{judge_base_url}/v1/chat/completions",
+        f"{normalized_judge_base_url}/v1/chat/completions",
         data=json.dumps(payload).encode(),
         headers={
             "Content-Type": "application/json",
