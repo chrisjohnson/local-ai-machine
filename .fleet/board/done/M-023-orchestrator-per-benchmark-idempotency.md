@@ -93,9 +93,4 @@ convention — his call for this specific change).
 
 ## Handoff notes
 <!-- what's half-done, what the next agent picking this up should do first. -->
-Done from this sub-agent's side. PR #3
-(https://github.com/chrisjohnson/local-ai-machine/pull/3) is open against
-main, awaiting Chris's review — not merged. Nothing else pending; the
-card can move to done/ once Chris confirms the PR is merged (or move it
-there now if he'd rather track "PR merge" outside the fleet board — his
-call).
+Done. Chris merged PR #3 2026-07-28; fix (`903f451`) confirmed on main.
