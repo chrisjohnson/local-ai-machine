@@ -1,0 +1,150 @@
+id: agentic-coding-session-pi-v1
+sibling: agentic-coding-session-opencode-v1
+# Identical tasks/grading/metrics_schema to the sibling file — see that
+# file's header comment and M-021
+# (.fleet/board/now/M-021-agentic-coding-session-benchmark.md) for the full
+# shared design rationale. This file only documents what's specific to the
+# Pi harness (github.com/badlogic/pi-mono, npm package
+# @mariozechner/pi-coding-agent) — kept as a separate benchmark_id
+# specifically so opencode and Pi are directly comparable side by side for
+# the same task set, not blended into one number.
+applies_to: [vllm, llamacpp, ollama]
+tool: scripts/agentic_coding_benchmark.py
+description: >
+  Real agentic-coding-session benchmark: Pi (@mariozechner/pi-coding-agent)
+  driven headless against a candidate model via the litellm proxy, given
+  the identical 3-task DevOps-flavored suite used by
+  agentic-coding-session-opencode-v1 (docs research + implementation, real
+  git/PR/CI workflow, docker container lifecycle + live-system validation).
+  Same hidden-grading discipline, same percent-based pass_count/total_count
+  scoring, same 45-minute self-enforced wall-clock ceiling. The point of
+  running this as a second, separately-tracked benchmark_id (not just a
+  second model run under the opencode id) is to compare the two harnesses
+  themselves, not just the underlying models — Chris's explicit ask.
+methodology:
+  harness: pi
+  harness_invocation: >
+    pi --provider litellm --model <alias> --mode json -p "<task.md prompt>"
+    run with cwd = the per-run scratch workspace. --mode json emits the
+    full structured JSON event stream (session/message/tool-call granularity,
+    every thinking/text/toolCall/toolResult block), matching the "record
+    the complete session transcript, not just a summary" requirement.
+    -p/--print runs non-interactively and exits after the turn completes
+    (Pi's headless/non-interactive mode) rather than dropping into its TUI.
+  provider_config: >
+    A single shared ~/.pi/agent/models.json (Pi has no documented per-run
+    config-path override — confirmed 2026-07-28 while implementing this
+    harness, correcting the M-021 card's earlier "baseUrl model config"
+    assumption, which undersold how literal a JSON config file this
+    actually is: see Pi's own docs/models.md) is rewritten fresh
+    immediately before every single run — a "litellm" provider
+    (api: openai-completions) pointed at http://127.0.0.1:4000/v1 with the
+    litellm master key (read from docker/.env at harness runtime, never
+    hardcoded/committed) as apiKey, and exactly one models[] entry naming
+    the candidate model's litellm alias for that run. Rewritten (not
+    appended to) every run specifically so a stale alias from a prior
+    model can never be selected by accident — this only works because runs
+    are strictly sequential (M-021's own GPU-contention safety sequencing
+    already requires this; nothing in this design assumes or supports
+    concurrent runs sharing that one file). qwen-family models route
+    through compat.thinkingFormat: "qwen-chat-template" (Pi's documented
+    mechanism for local Qwen-compatible servers reading
+    chat_template_kwargs.enable_thinking) rather than the plain "qwen" or
+    default OpenAI reasoning_effort mapping, matching what's actually
+    served on this box. Verified 2026-07-28 via a live smoke test against
+    the standing qwen3.5-4b-judge service: real tool call (read), real
+    litellm-routed completion with visible thinking blocks, clean process
+    exit.
+  wall_clock_ceiling_s: 2700
+  # Same 45min self-enforced ceiling as the opencode sibling and for the
+  # identical reason: Pi has no documented built-in exit-code/timeout/
+  # max-turns guarantee either (confirmed during M-021 design research).
+  cold_run: true
+  workspace_isolation: >
+    Identical scheme to the opencode sibling benchmark_id — fresh temp dir
+    per run, only starter/ (never hidden/) copied in before the session
+    (or a freshly-reset local-ai-machine-test clone for git-pr-ci-v1), no
+    documented sandboxing in Pi either (full filesystem/shell access by
+    default, confirmed via its own README during M-021 design — a known
+    community concern real enough that a third-party "pi-less-yolo" Docker
+    wrapper project exists specifically because of it), hidden/ copied in
+    or invoked only after the session ends, workspace deleted after
+    grading, transcript + grading result persisted under catalog/raw/.
+tasks:
+  docs-research-v1:
+    name: docs-research + implementation
+    what_it_tests: >
+      Same as the opencode sibling's docs-research-v1 entry — read
+      ledgerclient's DOCS.md retry/backoff contract and implement the
+      stubbed method to match it exactly, not a generic-good-practice
+      retry pattern.
+    grading: catalog/agentic-tasks/docs-research-v1/hidden/grade.py --workspace <ws> --json
+    metrics: [pass_count, total_count]  # out of 7
+  docker-lifecycle-v1:
+    name: docker container lifecycle + live-system validation
+    what_it_tests: >
+      Same as the opencode sibling's docker-lifecycle-v1 entry — fix an
+      infra-layer bug and an application-layer bug in a 2-service
+      docker-compose app, validate the fix against the real running stack.
+    grading: catalog/agentic-tasks/docker-lifecycle-v1/hidden/grade.py --workspace <ws> --project-name <run-id> --json
+    metrics: [pass_count, total_count]  # out of 5
+  git-pr-ci-v1:
+    name: real git/PR/CI workflow
+    what_it_tests: >
+      Same as the opencode sibling's git-pr-ci-v1 entry — implement
+      transfer_stock against the real chrisjohnson/local-ai-machine-test
+      repo, branch, PR, wait for real CI, merge. Same
+      reset_agentic_test_repo.sh before/after discipline applies regardless
+      of which harness is driving the session — the reset script and
+      hidden grader are harness-agnostic by design.
+    grading: catalog/agentic-tasks/git-pr-ci-v1/hidden/grade.py --repo chrisjohnson/local-ai-machine-test --json
+    metrics: [pass_count, total_count]  # out of 6
+    special_handling: >
+      Identical to the opencode sibling's entry — no starter/, real
+      harness-reset GitHub repo instead, reset both immediately before and
+      immediately after every run regardless of harness or outcome, and
+      grading always runs before the post-run reset.
+metrics_schema:
+  - "pass_count / total_count per task (docs_research, docker_lifecycle, git_pr_ci)"
+  - "wall_clock_s per task — recorded regardless of pass/fail/timeout"
+  - "terminated_reason per task: completed | timeout | error"
+  - "transcript_raw_file per task — full session log path under catalog/raw/,"
+  - "  every message/tool-call/thinking-block event Pi's --mode json emits"
+  - "harness: \"pi\" (fixed for this benchmark_id; the sibling"
+  - "  agentic-coding-session-opencode-v1 records \"opencode\" for the"
+  - "  identical tasks)"
+known_caveats:
+  - "Neither opencode nor Pi has a documented exit-code, max-turns, or
+     built-in timeout guarantee (confirmed during M-021 design research,
+     2026-07-28) — see the opencode sibling's identical caveat, applies
+     word-for-word here."
+  - "Pi has no documented sandboxing (full filesystem/shell access by
+     default, confirmed via its own README) — same reliance on the
+     scratch-workspace-per-run design as the opencode sibling; never assume
+     Pi will self-restrict scope."
+  - "Pi's provider config lives in one shared, non-namespaced
+     ~/.pi/agent/models.json — correctness of this benchmark_id depends on
+     the harness script actually rewriting that file immediately before
+     every run (not just once at startup) and on runs never actually
+     overlapping in time on the same box/user. If this benchmark is ever
+     parallelized across concurrent runs on the same machine in the
+     future, this file needs a real per-run isolation mechanism (e.g. a
+     per-run HOME override) before that's safe — not assumed solved by
+     this v1."
+  - "The npm package name used here, @mariozechner/pi-coding-agent, prints
+     a deprecation notice on install pointing at @earendil-works/pi-coding-agent
+     as its replacement (observed 2026-07-28 during harness setup) — kept
+     the originally-researched package name for this v1 since it's still
+     published and functional, but a future version bump should check
+     whether the earendil-works fork/rename is now the maintained one
+     before blindly re-installing the same package name again."
+  - "git-pr-ci-v1's long-lived/shared-state caveat (see the opencode
+     sibling's entry) applies identically here — this benchmark_id's
+     numbers are only trustworthy if the pre-run reset actually happened."
+  - "opencode vs. Pi comparisons should be read as harness comparisons, not
+     purely model comparisons — see the opencode sibling's identical note."
+version_history:
+  - v1: "2026-07-28 — initial version, tracking agentic-coding-session-opencode-v1's
+         v1 exactly (same 3 tasks, same 45min ceiling, same transcript-capture
+         requirement). Smoke-tested end-to-end against qwen3.5-4b-judge
+         before the first real matrix run."

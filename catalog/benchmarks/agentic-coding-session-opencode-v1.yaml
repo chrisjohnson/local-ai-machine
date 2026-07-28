@@ -1,0 +1,167 @@
+id: agentic-coding-session-opencode-v1
+sibling: agentic-coding-session-pi-v1
+# Same tasks, same grading, same metrics_schema as the sibling file — the
+# only difference is which headless agent harness drives the session
+# (opencode here, Pi in the sibling). Recorded as two independently
+# trackable benchmark_ids (M-023's expected_benchmark_ids()/
+# missing_benchmark_ids() registry) rather than one merged id, specifically
+# so the two harnesses are directly comparable side by side, not averaged
+# away — see M-021 (.fleet/board/now/M-021-agentic-coding-session-benchmark.md)
+# for the full design history/decision log this file distills.
+applies_to: [vllm, llamacpp, ollama]
+# Every engine family litellm can route to — the harness talks to the
+# model exclusively through the litellm proxy's OpenAI-compatible endpoint
+# (docker/litellm/config.yaml aliases), so it's agnostic to which engine is
+# actually serving that alias underneath.
+tool: scripts/agentic_coding_benchmark.py
+description: >
+  Real agentic-coding-session benchmark: opencode (github.com/sst/opencode)
+  driven headless against a candidate model via the litellm proxy, given a
+  realistic multi-step DevOps-flavored task (not a synthetic single-file
+  code-fix) with full autonomous filesystem/shell/tool access inside an
+  isolated per-run scratch workspace. This is Chris's headline/primary
+  benchmark metric (his words: "the underlying benchmark data so far has
+  really just been the foundation") — it measures the thing he actually
+  does day to day: an agent researching documentation, reading a codebase,
+  planning changes, opening/merging real PRs and watching CI, and
+  connecting to real running systems (docker containers) to validate a fix
+  actually works. Objective, percent-based grading via hidden checks that
+  are never visible to the agent during its session (see
+  catalog/agentic-tasks/*/README.md for the exact starter/hidden split
+  per task).
+methodology:
+  harness: opencode
+  harness_invocation: >
+    opencode run --model litellm/<alias> --format json --auto "<task.md prompt>"
+    run with cwd = the per-run scratch workspace. --format json captures the
+    full raw JSON event stream (every step/tool-call/message), not a
+    formatted summary. --auto auto-approves permissions that aren't
+    explicitly denied — required for unattended headless operation, since
+    there's no TTY to answer an interactive permission prompt and opencode
+    has no other documented headless-approval mechanism.
+  provider_config: >
+    A per-run opencode.json (project-root, i.e. workspace-root, config —
+    opencode discovers it from cwd) registers a custom "litellm" provider
+    via the @ai-sdk/openai-compatible adapter: options.baseURL points at
+    the litellm proxy (http://127.0.0.1:4000/v1), options.apiKey is the
+    litellm master key (read from docker/.env on the box at harness
+    runtime, never hardcoded/committed), and a single models{} entry names
+    exactly the candidate model's litellm alias for that run — regenerated
+    fresh before every run so a stale entry from a prior model's run can
+    never leak into the next one. Verified 2026-07-28 via a live smoke
+    test against the standing qwen3.5-4b-judge service: real tool call
+    (read), real litellm-routed completion, clean process exit.
+  wall_clock_ceiling_s: 2700
+  # 45 minutes, self-enforced by the harness (Python subprocess timeout +
+  # hard SIGKILL on expiry) — neither opencode nor Pi has a documented
+  # built-in exit-code/timeout/max-turns guarantee (confirmed during M-021
+  # design), so this is an external safety net, not a tool-native flag.
+  # Chris's explicit instruction: generous, not stingy — real interactive
+  # sessions with qwen3.6-35b-a3b already ran 15+ minutes; don't compromise
+  # task richness or budget to save GPU time.
+  cold_run: true
+  workspace_isolation: >
+    Fresh temp dir per run. Only the target task's starter/ contents (never
+    hidden/) are copied in before the session starts (or, for git-pr-ci-v1,
+    the harness instead clones a freshly-reset copy of the real
+    local-ai-machine-test GitHub repo — no starter/ directory exists for
+    that task since the real repo IS the workspace substrate). hidden/
+    grading artifacts are copied in (or invoked from outside, pointed at
+    the workspace) only strictly after the session has ended or been
+    killed on timeout — never before, never concurrently. The workspace is
+    deleted after grading; the raw transcript log and grading result
+    persist under catalog/raw/.
+tasks:
+  docs-research-v1:
+    name: docs-research + implementation
+    what_it_tests: >
+      Read a non-obvious, prose-only documented HTTP retry/backoff contract
+      (ledgerclient's DOCS.md) and implement a stubbed client method to
+      match it exactly — a generic-good-practice retry implementation
+      scores 5/7, not 7/7, so this genuinely discriminates "read the docs"
+      from "wrote plausible code."
+    grading: catalog/agentic-tasks/docs-research-v1/hidden/grade.py --workspace <ws> --json
+    metrics: [pass_count, total_count]  # out of 7
+  docker-lifecycle-v1:
+    name: docker container lifecycle + live-system validation
+    what_it_tests: >
+      Build/start a broken 2-service docker-compose app, diagnose and fix
+      one infra-layer bug (misconfigured BACKEND_URL port) and one
+      application-layer bug (inverted /top sort order) that only shows up
+      under real request/response inspection, then validate the fix by
+      actually hitting the running system with real HTTP requests.
+    grading: catalog/agentic-tasks/docker-lifecycle-v1/hidden/grade.py --workspace <ws> --project-name <run-id> --json
+    metrics: [pass_count, total_count]  # out of 5
+  git-pr-ci-v1:
+    name: real git/PR/CI workflow
+    what_it_tests: >
+      Implement a documented-contract method (transfer_stock) against a
+      real long-lived shared GitHub repo (chrisjohnson/local-ai-machine-test),
+      branch, push, open a PR, wait for real GitHub Actions CI to run and
+      pass, then merge — the harness resets that repo to its `baseline` tag
+      via scripts/reset_agentic_test_repo.sh both BEFORE (clean start) and
+      AFTER (no stray branches/PRs leak into the next model's run,
+      including on a crashed/timed-out run) every single run, model, and
+      harness. Grading queries the real GitHub API/a fresh clone of current
+      main after the session — not the agent's local workspace, which is
+      never trusted directly for this task's scoring.
+    grading: catalog/agentic-tasks/git-pr-ci-v1/hidden/grade.py --repo chrisjohnson/local-ai-machine-test --json
+    metrics: [pass_count, total_count]  # out of 6
+    special_handling: >
+      No starter/ directory — the agent works directly against a fresh
+      clone of the real, harness-reset GitHub repo instead of a local
+      scratch scaffold. reset_agentic_test_repo.sh must run immediately
+      before AND immediately after this task's session, every time,
+      regardless of whether the session completed/errored/timed out —
+      grading must also run strictly BEFORE the post-run reset (grading
+      reads GitHub history the reset would destroy).
+metrics_schema:
+  - "pass_count / total_count per task (docs_research, docker_lifecycle, git_pr_ci)"
+  - "wall_clock_s per task — recorded regardless of pass/fail/timeout, so a"
+  - "  slow-but-eventually-correct run is distinguishable from a real timeout"
+  - "terminated_reason per task: completed | timeout | error"
+  - "transcript_raw_file per task — full session log path under catalog/raw/,"
+  - "  every tool call/message/event, not a summary (Chris's explicit ask —"
+  - "  disk is cheap, this also seeds his longer-term plan of benchmarking"
+  - "  models against captured real work sessions, not just synthetic tasks)"
+  - "harness: \"opencode\" (fixed for this benchmark_id; the sibling"
+  - "  agentic-coding-session-pi-v1 records \"pi\" for the identical tasks)"
+known_caveats:
+  - "Neither opencode nor Pi has a documented exit-code, max-turns, or
+     built-in timeout guarantee (confirmed during M-021 design research,
+     2026-07-28) — the harness's externally-enforced 45min wall-clock
+     ceiling is a safety net for a genuinely hung/looping session, not a
+     substitute for the tool's own judgment about when it's done. A model
+     that finishes in 3 minutes and one that runs the full 45 and gets
+     hard-killed both produce a pass_count/total_count + wall_clock_s, but
+     only terminated_reason distinguishes them — always read wall_clock_s
+     and terminated_reason together, never pass_count alone."
+  - "opencode has full, unsandboxed filesystem/shell access inside whatever
+     directory it's pointed at (documented behavior, not a bug) — the
+     scratch-workspace-per-run design is the ONLY isolation boundary this
+     benchmark relies on. Never assume opencode will self-restrict scope,
+     and never point it at anything outside the intended workspace (or, for
+     git-pr-ci-v1, anything beyond the intentionally-disposable
+     local-ai-machine-test repo)."
+  - "git-pr-ci-v1 is long-lived/shared state, not a fresh disposable repo
+     per run — a grader (or a harness bug) that doesn't filter GitHub
+     history to what's actually reachable from main's CURRENT tip can give
+     false credit for a PRIOR run's merge (real bug found and fixed during
+     that task's own construction, see its hidden/grade.py's
+     is_ancestor_of_main). This benchmark_id's numbers are only trustworthy
+     if reset_agentic_test_repo.sh actually ran immediately before the
+     session started for that run — a harness bug that skips the pre-run
+     reset would silently let one model's leftover branch/PR state bleed
+     into the next model's attempt."
+  - "opencode vs. Pi comparisons should be read as harness comparisons, not
+     purely model comparisons — a gap between the two benchmark_ids for the
+     same model reflects real differences in how each harness prompts,
+     tools, and drives the underlying model, which is specifically what
+     Chris wants visible (his explicit ask, not an artifact to normalize
+     away)."
+version_history:
+  - v1: "2026-07-28 — initial version. 3 tasks (docs-research-v1,
+         docker-lifecycle-v1, git-pr-ci-v1), 45min wall-clock ceiling per
+         task, full transcript capture, opencode harness via a per-run
+         custom litellm provider config. Smoke-tested end-to-end against
+         qwen3.5-4b-judge before the first real matrix run."
