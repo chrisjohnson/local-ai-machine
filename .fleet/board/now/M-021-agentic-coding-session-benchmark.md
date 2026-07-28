@@ -100,52 +100,61 @@ Concretely still being worked out (see open question below), but shape:
    objective checks against real runtime state at each stage, not just
    final files.
 
-## Open question — needs Chris's call before implementation starts
+## Git/PR/CI substrate — decided
 
-**Git/PR/CI substrate for task 2 (and the "workflows" mention in #6):**
-"Workflows" strongly implies real CI (GitHub Actions), not a fake stand-in.
-Two real options:
-- **Disposable GitHub repo(s)** — most representative (it's literally what
-  he uses), but means creating real external GitHub resources under his
-  account, needing either a repo reset between every model's run or fresh
-  repos per run (churn/cleanup to manage), and giving opencode a real
-  GitHub token scoped to it during the benchmark.
-- **Self-hosted Gitea** (or similar), run as a disposable docker container —
-  Gitea supports Actions using GitHub-Actions-compatible workflow YAML, so
-  the agent still gets a real "push → PR → CI runs → merge" loop, fully
-  local/disposable, no external account resources touched, trivial to
-  reset between runs (blow away the container/volume).
-Leaning Gitea for the default recommendation (same mechanics, zero external
-footprint, easy reset) but this is Chris's call, not an assumption to bake
-in silently.
+**Real GitHub, one long-lived shared repo**, not per-run disposable, not
+self-hosted Gitea. Created 2026-07-28:
+`https://github.com/chrisjohnson/local-ai-machine-test` (private).
+
+Chris's explicit clarification: this is **one repo shared across every
+task run, that he will not clean up himself** — the harness owns resetting
+it to a clean baseline before/after each model's run, not Chris. Concretely
+this means the harness needs a reset routine as a first-class piece of the
+task-2 implementation:
+- A known-good baseline (e.g. a `template` branch or tagged commit)
+  representing the pristine starting state (scaffold files, docs, starter
+  CI workflow).
+- Before each model's run: force-reset the default branch to that baseline,
+  delete any branches left over from the previous run, close/delete any
+  stray open PRs — via `git push --force` + `gh pr list`/`gh pr close` +
+  `git push origin --delete <branch>` (exact mechanism TBD during
+  implementation, not fully speced yet).
+- Auth: still open how the box/opencode authenticates against this repo
+  (the existing GitHub deploy key for `local-ai-machine` itself is
+  per-repo and won't cover this new one) — likely a separate deploy key or
+  scoped PAT for `local-ai-machine-test` specifically. Needs resolving
+  during harness implementation, not blocking further design work.
 
 ## Plan
 <!-- ordered checklist -->
-1. [ ] Get Chris's call on the git/PR/CI substrate question above before
-   building task 2's scaffold.
+1. [x] Get Chris's call on the git/PR/CI substrate question — real GitHub,
+   one shared long-lived repo, harness-owned reset (see above).
 2. [ ] Research opencode headless invocation mechanics: exact `opencode run`
    flags/exit codes/output format, full session transcript/log capture
    format, how to target a specific provider/model per invocation without
    interactive `/models`, and whether tool-call/turn counts are exposed
    anywhere parseable.
-3. [ ] Build the 3 task scaffolds (docs-research, git/PR/CI, docker
+3. [ ] Set up `local-ai-machine-test` repo auth (deploy key or scoped PAT,
+   separate from the main repo's key) and the baseline/reset mechanism
+   (template branch, reset routine).
+4. [ ] Build the 3 task scaffolds (docs-research, git/PR/CI, docker
    lifecycle) under `catalog/agentic-tasks/`, each with hidden grading
    checks that live outside the agent's workspace until graded.
-4. [ ] Build the harness script (e.g. `scripts/agentic_coding_benchmark.py`):
-   per task/model, clean workspace + any needed disposable
-   infra (git remote, docker sandbox), run opencode headless with a 45min
-   ceiling, capture full session log, grade via hidden checks after the
-   fact, record pass_count/total_count + wall-clock + full log path.
-5. [ ] New methodology file `catalog/benchmarks/agentic-coding-session-v1.yaml`
+5. [ ] Build the harness script (e.g. `scripts/agentic_coding_benchmark.py`):
+   per task/model, clean workspace + reset the shared test repo/any docker
+   sandbox to baseline, run opencode headless with a 45min ceiling, capture
+   full session log, grade via hidden checks after the fact, record
+   pass_count/total_count + wall-clock + full log path.
+6. [ ] New methodology file `catalog/benchmarks/agentic-coding-session-v1.yaml`
    documenting harness, tasks, grading, metrics_schema — matching the
    existing `seven-tier-coding-v2.yaml` style.
-6. [ ] Wire into `scripts/benchmark_orchestrator.py` — new benchmark_id,
+7. [ ] Wire into `scripts/benchmark_orchestrator.py` — new benchmark_id,
    relies on M-023's `expected_benchmark_ids`/`missing_benchmark_ids`
-   registry (PR #3) for correct idempotent pickup across already-benchmarked
-   builds, appropriate GPU-contention sequencing.
-7. [ ] Smoke test against 1-2 already-benchmarked models before running the
+   registry (PR #3, merged) for correct idempotent pickup across
+   already-benchmarked builds, appropriate GPU-contention sequencing.
+8. [ ] Smoke test against 1-2 already-benchmarked models before running the
    full matrix.
-8. [ ] Dashboard: make this the headline/primary-sort metric — confirmed
+9. [ ] Dashboard: make this the headline/primary-sort metric — confirmed
    direction, exact visual treatment still open, revisit once data shape
    is known.
 
@@ -164,12 +173,16 @@ in silently.
   points 1-7). Major revision: task scope significantly widened from 3 toy
   scaffolded-repo tasks to a realistic docs/git-PR-CI/docker-lifecycle loop
   per Chris's actual described workflow. Per-task budget raised 10min ->
-  45min. Full session transcript capture required, not just metrics. One
-  new open question (git/PR/CI substrate: disposable GitHub vs. self-hosted
-  Gitea) needs Chris's answer before task 2's scaffold can be built.
+  45min. Full session transcript capture required, not just metrics.
+- 2026-07-28 — Git/PR/CI substrate decided: real GitHub, not Gitea. Created
+  `github.com/chrisjohnson/local-ai-machine-test` (private). Chris clarified
+  it's one long-lived repo shared across all runs that he won't clean up —
+  the harness must own resetting it to baseline before/after every model's
+  run, not a per-run disposable repo as originally sketched.
 
 ## Handoff notes
 <!-- what's half-done, what the next agent picking this up should do first. -->
-Not started. Next step is getting Chris's answer on the git/PR/CI substrate
-question, then starting opencode headless-mechanics research in parallel
-(doesn't depend on that answer).
+Not started. Repo created and git/PR/CI substrate decision made. Next real
+step is step 2 (opencode headless-mechanics research) and step 3 (repo auth
++ baseline/reset mechanism design) — can proceed in parallel, neither
+blocks the other.
