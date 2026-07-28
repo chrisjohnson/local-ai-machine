@@ -58,11 +58,28 @@ DOCKER_DIR = Path.home() / "local-ai-machine" / "docker"
 SCRIPTS_DIR = REPO_ROOT / "scripts"
 MODELS_ROOT = Path("/var/lib/ai-models")
 
+# agentic_coding_benchmark.py lives alongside this file in scripts/ and is
+# explicitly designed to be imported as a library by this orchestrator (see
+# its own module docstring) — sys.path insert so `import
+# agentic_coding_benchmark` resolves regardless of the caller's cwd (this
+# script is sometimes invoked with cwd = REPO_ROOT, not SCRIPTS_DIR).
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+import agentic_coding_benchmark as agentic_bench  # noqa: E402
+
 VLLM_SPEED_BENCHMARK_ID = "vllm-speed-c1c8-v2"
 CODING_BENCHMARK_ID = "seven-tier-coding-v2"
 LLAMACPP_BENCH_ID = "llamacpp-bench-v1"
 LLAMACPP_SERVER_CONCURRENT_ID = "llamacpp-server-concurrent-v1"
 OLLAMA_WARM_REQUEST_ID = "ollama-warm-request-v2"
+AGENTIC_OPENCODE_ID = "agentic-coding-session-opencode-v1"
+AGENTIC_PI_ID = "agentic-coding-session-pi-v1"
+# Both apply to every engine family (catalog/benchmarks/agentic-coding-session-
+# *-v1.yaml: applies_to: [vllm, llamacpp, ollama]) — the harness talks to the
+# candidate model exclusively through the litellm proxy's OpenAI-compatible
+# endpoint, so it's agnostic to which engine is actually serving that alias
+# underneath (same reasoning as run_coding_harness above).
+AGENTIC_BENCHMARK_IDS = [AGENTIC_OPENCODE_ID, AGENTIC_PI_ID]
 
 OLLAMA_CONTAINER = "ollama"
 OLLAMA_PORT = 11434
@@ -160,14 +177,14 @@ def expected_benchmark_ids(build: dict, family: str) -> list:
     no other call site needs to change, this function is the only registry.
     """
     if family == "vllm":
-        return [VLLM_SPEED_BENCHMARK_ID, CODING_BENCHMARK_ID]
+        return [VLLM_SPEED_BENCHMARK_ID, CODING_BENCHMARK_ID, *AGENTIC_BENCHMARK_IDS]
     if family == "llamacpp":
-        ids = [LLAMACPP_BENCH_ID, CODING_BENCHMARK_ID]
+        ids = [LLAMACPP_BENCH_ID, CODING_BENCHMARK_ID, *AGENTIC_BENCHMARK_IDS]
         if build.get("engine") == "llamacpp-vulkan-radv-server-v1":
             ids.append(LLAMACPP_SERVER_CONCURRENT_ID)
         return ids
     if family == "ollama":
-        return [OLLAMA_WARM_REQUEST_ID]
+        return [OLLAMA_WARM_REQUEST_ID, *AGENTIC_BENCHMARK_IDS]
     return []
 
 
@@ -833,6 +850,49 @@ def run_coding_harness(build_id, base_url, served_name, timestamp, dry_run):
     }
 
 
+AGENTIC_HARNESS_FOR_ID = {AGENTIC_OPENCODE_ID: "opencode", AGENTIC_PI_ID: "pi"}
+
+
+def run_agentic_tasks(build_id, benchmark_id, base_url, served_name, dry_run):
+    """Runs all 3 agentic-coding-session tasks (docs-research-v1,
+    docker-lifecycle-v1, git-pr-ci-v1) for one harness
+    (opencode/agentic-coding-session-opencode-v1 or
+    pi/agentic-coding-session-pi-v1), via agentic_coding_benchmark.py's own
+    library entrypoint (run_all_tasks — imported directly, not shelled out,
+    per that script's own module docstring: "Normal usage is as a library,
+    imported by scripts/benchmark_orchestrator.py").
+
+    This is a genuinely long-running leg — up to 45min/task x 3 tasks =
+    2h15m worst case per harness, per M-021's wall-clock ceiling — so unlike
+    the other legs in this file it is NOT bounded by an additional outer
+    subprocess timeout here: agentic_coding_benchmark.py already
+    self-enforces the per-task 45min ceiling internally (run_harness_process),
+    so there is no unbounded-hang risk left for this call to guard against.
+
+    Returns a dict shaped for a benchmark_runs[] entry's `result` field:
+    one entry per task_id with pass_count/total_count/wall_clock_s/
+    terminated_reason/transcript_raw_file, matching the methodology YAMLs'
+    metrics_schema.
+    """
+    harness = AGENTIC_HARNESS_FOR_ID[benchmark_id]
+    log(f"[{build_id}] Running {benchmark_id} (harness={harness}) against {base_url} model={served_name} — "
+        f"3 tasks, up to {agentic_bench.WALL_CLOCK_CEILING_S}s each.")
+    if dry_run:
+        log(f"[dry-run] would run agentic_coding_benchmark.run_all_tasks(harness={harness!r}, "
+            f"build_id={build_id!r}, base_url={base_url!r}, served_name={served_name!r}) "
+            f"across tasks {agentic_bench.TASK_IDS}")
+        return None
+
+    task_results = agentic_bench.run_all_tasks(
+        harness=harness, build_id=build_id, base_url=base_url, served_name=served_name,
+    )
+    result = {r["task_id"]: r for r in task_results}
+    for task_id, r in result.items():
+        log(f"[{build_id}] {benchmark_id}/{task_id}: {r['pass_count']}/{r['total_count']} "
+            f"({r['terminated_reason']}, {r['wall_clock_s']:.0f}s)")
+    return result
+
+
 CORRECTNESS_PROMPTS = [
     ("what is 17*23? Answer with just the number.", "391"),
     ("what is the capital of France? Answer with just the city name.", "paris"),
@@ -980,6 +1040,8 @@ def process_vllm_build(build_id, build_path, build, dry_run, downloads_paused, k
 
         speed_already_done = already_has_run(build, VLLM_SPEED_BENCHMARK_ID)
         coding_already_done = already_has_run(build, CODING_BENCHMARK_ID)
+        opencode_already_done = already_has_run(build, AGENTIC_OPENCODE_ID)
+        pi_already_done = already_has_run(build, AGENTIC_PI_ID)
 
         speed_result = None
         if speed_already_done:
@@ -994,6 +1056,28 @@ def process_vllm_build(build_id, build_path, build, dry_run, downloads_paused, k
             log(f"[{build_id}] {CODING_BENCHMARK_ID} already recorded — skipping coding harness, not re-running.")
         else:
             coding_result = run_coding_harness(build_id, f"http://localhost:{port}", served_name, timestamp, dry_run)
+
+        # Agentic-coding-session tasks (M-021) — both harnesses, same
+        # base_url/served_name as the coding harness above (this script is
+        # explicitly agnostic to litellm-vs-direct-engine-port per its own
+        # module docstring). Genuinely long-running (up to 45min/task x 3
+        # tasks per harness) — run after the cheaper legs above so a speed/
+        # coding regression is caught before paying for the expensive legs.
+        opencode_result = None
+        if opencode_already_done:
+            log(f"[{build_id}] {AGENTIC_OPENCODE_ID} already recorded — skipping, not re-running.")
+        else:
+            opencode_result = run_agentic_tasks(
+                build_id, AGENTIC_OPENCODE_ID, f"http://localhost:{port}", served_name, dry_run,
+            )
+
+        pi_result = None
+        if pi_already_done:
+            log(f"[{build_id}] {AGENTIC_PI_ID} already recorded — skipping, not re-running.")
+        else:
+            pi_result = run_agentic_tasks(
+                build_id, AGENTIC_PI_ID, f"http://localhost:{port}", served_name, dry_run,
+            )
 
         window_end = utcnow_iso()
         fingerprint = build_fingerprint_base(kernel, repo_commit, gpu_driver, "n/a", window_start)
@@ -1022,6 +1106,22 @@ def process_vllm_build(build_id, build_path, build, dry_run, downloads_paused, k
                 "result": coding_result,
             })
             benchmarks_run.append(CODING_BENCHMARK_ID)
+        if not opencode_already_done:
+            append_benchmark_run(build_path, {
+                "timestamp": window_start,
+                "benchmark_id": AGENTIC_OPENCODE_ID,
+                "fingerprint": fingerprint,
+                "result": opencode_result,
+            })
+            benchmarks_run.append(AGENTIC_OPENCODE_ID)
+        if not pi_already_done:
+            append_benchmark_run(build_path, {
+                "timestamp": window_start,
+                "benchmark_id": AGENTIC_PI_ID,
+                "fingerprint": fingerprint,
+                "result": pi_result,
+            })
+            benchmarks_run.append(AGENTIC_PI_ID)
 
         if benchmarks_run:
             raw_new_files = list(RAW_DIR.glob(f"{build_id}--*{timestamp}*"))
@@ -1063,6 +1163,8 @@ def process_llamacpp_build(build_id, build_path, build, dry_run, downloads_pause
     bench_already_done = already_has_run(build, LLAMACPP_BENCH_ID)
     concurrent_already_done = already_has_run(build, LLAMACPP_SERVER_CONCURRENT_ID)
     coding_already_done = already_has_run(build, CODING_BENCHMARK_ID)
+    opencode_already_done = already_has_run(build, AGENTIC_OPENCODE_ID)
+    pi_already_done = already_has_run(build, AGENTIC_PI_ID)
 
     try:
         entries_to_append = []
@@ -1097,7 +1199,9 @@ def process_llamacpp_build(build_id, build_path, build, dry_run, downloads_pause
         # model load + GPU work just to re-derive nothing new).
         need_concurrent = is_server_variant and not concurrent_already_done
         need_coding = not coding_already_done
-        if not need_concurrent and not need_coding:
+        need_opencode = not opencode_already_done
+        need_pi = not pi_already_done
+        if not need_concurrent and not need_coding and not need_opencode and not need_pi:
             log(f"[{build_id}] All applicable leg-2 benchmarks already recorded — skipping llama-server entirely.")
         else:
             model_dir = Path(build["model"]["local_path"]).name
@@ -1150,6 +1254,42 @@ def process_llamacpp_build(build_id, build_path, build, dry_run, downloads_pause
                     })
                 else:
                     log(f"[{build_id}] {CODING_BENCHMARK_ID} already recorded — skipping coding harness, not re-running.")
+
+                # Agentic-coding-session tasks (M-021), both harnesses —
+                # same base_url/served_name as the coding harness above.
+                # These are genuinely long-running (up to 45min/task x 3
+                # tasks per harness), run last since they're the most
+                # expensive legs and everything cheaper should be recorded
+                # first in case of an interrupted run.
+                if need_opencode:
+                    opencode_result = run_agentic_tasks(
+                        build_id, AGENTIC_OPENCODE_ID, base_url, served_name or "default", dry_run,
+                    )
+                    fp_opencode = dict(fp_server)
+                    fp_opencode["host_metrics_window"] = {"start": fp_server["host_metrics_window"]["start"], "end": utcnow_iso()}
+                    entries_to_append.append({
+                        "timestamp": window_start,
+                        "benchmark_id": AGENTIC_OPENCODE_ID,
+                        "fingerprint": fp_opencode,
+                        "result": opencode_result,
+                    })
+                else:
+                    log(f"[{build_id}] {AGENTIC_OPENCODE_ID} already recorded — skipping, not re-running.")
+
+                if need_pi:
+                    pi_result = run_agentic_tasks(
+                        build_id, AGENTIC_PI_ID, base_url, served_name or "default", dry_run,
+                    )
+                    fp_pi = dict(fp_server)
+                    fp_pi["host_metrics_window"] = {"start": fp_server["host_metrics_window"]["start"], "end": utcnow_iso()}
+                    entries_to_append.append({
+                        "timestamp": window_start,
+                        "benchmark_id": AGENTIC_PI_ID,
+                        "fingerprint": fp_pi,
+                        "result": pi_result,
+                    })
+                else:
+                    log(f"[{build_id}] {AGENTIC_PI_ID} already recorded — skipping, not re-running.")
             finally:
                 stop_llama_server(container)
 
@@ -1285,18 +1425,21 @@ def process_ollama_build(build_id, build_path, build, dry_run, downloads_paused,
             f"{served_name} on the standing ollama container, then restore stack")
         return
 
-    # Only one benchmark_id is currently expected for Ollama builds
-    # (expected_benchmark_ids()), so "nothing missing" and "the one id is
-    # already done" are equivalent today — but derive from the shared
-    # missing_benchmark_ids() registry (not the raw constant directly) so
-    # this stays correct without a rewrite if/when a second Ollama
-    # benchmark_id is added: at that point this still needs to become a
-    # per-id gate (mirroring process_vllm_build/process_llamacpp_build)
-    # before actually running each leg, not just this early-return check.
+    # Per-benchmark-id idempotency (M-023 pattern, matching
+    # process_vllm_build/process_llamacpp_build) — Ollama used to have only
+    # one expected benchmark_id so an early-return on missing_benchmark_ids()
+    # was equivalent to per-id gating; that stopped being true once the two
+    # agentic-coding-session ids were added to expected_benchmark_ids() for
+    # this family too (M-021), so this is now a real per-id gate rather than
+    # a single early return.
     if not missing_benchmark_ids(build, "ollama"):
-        log(f"[{build_id}] {OLLAMA_WARM_REQUEST_ID} already recorded — nothing to do "
+        log(f"[{build_id}] All expected Ollama benchmark_ids already recorded — nothing to do "
             f"(shouldn't normally reach here; the plan-level skip should have caught this).")
         return
+
+    warm_already_done = already_has_run(build, OLLAMA_WARM_REQUEST_ID)
+    opencode_already_done = already_has_run(build, AGENTIC_OPENCODE_ID)
+    pi_already_done = already_has_run(build, AGENTIC_PI_ID)
 
     check_no_other_benchmark_activity()
     previously_running = find_running_vllm_services()
@@ -1307,7 +1450,34 @@ def process_ollama_build(build_id, build_path, build, dry_run, downloads_paused,
         engine_ver = ollama_version()
         digest = ollama_image_digest()
 
-        result = run_ollama_warm_request(build_id, served_name, timestamp, dry_run)
+        result = None
+        if warm_already_done:
+            log(f"[{build_id}] {OLLAMA_WARM_REQUEST_ID} already recorded — skipping warm-request trials, not re-running.")
+        else:
+            result = run_ollama_warm_request(build_id, served_name, timestamp, dry_run)
+
+        # Agentic-coding-session tasks (M-021) — Ollama exposes an
+        # OpenAI-compatible endpoint at /v1 on the same port as its native
+        # /api/generate (documented Ollama behavior), which is what
+        # opencode/pi's provider config needs. Run after the cheap warm-
+        # request leg above, same "cheaper legs first" reasoning as the
+        # other two families.
+        ollama_openai_base_url = f"http://localhost:{OLLAMA_PORT}/v1"
+        opencode_result = None
+        if opencode_already_done:
+            log(f"[{build_id}] {AGENTIC_OPENCODE_ID} already recorded — skipping, not re-running.")
+        else:
+            opencode_result = run_agentic_tasks(
+                build_id, AGENTIC_OPENCODE_ID, ollama_openai_base_url, served_name, dry_run,
+            )
+
+        pi_result = None
+        if pi_already_done:
+            log(f"[{build_id}] {AGENTIC_PI_ID} already recorded — skipping, not re-running.")
+        else:
+            pi_result = run_agentic_tasks(
+                build_id, AGENTIC_PI_ID, ollama_openai_base_url, served_name, dry_run,
+            )
 
         window_end = utcnow_iso()
         fingerprint = build_fingerprint_base(kernel, repo_commit, gpu_driver, "n/a", window_start)
@@ -1319,19 +1489,41 @@ def process_ollama_build(build_id, build_path, build, dry_run, downloads_paused,
             "vllm_co_resident_or_stopped": "stopped_for_run",
         }
 
-        append_benchmark_run(build_path, {
-            "timestamp": window_start,
-            "benchmark_id": OLLAMA_WARM_REQUEST_ID,
-            "fingerprint": fingerprint,
-            "result": result,
-        })
+        benchmarks_run = []
+        if not warm_already_done:
+            append_benchmark_run(build_path, {
+                "timestamp": window_start,
+                "benchmark_id": OLLAMA_WARM_REQUEST_ID,
+                "fingerprint": fingerprint,
+                "result": result,
+            })
+            benchmarks_run.append(OLLAMA_WARM_REQUEST_ID)
+        if not opencode_already_done:
+            append_benchmark_run(build_path, {
+                "timestamp": window_start,
+                "benchmark_id": AGENTIC_OPENCODE_ID,
+                "fingerprint": fingerprint,
+                "result": opencode_result,
+            })
+            benchmarks_run.append(AGENTIC_OPENCODE_ID)
+        if not pi_already_done:
+            append_benchmark_run(build_path, {
+                "timestamp": window_start,
+                "benchmark_id": AGENTIC_PI_ID,
+                "fingerprint": fingerprint,
+                "result": pi_result,
+            })
+            benchmarks_run.append(AGENTIC_PI_ID)
 
-        raw_new_files = list(RAW_DIR.glob(f"{build_id}--*{timestamp}*"))
-        git_commit_and_push(
-            [build_path, *raw_new_files],
-            f"Record {OLLAMA_WARM_REQUEST_ID} results for {build_id}",
-            dry_run=dry_run,
-        )
+        if benchmarks_run:
+            raw_new_files = list(RAW_DIR.glob(f"{build_id}--*{timestamp}*"))
+            git_commit_and_push(
+                [build_path, *raw_new_files],
+                f"Record {'/'.join(benchmarks_run)} results for {build_id}",
+                dry_run=dry_run,
+            )
+        else:
+            log(f"[{build_id}] All Ollama benchmarks already recorded — nothing new to commit (shouldn't normally reach here; the plan-level skip should have caught this).")
     finally:
         # Same reasoning as process_llamacpp_build: download resume is owned
         # by main()'s per-build loop, not here — exactly one resume per pause.
