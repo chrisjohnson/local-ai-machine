@@ -83,21 +83,11 @@ already-built harness/tasks stay valid as one useful (narrower) signal.
   foundational/important one than "delegation quality" in the abstract,
   since it's really testing basic instruction-following reliability under
   agentic conditions.
-- **Judge model — pending a tiebreak**: "best local model per Tier J
-  results" was confirmed as the approach, but Tier J
-  (`seven-tier-coding-v2`) currently has a 7-way tie at 8/8:
-  `qwen3.6-27b--llamacpp-vulkan-radv-server-v1`,
-  `qwen3-coder-next-gptq4bit--vllm-therock-gfx1151-v1`,
-  `qwen2.5-vl-7b-instruct--vllm-therock-gfx1151-v1`,
-  `glm-4.7-flash--llamacpp-vulkan-radv-v1`,
-  `gemma-4-31b-it--vllm-therock-gfx1151-v1`,
-  `gemma-4-26b-a4b-it--vllm-therock-gfx1151-v1`,
-  `deepseek-v4-flash-iq2xxs--llamacpp-vulkan-radv-v1`. Sizes range from 7B
-  (`qwen2.5-vl-7b-instruct`) to 284B/13B-active
-  (`deepseek-v4-flash-iq2xxs`) — real tradeoff between judge-model cost
-  (competes for GPU budget alongside whatever's being tested) and judging
-  care for a nuanced multi-hour transcript. Chris's tiebreak call still
-  needed.
+- **Judge model — decided 2026-07-28**: `qwen2.5-vl-7b-instruct--vllm-therock-gfx1151-v1`
+  (7B). Tier J (`seven-tier-coding-v2`) had a 7-way tie at 8/8; Chris's
+  tiebreak call was "smallest that tied" — minimize GPU-budget competition
+  with whatever's being judged, over maximizing judge-model size/reasoning
+  depth.
 - Where does this fit relative to M-021 in build order — after M-021 fully
   ships, or can real design/build work start in parallel? Currently marked
   `blocked_by: M-021` as a placeholder; revisit once M-021 is fully done.
@@ -112,6 +102,13 @@ already-built harness/tasks stay valid as one useful (narrower) signal.
 6. [ ] Smoke test.
 7. [ ] Wire into `scripts/benchmark_orchestrator.py` (new benchmark_id(s),
    relies on M-023's idempotency registry, already merged).
+8. [ ] Dashboard: **must clearly delineate the LLM-judged portion of this
+   tier's score from the objective/concrete-signal portion** — never blend
+   them into one number or present them with equal-looking rigor. This is
+   the first time this project's dashboard has carried an LLM-judge-derived
+   metric at all (everything else, including M-021's own hidden-test
+   grading, is fully objective) — the visual/structural distinction needs
+   to be unmistakable, not a footnote.
 
 ## Signals
 <!-- append-only. Leave signals for other agents. Format:
@@ -127,6 +124,13 @@ already-built harness/tasks stay valid as one useful (narrower) signal.
   scale are decided, but the actual scenario/mandate, sub-agent-delegation
   mechanics, and judge rubric are still open — real design work, not yet
   scoped enough to plan concretely.
+- 2026-07-28 — Delegation mechanics decided (scripted stub tool, with an
+  explicit stated-intent-vs-actual-invocation fidelity check). Judge model
+  decided (`qwen2.5-vl-7b-instruct`, smallest of Tier J's 7-way tie at
+  8/8). Explicit dashboard requirement added: the LLM-judged component of
+  this tier's score must be visually/structurally distinguished from
+  objective signals, never blended — this is the first LLM-judge-derived
+  metric this project's dashboard will carry.
 
 ## Handoff notes
 <!-- what's half-done, what the next agent picking this up should do first. -->
