@@ -33,7 +33,19 @@ local-ai-machine/
 │   │                          # box's ~/.ssh/config.
 │   ├── wifi.env                # Fallback WiFi SSID/PSK (NetworkManager)
 │   ├── chris-password-hash.txt # Local console password fallback (SSH stays key-only)
-│   └── hf-token.env            # HuggingFace token, sourced at shell login for faster downloads
+│   ├── hf-token.env            # HuggingFace token, sourced at shell login for faster downloads
+│   └── gh-agentic-test-repo-token.env # Fine-grained GitHub PAT scoped ONLY to
+│                                # chrisjohnson/local-ai-machine-test (contents/
+│                                # pull-requests/actions: read+write). Used by
+│                                # scripts/reset_agentic_test_repo.sh and by the
+│                                # opencode/Pi agent CLIs during the git-pr-ci-v1
+│                                # agentic benchmark task (M-021). Deliberately
+│                                # separate from chris_github_key above — that
+│                                # key is Chris's own SSH key scoped by use to
+│                                # the main repo only and doesn't cover this
+│                                # second repo (GitHub deploy keys/SSH keys are
+│                                # per-repo in effect, so a new credential was
+│                                # needed rather than reusing it).
 # (public SSH keys, e.g. drew's, aren't secrets — they go inline in
 # configuration.nix as string literals, same as chris's, not in this directory)
 ├── docker/
