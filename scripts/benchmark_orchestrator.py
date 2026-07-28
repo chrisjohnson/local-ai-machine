@@ -66,6 +66,7 @@ MODELS_ROOT = Path("/var/lib/ai-models")
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 import agentic_coding_benchmark as agentic_bench  # noqa: E402
+import agentic_orchestration_benchmark as orch_bench  # noqa: E402
 
 VLLM_SPEED_BENCHMARK_ID = "vllm-speed-c1c8-v2"
 CODING_BENCHMARK_ID = "seven-tier-coding-v2"
@@ -80,6 +81,17 @@ AGENTIC_PI_ID = "agentic-coding-session-pi-v1"
 # endpoint, so it's agnostic to which engine is actually serving that alias
 # underneath (same reasoning as run_coding_harness above).
 AGENTIC_BENCHMARK_IDS = [AGENTIC_OPENCODE_ID, AGENTIC_PI_ID]
+
+# M-024: agentic-orchestration-session tier, separate from (complementary
+# to) the agentic-coding-session tier above — see catalog/benchmarks/
+# agentic-orchestration-session-v1.yaml and .fleet/board/now/
+# M-024-agentic-orchestration-session-benchmark.md for the full design.
+# Same applies_to (every engine family, litellm-agnostic) and the same
+# "own benchmark_id per harness, never merged" convention.
+ORCH_OPENCODE_ID = "agentic-orchestration-session-opencode-v1"
+ORCH_PI_ID = "agentic-orchestration-session-pi-v1"
+ORCH_BENCHMARK_IDS = [ORCH_OPENCODE_ID, ORCH_PI_ID]
+ORCH_HARNESS_FOR_ID = {ORCH_OPENCODE_ID: "opencode", ORCH_PI_ID: "pi"}
 
 OLLAMA_CONTAINER = "ollama"
 OLLAMA_PORT = 11434
@@ -177,14 +189,14 @@ def expected_benchmark_ids(build: dict, family: str) -> list:
     no other call site needs to change, this function is the only registry.
     """
     if family == "vllm":
-        return [VLLM_SPEED_BENCHMARK_ID, CODING_BENCHMARK_ID, *AGENTIC_BENCHMARK_IDS]
+        return [VLLM_SPEED_BENCHMARK_ID, CODING_BENCHMARK_ID, *AGENTIC_BENCHMARK_IDS, *ORCH_BENCHMARK_IDS]
     if family == "llamacpp":
-        ids = [LLAMACPP_BENCH_ID, CODING_BENCHMARK_ID, *AGENTIC_BENCHMARK_IDS]
+        ids = [LLAMACPP_BENCH_ID, CODING_BENCHMARK_ID, *AGENTIC_BENCHMARK_IDS, *ORCH_BENCHMARK_IDS]
         if build.get("engine") == "llamacpp-vulkan-radv-server-v1":
             ids.append(LLAMACPP_SERVER_CONCURRENT_ID)
         return ids
     if family == "ollama":
-        return [OLLAMA_WARM_REQUEST_ID, *AGENTIC_BENCHMARK_IDS]
+        return [OLLAMA_WARM_REQUEST_ID, *AGENTIC_BENCHMARK_IDS, *ORCH_BENCHMARK_IDS]
     return []
 
 
@@ -893,6 +905,62 @@ def run_agentic_tasks(build_id, benchmark_id, base_url, served_name, dry_run):
     return result
 
 
+def run_orchestration_session(build_id, benchmark_id, base_url, served_name, dry_run,
+                               judge_base_url=None, judge_served_name=None):
+    """Runs the single orchestration-session-v1 scenario (M-024) for one
+    harness (opencode/agentic-orchestration-session-opencode-v1 or
+    pi/agentic-orchestration-session-pi-v1), via
+    agentic_orchestration_benchmark.py's own library entrypoint (run_one —
+    imported directly, same relationship agentic_coding_benchmark.py
+    already has with this file).
+
+    judge_base_url/judge_served_name default to the SAME litellm proxy
+    base_url this function itself is called with (base_url almost always
+    already IS the litellm proxy in this orchestrator's own call sites,
+    unlike agentic_coding_benchmark.py's standalone-CLI use which may point
+    directly at an engine port) plus qwen2.5-vl-7b-instruct — the judge
+    model needs its OWN GPU-resident service up and reachable, which is the
+    caller's (this orchestrator's) responsibility to arrange, same as any
+    other cross-service dependency in this file. Not sequenced/started
+    here — see the module-level docstring note in
+    agentic_orchestration_benchmark.py and M-024's own smoke-test findings
+    for how this was verified to actually work.
+
+    Single 90min-ceiling scenario (not 3 tasks x 45min like
+    run_agentic_tasks above) — genuinely long-running but bounded by
+    agentic_orchestration_benchmark.WALL_CLOCK_CEILING_S internally, same
+    "no additional outer subprocess timeout needed" reasoning as
+    run_agentic_tasks.
+
+    Returns a dict shaped for a benchmark_runs[] entry's `result` field:
+    objective (pass_count/total_count/checks) and llm_judge kept as two
+    separate top-level keys (M-024's explicit hybrid-grading requirement —
+    see catalog/benchmarks/agentic-orchestration-session-v1.yaml's
+    grading_philosophy), plus wall_clock_s/terminated_reason/
+    transcript_raw_file/dispatch_subagent_log_file/ask_human_log_file.
+    """
+    harness = ORCH_HARNESS_FOR_ID[benchmark_id]
+    judge_served_name = judge_served_name or orch_bench.DEFAULT_JUDGE_SERVED_NAME
+    judge_base_url = judge_base_url or base_url
+    log(f"[{build_id}] Running {benchmark_id} (harness={harness}) against {base_url} model={served_name} — "
+        f"1 scenario, up to {orch_bench.WALL_CLOCK_CEILING_S}s, judge={judge_served_name} at {judge_base_url}.")
+    if dry_run:
+        log(f"[dry-run] would run agentic_orchestration_benchmark.run_one(harness={harness!r}, "
+            f"build_id={build_id!r}, base_url={base_url!r}, served_name={served_name!r}, "
+            f"judge_base_url={judge_base_url!r}, judge_served_name={judge_served_name!r})")
+        return None
+
+    result = orch_bench.run_one(
+        harness=harness, build_id=build_id, base_url=base_url, served_name=served_name,
+        judge_base_url=judge_base_url, judge_served_name=judge_served_name,
+    )
+    obj = result.get("objective") or {}
+    judge_scores = (result.get("llm_judge") or {}).get("scores")
+    log(f"[{build_id}] {benchmark_id}: objective {obj.get('pass_count')}/{obj.get('total_count')} "
+        f"({result['terminated_reason']}, {result['wall_clock_s']:.0f}s); llm_judge_scores={judge_scores}")
+    return result
+
+
 CORRECTNESS_PROMPTS = [
     ("what is 17*23? Answer with just the number.", "391"),
     ("what is the capital of France? Answer with just the city name.", "paris"),
@@ -1042,6 +1110,8 @@ def process_vllm_build(build_id, build_path, build, dry_run, downloads_paused, k
         coding_already_done = already_has_run(build, CODING_BENCHMARK_ID)
         opencode_already_done = already_has_run(build, AGENTIC_OPENCODE_ID)
         pi_already_done = already_has_run(build, AGENTIC_PI_ID)
+        orch_opencode_already_done = already_has_run(build, ORCH_OPENCODE_ID)
+        orch_pi_already_done = already_has_run(build, ORCH_PI_ID)
 
         speed_result = None
         if speed_already_done:
@@ -1077,6 +1147,25 @@ def process_vllm_build(build_id, build_path, build, dry_run, downloads_paused, k
         else:
             pi_result = run_agentic_tasks(
                 build_id, AGENTIC_PI_ID, f"http://localhost:{port}", served_name, dry_run,
+            )
+
+        # Agentic-orchestration-session (M-024) — same base_url/served_name,
+        # run after M-021's agentic tasks (most expensive legs last, per
+        # this function's existing "cheaper legs first" ordering).
+        orch_opencode_result = None
+        if orch_opencode_already_done:
+            log(f"[{build_id}] {ORCH_OPENCODE_ID} already recorded — skipping, not re-running.")
+        else:
+            orch_opencode_result = run_orchestration_session(
+                build_id, ORCH_OPENCODE_ID, f"http://localhost:{port}", served_name, dry_run,
+            )
+
+        orch_pi_result = None
+        if orch_pi_already_done:
+            log(f"[{build_id}] {ORCH_PI_ID} already recorded — skipping, not re-running.")
+        else:
+            orch_pi_result = run_orchestration_session(
+                build_id, ORCH_PI_ID, f"http://localhost:{port}", served_name, dry_run,
             )
 
         window_end = utcnow_iso()
@@ -1122,6 +1211,22 @@ def process_vllm_build(build_id, build_path, build, dry_run, downloads_paused, k
                 "result": pi_result,
             })
             benchmarks_run.append(AGENTIC_PI_ID)
+        if not orch_opencode_already_done:
+            append_benchmark_run(build_path, {
+                "timestamp": window_start,
+                "benchmark_id": ORCH_OPENCODE_ID,
+                "fingerprint": fingerprint,
+                "result": orch_opencode_result,
+            })
+            benchmarks_run.append(ORCH_OPENCODE_ID)
+        if not orch_pi_already_done:
+            append_benchmark_run(build_path, {
+                "timestamp": window_start,
+                "benchmark_id": ORCH_PI_ID,
+                "fingerprint": fingerprint,
+                "result": orch_pi_result,
+            })
+            benchmarks_run.append(ORCH_PI_ID)
 
         if benchmarks_run:
             raw_new_files = list(RAW_DIR.glob(f"{build_id}--*{timestamp}*"))
@@ -1165,6 +1270,8 @@ def process_llamacpp_build(build_id, build_path, build, dry_run, downloads_pause
     coding_already_done = already_has_run(build, CODING_BENCHMARK_ID)
     opencode_already_done = already_has_run(build, AGENTIC_OPENCODE_ID)
     pi_already_done = already_has_run(build, AGENTIC_PI_ID)
+    orch_opencode_already_done = already_has_run(build, ORCH_OPENCODE_ID)
+    orch_pi_already_done = already_has_run(build, ORCH_PI_ID)
 
     try:
         entries_to_append = []
@@ -1201,7 +1308,9 @@ def process_llamacpp_build(build_id, build_path, build, dry_run, downloads_pause
         need_coding = not coding_already_done
         need_opencode = not opencode_already_done
         need_pi = not pi_already_done
-        if not need_concurrent and not need_coding and not need_opencode and not need_pi:
+        need_orch_opencode = not orch_opencode_already_done
+        need_orch_pi = not orch_pi_already_done
+        if not any([need_concurrent, need_coding, need_opencode, need_pi, need_orch_opencode, need_orch_pi]):
             log(f"[{build_id}] All applicable leg-2 benchmarks already recorded — skipping llama-server entirely.")
         else:
             model_dir = Path(build["model"]["local_path"]).name
@@ -1290,6 +1399,38 @@ def process_llamacpp_build(build_id, build_path, build, dry_run, downloads_pause
                     })
                 else:
                     log(f"[{build_id}] {AGENTIC_PI_ID} already recorded — skipping, not re-running.")
+
+                # Agentic-orchestration-session (M-024) — run last, same
+                # "most expensive legs last" ordering as the two legs above.
+                if need_orch_opencode:
+                    orch_opencode_result = run_orchestration_session(
+                        build_id, ORCH_OPENCODE_ID, base_url, served_name or "default", dry_run,
+                    )
+                    fp_orch_opencode = dict(fp_server)
+                    fp_orch_opencode["host_metrics_window"] = {"start": fp_server["host_metrics_window"]["start"], "end": utcnow_iso()}
+                    entries_to_append.append({
+                        "timestamp": window_start,
+                        "benchmark_id": ORCH_OPENCODE_ID,
+                        "fingerprint": fp_orch_opencode,
+                        "result": orch_opencode_result,
+                    })
+                else:
+                    log(f"[{build_id}] {ORCH_OPENCODE_ID} already recorded — skipping, not re-running.")
+
+                if need_orch_pi:
+                    orch_pi_result = run_orchestration_session(
+                        build_id, ORCH_PI_ID, base_url, served_name or "default", dry_run,
+                    )
+                    fp_orch_pi = dict(fp_server)
+                    fp_orch_pi["host_metrics_window"] = {"start": fp_server["host_metrics_window"]["start"], "end": utcnow_iso()}
+                    entries_to_append.append({
+                        "timestamp": window_start,
+                        "benchmark_id": ORCH_PI_ID,
+                        "fingerprint": fp_orch_pi,
+                        "result": orch_pi_result,
+                    })
+                else:
+                    log(f"[{build_id}] {ORCH_PI_ID} already recorded — skipping, not re-running.")
             finally:
                 stop_llama_server(container)
 
@@ -1440,6 +1581,8 @@ def process_ollama_build(build_id, build_path, build, dry_run, downloads_paused,
     warm_already_done = already_has_run(build, OLLAMA_WARM_REQUEST_ID)
     opencode_already_done = already_has_run(build, AGENTIC_OPENCODE_ID)
     pi_already_done = already_has_run(build, AGENTIC_PI_ID)
+    orch_opencode_already_done = already_has_run(build, ORCH_OPENCODE_ID)
+    orch_pi_already_done = already_has_run(build, ORCH_PI_ID)
 
     check_no_other_benchmark_activity()
     previously_running = find_running_vllm_services()
@@ -1479,6 +1622,24 @@ def process_ollama_build(build_id, build_path, build, dry_run, downloads_paused,
                 build_id, AGENTIC_PI_ID, ollama_openai_base_url, served_name, dry_run,
             )
 
+        # Agentic-orchestration-session (M-024) — same base_url/served_name,
+        # run after M-021's agentic tasks (most expensive legs last).
+        orch_opencode_result = None
+        if orch_opencode_already_done:
+            log(f"[{build_id}] {ORCH_OPENCODE_ID} already recorded — skipping, not re-running.")
+        else:
+            orch_opencode_result = run_orchestration_session(
+                build_id, ORCH_OPENCODE_ID, ollama_openai_base_url, served_name, dry_run,
+            )
+
+        orch_pi_result = None
+        if orch_pi_already_done:
+            log(f"[{build_id}] {ORCH_PI_ID} already recorded — skipping, not re-running.")
+        else:
+            orch_pi_result = run_orchestration_session(
+                build_id, ORCH_PI_ID, ollama_openai_base_url, served_name, dry_run,
+            )
+
         window_end = utcnow_iso()
         fingerprint = build_fingerprint_base(kernel, repo_commit, gpu_driver, "n/a", window_start)
         fingerprint["host_metrics_window"]["end"] = window_end
@@ -1514,6 +1675,22 @@ def process_ollama_build(build_id, build_path, build, dry_run, downloads_paused,
                 "result": pi_result,
             })
             benchmarks_run.append(AGENTIC_PI_ID)
+        if not orch_opencode_already_done:
+            append_benchmark_run(build_path, {
+                "timestamp": window_start,
+                "benchmark_id": ORCH_OPENCODE_ID,
+                "fingerprint": fingerprint,
+                "result": orch_opencode_result,
+            })
+            benchmarks_run.append(ORCH_OPENCODE_ID)
+        if not orch_pi_already_done:
+            append_benchmark_run(build_path, {
+                "timestamp": window_start,
+                "benchmark_id": ORCH_PI_ID,
+                "fingerprint": fingerprint,
+                "result": orch_pi_result,
+            })
+            benchmarks_run.append(ORCH_PI_ID)
 
         if benchmarks_run:
             raw_new_files = list(RAW_DIR.glob(f"{build_id}--*{timestamp}*"))
