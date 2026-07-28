@@ -480,6 +480,32 @@ def grade_docker_lifecycle(workspace: Path, project_name: str) -> dict:
     return json.loads(result.stdout)
 
 
+# docker-lifecycle-v1's starter/docker-compose.yml hardcodes fixed
+# container_name: wordcount-backend / wordcount-frontend (not scoped by
+# compose project name at all) — real gap found during harness smoke
+# testing 2026-07-28: an agent session that runs `docker compose up`
+# itself (as the task explicitly instructs it to) creates these two fixed-
+# name containers regardless of cwd/project name, so they persist under
+# their own fixed names even after the *grader's* differently-project-named
+# stack is torn down (grade.py's own teardown only touches its own
+# --project-name's containers, never the agent's). Confirmed live: a real
+# smoke-test run left `wordcount-backend`/`wordcount-frontend` containers
+# (and matching per-workspace-named images) running after the harness's
+# own workspace + grading teardown had already completed — these must be
+# force-removed by name (not by project) both before a new run starts
+# (defensive, in case a previous crashed run left them) and after grading
+# ends, or back-to-back docker-lifecycle-v1 runs (any two models) will
+# collide on these exact names.
+STRAY_DOCKER_LIFECYCLE_CONTAINER_NAMES = ["wordcount-backend", "wordcount-frontend"]
+
+
+def cleanup_stray_docker_lifecycle_containers() -> None:
+    subprocess.run(
+        ["docker", "rm", "-f", *STRAY_DOCKER_LIFECYCLE_CONTAINER_NAMES],
+        capture_output=True, text=True, timeout=60,
+    )  # best-effort; nonzero exit just means they didn't exist, that's fine.
+
+
 def grade_git_pr_ci() -> dict:
     grader = task_dir("git-pr-ci-v1") / "hidden" / "grade.py"
     result = subprocess.run(
@@ -522,9 +548,15 @@ def run_one(task_id: str, harness: str, build_id: str, base_url: str, served_nam
     log(f"[{build_id}/{harness}/{task_id}] Scratch workspace: {workspace}")
 
     is_git_pr_ci = task_id == "git-pr-ci-v1"
+    is_docker_lifecycle = task_id == "docker-lifecycle-v1"
 
     try:
         # -------------------- SETUP --------------------
+        if is_docker_lifecycle:
+            # Defensive: in case a previous crashed run left the fixed-name
+            # wordcount-* containers behind (see
+            # cleanup_stray_docker_lifecycle_containers()'s docstring).
+            cleanup_stray_docker_lifecycle_containers()
         if is_git_pr_ci:
             reset_git_pr_ci_repo()  # BEFORE, so the agent starts clean.
             clone_git_pr_ci_repo(workspace)
@@ -596,6 +628,13 @@ def run_one(task_id: str, harness: str, build_id: str, base_url: str, served_nam
                 log(f"[{build_id}/{harness}/{task_id}] WARNING: post-run reset failed: {e} — "
                     f"the shared test repo may be left dirty for the next run, "
                     f"investigate before the next git-pr-ci-v1 run.")
+        if is_docker_lifecycle:
+            # AFTER, unconditionally — the grader's own teardown only tears
+            # down its own --project-name's stack, never the agent's
+            # separately-named one (see cleanup_stray_docker_lifecycle_
+            # containers()'s docstring for the real incident this guards
+            # against, found during harness smoke testing).
+            cleanup_stray_docker_lifecycle_containers()
         cleanup_workspace(workspace)
 
 

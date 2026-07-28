@@ -141,6 +141,10 @@ known_caveats:
   - "git-pr-ci-v1's long-lived/shared-state caveat (see the opencode
      sibling's entry) applies identically here — this benchmark_id's
      numbers are only trustworthy if the pre-run reset actually happened."
+  - "docker-lifecycle-v1's hardcoded-container_name gotcha (see the
+     opencode sibling's identical entry) applies here too — the harness's
+     before/after force-removal of wordcount-backend/wordcount-frontend by
+     name is harness-agnostic, not opencode-specific."
   - "opencode vs. Pi comparisons should be read as harness comparisons, not
      purely model comparisons — see the opencode sibling's identical note."
 version_history:

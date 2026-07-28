@@ -153,6 +153,19 @@ known_caveats:
      session started for that run — a harness bug that skips the pre-run
      reset would silently let one model's leftover branch/PR state bleed
      into the next model's attempt."
+  - "docker-lifecycle-v1's starter/docker-compose.yml hardcodes fixed
+     container_name: wordcount-backend / wordcount-frontend, not scoped by
+     compose project name at all — real gap found during harness smoke
+     testing 2026-07-28: the agent's OWN `docker compose up` call (run
+     inside its workspace, exactly as the task instructs) creates these two
+     fixed-name containers regardless of cwd/project, so they persist under
+     their own fixed names even after grade.py's differently-project-named
+     stack is torn down (its teardown only touches its own --project-name).
+     The harness now force-removes these two names both before a run starts
+     (defensive) and after grading ends (unconditional) — but this is a
+     harness-level workaround, not a fix to the task scaffold itself; a
+     future revision of docker-lifecycle-v1 could remove container_name:
+     from the compose file entirely to close this at the source."
   - "opencode vs. Pi comparisons should be read as harness comparisons, not
      purely model comparisons — a gap between the two benchmark_ids for the
      same model reflects real differences in how each harness prompts,
