@@ -1,0 +1,59 @@
+id: laguna-s-2.1-118b-q4km--llamacpp-vulkan-radv-v1
+engine: llamacpp-vulkan-radv-v1
+role: 118B/~8B-active MoE candidate, poolside's first public release — UNTESTED, download in progress
+model:
+  display_name: Laguna-S-2.1 (UD-Q4_K_M GGUF)
+  family: poolside
+  hf_repo: unsloth/Laguna-S-2.1-GGUF
+  hf_revision: null
+  architecture: moe
+  total_params: 118e9
+  active_params: 8e9
+  num_experts: null
+  quantization: GGUF-Q4_K_M (UD, imatrix-calibrated)
+  context_length_native: null
+  modality: text
+  files:
+    - UD-Q4_K_M/Laguna-S-2.1-UD-Q4_K_M-00001-of-00003.gguf
+    - UD-Q4_K_M/Laguna-S-2.1-UD-Q4_K_M-00002-of-00003.gguf
+    - UD-Q4_K_M/Laguna-S-2.1-UD-Q4_K_M-00003-of-00003.gguf
+  local_path: /var/lib/ai-models/laguna-s-2.1-118b-q4km
+  size_on_disk_gb: 68.1
+notes: >
+  Not yet run on this machine. poolside/Laguna-S-2.1, released ~2026-07-21 —
+  118B total / ~8B active MoE. Real model, confirmed via HF and a merged
+  llama.cpp PR (not a research gap at add-time — this entry is purely the
+  add-and-download step). Repo/files verified real and exact via the HF API
+  tree listing (unsloth/Laguna-S-2.1-GGUF): UD-Q4_K_M/ contains exactly 3
+  shards, real total 73,119,183,552 bytes (~68.10 GiB / ~73.12 GB) — matches
+  the ~73.1GB prior research figure. Repo also hosts 15 other quant/format
+  variants (BF16, MXFP4_MOE, Q8_0, UD-IQ1_S through UD-Q8_K_XL) side by side
+  in the same tree; hfFiles allowlist in configuration.nix pulls only the
+  UD-Q4_K_M shards.
+
+  Two real, distinct known issues from the upstream PR thread — both worth
+  tracking separately, neither is a reason to skip this build:
+
+  1. llama.cpp architecture support for this model only merged upstream
+  ~2026-07-22 (ggml-org/llama.cpp PR #25165) — very fresh, minimal real-world
+  exercise elsewhere yet.
+
+  2. A confirmed RDNA3.5 crash exists for this architecture, but per the PR
+  thread it's specific to the HIP/ROCm backend. This box's llama.cpp build
+  only ever runs Vulkan RADV (never ROCm/HIP) for the llamacpp-vulkan-radv-v1
+  engine, so the crash likely doesn't apply here — but that has NOT been
+  independently confirmed working on Vulkan by anyone yet. For this reason
+  Chris wants a supervised/attended single-prompt smoke test (watching the
+  console directly) before this build gets folded into the unattended
+  benchmark sweep — do not run it unsupervised.
+
+  3. Separately, and backend-independent (applies regardless of Vulkan vs
+  ROCm): the same PR thread documents a real reasoning/EOS-token bug that can
+  cause runaway/erratic generation. The attended smoke test should be run
+  with `--reasoning off` or a hard max-tokens cap as a precaution, and this
+  build's eventual real benchmark run should carry that same flag if the
+  model proves viable.
+status: UNTESTED-BUT-DOWNLOADED
+created: "2026-07-28"
+last_verified: "2026-07-28"
+benchmark_runs: []

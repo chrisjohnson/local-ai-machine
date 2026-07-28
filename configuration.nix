@@ -248,6 +248,44 @@ let
         "UD-IQ2_XXS/DeepSeek-V4-Flash-UD-IQ2_XXS-00002-of-00003.gguf"
         "UD-IQ2_XXS/DeepSeek-V4-Flash-UD-IQ2_XXS-00003-of-00003.gguf"
       ]; }
+    # poolside/Laguna-S-2.1, UD-Q4_K_M GGUF via llama.cpp — Chris's explicit
+    # request, added 2026-07-28. 118B total / ~8B active MoE, released
+    # ~2026-07-21; already researched at length (real HF repo, real llama.cpp
+    # architecture support merged upstream via ggml-org/llama.cpp PR #25165
+    # ~2026-07-22, real GGUF quants from unsloth) — this entry is purely the
+    # add-and-download step, not a fresh feasibility check.
+    #
+    # Repo confirmed real via HF API (200 OK): unsloth/Laguna-S-2.1-GGUF.
+    # Directory tree confirmed directly against the HF API's recursive tree
+    # listing (not guessed): UD-Q4_K_M/ contains exactly 3 shards (one
+    # near-empty 3,683,648-byte index/metadata shard plus two real weight
+    # shards), real total 73,119,183,552 bytes (~68.10 GiB / ~73.12 GB) —
+    # matches the ~73.1GB prior research figure. hfFiles is an explicit
+    # allowlist of just those 3 shards — this repo hosts 15 other quant/
+    # format variants side by side in the same tree (BF16, MXFP4_MOE, Q8_0,
+    # UD-IQ1_S through UD-Q8_K_XL), so a bare repo pull would pull many
+    # hundreds of GB of unwanted variants (same reasoning as every other
+    # hfFiles entry in this file).
+    #
+    # Known real gotcha, NOT a reason to skip this build but a reason to run
+    # it attended rather than fold it into the unattended sweep: a confirmed
+    # RDNA3.5 crash exists for this architecture, but it's specific to the
+    # HIP/ROCm backend — this box's llama.cpp only ever runs Vulkan RADV
+    # (never ROCm/HIP), so the crash likely doesn't apply here, but that has
+    # NOT been independently confirmed working on Vulkan by anyone yet.
+    # Separately, the PR thread also documents a real, backend-independent
+    # reasoning/EOS-token bug that can cause runaway/erratic generation —
+    # unrelated to the RDNA3.5/HIP issue, applies regardless of backend. Any
+    # smoke test or benchmark run of this build should pass `--reasoning off`
+    # or a hard max-tokens cap as a precaution. See the catalog stub
+    # (catalog/builds/laguna-s-2.1-118b-q4km--llamacpp-vulkan-radv-v1.yaml)
+    # for the full writeup — Chris wants a supervised, attended single-prompt
+    # smoke test here, not an unsupervised run.
+    { name = "laguna-s-2.1-118b-q4km"; repo = "unsloth/Laguna-S-2.1-GGUF"; hfFiles = [
+        "UD-Q4_K_M/Laguna-S-2.1-UD-Q4_K_M-00001-of-00003.gguf"
+        "UD-Q4_K_M/Laguna-S-2.1-UD-Q4_K_M-00002-of-00003.gguf"
+        "UD-Q4_K_M/Laguna-S-2.1-UD-Q4_K_M-00003-of-00003.gguf"
+      ]; }
   ];
 in
 {
