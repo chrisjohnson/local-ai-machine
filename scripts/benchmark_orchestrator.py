@@ -142,6 +142,44 @@ def already_has_run(build: dict, benchmark_id: str) -> bool:
     return False
 
 
+def expected_benchmark_ids(build: dict, family: str) -> list:
+    """Single source of truth for "which benchmark_ids should this build
+    eventually have, given its engine family/variant". Both the plan-level
+    skip-vs-run decision in main() and each process_*_build()'s internal
+    per-benchmark gating must derive from this same list — otherwise a
+    newly-added benchmark_id can be wired into one call site (e.g. a
+    process_*_build() function) but forgotten in the other (the plan-level
+    skip check), which would silently skip already-partially-benchmarked
+    builds forever instead of scheduling them for just the missing piece.
+
+    Extending to a new benchmark methodology (e.g. an agentic-coding-session
+    benchmark) that applies to every engine family: add its benchmark_id
+    constant near the top of this file, append it to the relevant list(s)
+    below, then give each process_*_build() a `already_has_run(build, ID)`
+    gate before running it (same pattern already used for every id here) —
+    no other call site needs to change, this function is the only registry.
+    """
+    if family == "vllm":
+        return [VLLM_SPEED_BENCHMARK_ID, CODING_BENCHMARK_ID]
+    if family == "llamacpp":
+        ids = [LLAMACPP_BENCH_ID, CODING_BENCHMARK_ID]
+        if build.get("engine") == "llamacpp-vulkan-radv-server-v1":
+            ids.append(LLAMACPP_SERVER_CONCURRENT_ID)
+        return ids
+    if family == "ollama":
+        return [OLLAMA_WARM_REQUEST_ID]
+    return []
+
+
+def missing_benchmark_ids(build: dict, family: str) -> list:
+    """Benchmark_ids expected for this build's family/variant that are not
+    yet recorded — the generic per-benchmark-id idempotency check. Empty
+    list means the build is fully done and can be skipped; a non-empty list
+    means the build should be scheduled to run, even if some other expected
+    id is already recorded (partial completion is not "done")."""
+    return [bid for bid in expected_benchmark_ids(build, family) if not already_has_run(build, bid)]
+
+
 def gather_plan(only_build_id=None):
     """Return list of (build_id, path, build_dict, reason_skip_or_None)."""
     plan = []
@@ -1247,8 +1285,15 @@ def process_ollama_build(build_id, build_path, build, dry_run, downloads_paused,
             f"{served_name} on the standing ollama container, then restore stack")
         return
 
-    warm_already_done = already_has_run(build, OLLAMA_WARM_REQUEST_ID)
-    if warm_already_done:
+    # Only one benchmark_id is currently expected for Ollama builds
+    # (expected_benchmark_ids()), so "nothing missing" and "the one id is
+    # already done" are equivalent today — but derive from the shared
+    # missing_benchmark_ids() registry (not the raw constant directly) so
+    # this stays correct without a rewrite if/when a second Ollama
+    # benchmark_id is added: at that point this still needs to become a
+    # per-id gate (mirroring process_vllm_build/process_llamacpp_build)
+    # before actually running each leg, not just this early-return check.
+    if not missing_benchmark_ids(build, "ollama"):
         log(f"[{build_id}] {OLLAMA_WARM_REQUEST_ID} already recorded — nothing to do "
             f"(shouldn't normally reach here; the plan-level skip should have caught this).")
         return
@@ -1317,26 +1362,24 @@ def main():
         if skip_reason:
             log(f"  SKIP  {build_id}  ({skip_reason})")
             continue
-        vllm_done = already_has_run(build, VLLM_SPEED_BENCHMARK_ID) if family == "vllm" else True
-        coding_done = already_has_run(build, CODING_BENCHMARK_ID)
-        bench_done = already_has_run(build, LLAMACPP_BENCH_ID) if family == "llamacpp" else True
-        # Server-variant llamacpp builds have a third applicable leg
-        # (llamacpp-server-concurrent-v1) — must be done too before the
-        # whole build can be plan-level-skipped, or a build needing only
-        # that leg would never get picked up.
-        is_server_variant = build.get("engine") == "llamacpp-vulkan-radv-server-v1"
-        concurrent_done = already_has_run(build, LLAMACPP_SERVER_CONCURRENT_ID) if is_server_variant else True
-        ollama_warm_done = already_has_run(build, OLLAMA_WARM_REQUEST_ID) if family == "ollama" else True
-        if family == "vllm" and vllm_done and coding_done:
-            log(f"  SKIP  {build_id}  (already has {VLLM_SPEED_BENCHMARK_ID} + {CODING_BENCHMARK_ID} runs)")
+        # Per-benchmark-id idempotency (M-023): derive the skip/run decision
+        # from expected_benchmark_ids()/missing_benchmark_ids() — the same
+        # registry process_*_build() uses internally — rather than a
+        # hand-assembled "has some data" check. A build with N of its
+        # expected M benchmark_ids already recorded (e.g. a third
+        # benchmark_id added later, with the first two already run) must
+        # still show up here as RUN, scheduled for just the missing ones,
+        # never skipped outright and never re-run in full.
+        missing = missing_benchmark_ids(build, family)
+        if not missing:
+            expected = expected_benchmark_ids(build, family)
+            log(f"  SKIP  {build_id}  (already has {' + '.join(expected)} run{'s' if len(expected) != 1 else ''})")
             continue
-        if family == "llamacpp" and bench_done and coding_done and concurrent_done:
-            log(f"  SKIP  {build_id}  (already has {LLAMACPP_BENCH_ID} + {CODING_BENCHMARK_ID}{' + ' + LLAMACPP_SERVER_CONCURRENT_ID if is_server_variant else ''} runs)")
-            continue
-        if family == "ollama" and ollama_warm_done:
-            log(f"  SKIP  {build_id}  (already has {OLLAMA_WARM_REQUEST_ID} run)")
-            continue
-        log(f"  RUN   {build_id}  (engine family: {family})")
+        already_done = [bid for bid in expected_benchmark_ids(build, family) if bid not in missing]
+        if already_done:
+            log(f"  RUN   {build_id}  (engine family: {family}; missing {' + '.join(missing)}, already has {' + '.join(already_done)})")
+        else:
+            log(f"  RUN   {build_id}  (engine family: {family})")
         runnable.append((build_id, path, build, family))
 
     if not runnable:
