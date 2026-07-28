@@ -477,3 +477,10 @@ token rather than falling back to any other ambient credential.
   fine — same credential already used for all git push/pull to this
   repo) — not yet implemented as of this entry, next step for whoever
   continues this.
+- 2026-07-28 — `reset_agentic_test_repo.sh` fix committed (`effb67e`) and
+  verified for real against the live repo on the box: closes PRs (none
+  open), deletes stray branches (none), force-resets `main` to `baseline`
+  via SSH, re-verifies — all green. `git-pr-ci-v1` is now fully unblocked;
+  its own harness smoke test (both opencode and Pi, not yet run as of the
+  previous entry) is the last remaining verification before this card's
+  Plan is 100% done.
