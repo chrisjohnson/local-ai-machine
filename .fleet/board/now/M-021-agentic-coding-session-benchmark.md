@@ -434,3 +434,46 @@ systemPackages and deployed. Source that env file (`set -a; source
 /etc/nixos/secrets/gh-agentic-test-repo-token.env; set +a`) before any
 `gh`/git-against-that-repo call in the harness so it picks up the scoped
 token rather than falling back to any other ambient credential.
+
+- 2026-07-28 — **Step 6 (harness script) built and smoke-tested.**
+  `scripts/agentic_coding_benchmark.py` implements the full per-(task ×
+  model × harness) pipeline. Both methodology YAMLs written
+  (`agentic-coding-session-opencode-v1`, `agentic-coding-session-pi-v1`).
+  Smoke-tested end-to-end, real runs, both harnesses: opencode/
+  docs-research-v1 (7/7), opencode/docker-lifecycle-v1 (1/5, correctly
+  timed out at 45min with genuine partial credit, not a crash),
+  Pi/docs-research-v1 (was scoring 7/7 before hitting a self-inflicted
+  foreground-bash-call bug in Pi itself; caught and timed out cleanly).
+  Real bugs found and fixed along the way: opencode's PWD-vs-cwd project
+  resolution (opencode trusts the inherited `PWD` env var over the
+  process's actual cwd for its instance registry — silently created a
+  second instance rooted at a stale directory; fixed by explicitly
+  overriding `PWD` to match `cwd`), a stray-container leak in the
+  docker-lifecycle-v1 grader's teardown, and an orphaned-process gap in
+  how Pi's own bash tool gets killed on timeout (`start_new_session=True`
+  so the harness's kill takes the whole process group with it).
+- 2026-07-28 — **`git-pr-ci-v1` smoke test hit a real GitHub platform
+  limitation**: `reset_agentic_test_repo.sh`'s `gh api PATCH/DELETE
+  .../git/refs/...` calls 403 with the fine-grained PAT — confirmed
+  reproducibly, and confirmed again after Chris added Administration:
+  Read-and-write permission to the token (no change, still 403 on both
+  ref creation and deletion). This is a genuine fine-grained-PAT
+  restriction on the raw Git Data API's ref-mutation endpoints, not a
+  missing permission bit. Chris raised a sharper concern in the process:
+  since the candidate model runs with full unsandboxed shell access, the
+  real risk isn't "which credential does the reset script use" but
+  whether the *model's own session* can reach the box's broad
+  account-level SSH key at all — confirmed it could (the harness ran the
+  agent subprocess with a plain inherited environment, same `chris`
+  $HOME, no isolation). Fixed properly: the agent's own subprocess now
+  gets an isolated per-run `$HOME` with no `.ssh` directory at all
+  (`make_isolated_agent_home`/`isolated_agent_env` in the harness script)
+  — structurally cannot reach the broad key via any shell command,
+  regardless of what the model tries; `GH_TOKEN` (the correctly-scoped
+  PAT) still flows through for the agent's own git-pr-ci-v1 work against
+  the HTTPS clone. `reset_agentic_test_repo.sh` itself still needs a
+  follow-up fix (route its two ref-mutation calls through the SSH deploy
+  key instead of `gh api`, per Chris's explicit confirmation that this is
+  fine — same credential already used for all git push/pull to this
+  repo) — not yet implemented as of this entry, next step for whoever
+  continues this.
