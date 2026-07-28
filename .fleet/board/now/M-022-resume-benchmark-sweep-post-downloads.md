@@ -80,6 +80,35 @@ later review (2026-07-27) — same posture as the original weekend sweep.
   logic, just wider scope than the card's initial framing assumed. Proceeding
   with the full 5-build plan as shown, not narrowing it.
 
+- 2026-07-28 — Sweep completed (1h48m wall clock). 4/5 builds recorded real
+  results: deepseek-v4-flash-iq2xxs--llamacpp (success), glm-4.7-flash /
+  qwen3.6-27b / qwen3.6-35b-a3b--ollama (all 3 success). 1/5 failed:
+  gpt-oss-120b--llamacpp-vulkan-radv-v1 — `FAILED: build has no model.files
+  entries — cannot construct -m path`. Real orchestrator bug: this build's
+  catalog file has `files: null` (single ~59GB file, no shard list — the
+  download is a local BF16->GGUF conversion, not a fixed HF filename), and
+  the llama.cpp dispatch path apparently requires a non-empty `files` list.
+  Failed cleanly — vLLM services were correctly restored afterward, no data
+  corruption, just no benchmark recorded for this build. Needs a code fix
+  (handle the single-converted-file case) + re-run.
+- 2026-07-28 — **Bigger finding**: all 4 successful results, plus this
+  entire run, executed against the box's shared checkout
+  (`/home/chris/local-ai-machine`) while it was checked out on
+  `worktree-gentle-genet-star`, NOT main — a different fleet worker
+  (pet name gentle-genet-star) claimed M-001 2026-07-26T14:00Z and has been
+  actively implementing the two-tier catalog/compose migration there, with
+  an **open PR #2** currently outstanding
+  (github.com/chrisjohnson/local-ai-machine/pull/2). Their signals show a
+  2026-07-27T14:30Z orchestrator refactor ("removed swap_model_start/stop.sh
+  calls, all vLLM builds go through compose services") — meaning tonight's
+  sweep actually ran gentle-genet-star's in-progress, unreviewed refactor of
+  `benchmark_orchestrator.py`, not the version on main. My 4 "Record ...
+  results" commits landed as additional commits on top of their open PR
+  branch, mixing unrelated benchmark-data commits into their code PR. Main
+  currently has none of tonight's data — only this card's own filing/claim
+  commits. Not attempting to merge/cherry-pick/reconcile unilaterally since
+  it touches another worker's active PR — flagging to Chris directly.
+
 ## Handoff notes
 <!-- what's half-done, what the next agent picking this up should do first. -->
 In progress. Started via `systemctl start benchmark-orchestrator.service` at
