@@ -167,9 +167,18 @@ task-2 implementation:
    `pi --mode json`, `baseUrl` config, no documented exit-code/timeout
    conventions — harness must self-enforce the 45min ceiling for both
    tools, don't assume either has a built-in one).
-4. [ ] Set up `local-ai-machine-test` repo auth (deploy key or scoped PAT,
-   separate from the main repo's key) and the baseline/reset mechanism
-   (template branch, reset routine).
+4. [x] Set up `local-ai-machine-test` repo auth and the baseline/reset
+   mechanism. Auth resolved 2026-07-28: plain git push/pull already worked
+   via the existing `github_deploy_key` (turns out to be an account-level
+   SSH key, not narrowly repo-scoped — confirmed via `git ls-remote`
+   succeeding against the test repo). PR create/merge/CI-status checks
+   need the GitHub API though, which SSH can't reach — `gh` CLI added to
+   `configuration.nix`'s systemPackages for that, authenticated on the box
+   via a fine-grained PAT Chris created (scoped only to
+   `local-ai-machine-test`; contents/pull-requests/actions all read+write),
+   synced to `/etc/nixos/secrets/gh-agentic-test-repo-token.env`. Verified:
+   `gh auth status` on the box shows `GH_TOKEN` active, `gh repo view`
+   returns `ADMIN` permission scoped to exactly this one repo.
 5. [ ] Build the 3 task scaffolds (docs-research, git/PR/CI, docker
    lifecycle) under `catalog/agentic-tasks/`, each with hidden grading
    checks that live outside the agent's workspace until graded — harness-
@@ -398,9 +407,30 @@ ends up relying on long-term.
   missing-test-coverage check while still passing CI (since it didn't
   break any *existing* test). Repo was left reset to clean `baseline`
   state after all testing.
+- 2026-07-28 — Auth fully resolved. Chris pushed back on needing a new PAT
+  at all, correctly — confirmed the existing `github_deploy_key` already
+  covers plain git push/pull to `local-ai-machine-test` (it's an
+  account-level SSH key, not a narrowly-scoped classic deploy key). PR
+  create/merge/CI-status checks still need the GitHub API though (SSH
+  can't reach that surface) — `gh` wasn't installed on the box at all;
+  added via `configuration.nix`. Considered reusing Chris's own broad `gh
+  auth` OAuth session (`repo`/`gist`/`read:org` scopes, works for
+  everything) to avoid the manual PAT step, but the auto-mode security
+  classifier correctly flagged persisting that broadly-scoped personal
+  credential onto the box as a bigger blast-radius increase than intended
+  — the benchmarked models run with full unsandboxed shell access via
+  opencode/Pi, so a broad token would let a buggy/adversarial model touch
+  *any* of Chris's repos, not just this disposable one. Chris agreed and
+  created the fine-grained PAT properly scoped to just
+  `local-ai-machine-test`. Verified live on the box.
 
 **Next real step for whoever picks this up**: step 6 (harness script) —
-now unblocked design-wise (both step 4 and step 5 fully done across both
-parallel passes), but functionally blocked on Chris creating the
-fine-grained PAT above if the harness is meant to run unattended with a
-repo-scoped credential rather than Chris's own `gh` session.
+now fully unblocked. Chris created the fine-grained PAT 2026-07-28; it's
+live at `/etc/nixos/secrets/gh-agentic-test-repo-token.env` on the box,
+verified working (`gh auth status` shows `GH_TOKEN` active, `ADMIN` perm
+scoped to exactly `local-ai-machine-test`). `gh` CLI itself was not
+previously installed on the box at all — added to `configuration.nix`
+systemPackages and deployed. Source that env file (`set -a; source
+/etc/nixos/secrets/gh-agentic-test-repo-token.env; set +a`) before any
+`gh`/git-against-that-repo call in the harness so it picks up the scoped
+token rather than falling back to any other ambient credential.
