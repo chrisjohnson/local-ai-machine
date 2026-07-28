@@ -472,7 +472,18 @@ in
   # GB actually allocated). amdgpu_top reads GTT correctly. nvtopPackages.amd
   # included too as a more familiar UI for the same underlying data.
   environment.systemPackages = with pkgs; [
-    rsync docker-compose git rocmPackages.rocm-smi herdr htop amdgpu_top nvtopPackages.amd
+    rsync docker-compose git gh rocmPackages.rocm-smi herdr htop amdgpu_top nvtopPackages.amd
+    # gh (GitHub CLI): needed by the agentic-coding-session benchmark (M-021)
+    # — both the harness's own grading checks and the candidate models
+    # themselves (via opencode/Pi's shell tool access) need to open/merge
+    # PRs and check CI status against github.com/chrisjohnson/local-ai-machine-test.
+    # Auth: reuses Chris's own existing `gh auth` OAuth session (already
+    # scoped `repo`, covers this) rather than minting a new fine-grained
+    # PAT — see `gh auth login --with-token` note in M-021's card. Plain git
+    # push/pull already worked via the existing github_deploy_key (turns out
+    # to be an account-level key, not narrowly repo-scoped, confirmed via
+    # `git ls-remote` against the test repo succeeding) — gh itself is only
+    # needed for the PR/Actions API surface, which SSH alone can't reach.
     # Common shell tools. Note: "yq" here is nixpkgs' classic Python/jq-wrapper
     # variant, not the more commonly-used Go rewrite (that's yq-go) — swap if
     # that's actually what's wanted. "nc" comes from netcat-gnu; "dig" from
