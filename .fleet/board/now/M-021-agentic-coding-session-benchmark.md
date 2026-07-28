@@ -484,3 +484,26 @@ token rather than falling back to any other ambient credential.
   its own harness smoke test (both opencode and Pi, not yet run as of the
   previous entry) is the last remaining verification before this card's
   Plan is 100% done.
+- 2026-07-28 — `git-pr-ci-v1` smoke test confirmed genuinely working for
+  both harnesses: opencode ran twice (291s, 543s), both `completed` (not
+  timeout/crash), 1/10 both times — model implemented `transfer_stock`
+  correctly locally but never got as far as a merged PR (legitimate
+  partial credit, not a harness bug). Pi ran once (before the SSH-isolation
+  fix), `completed`, 1355s, 1/10, same shape — pushed a branch but got
+  stuck on a backtick-quoting issue in its own `gh pr create` invocation,
+  never opened/merged. Both harnesses' teardown (`reset_agentic_test_repo.sh`)
+  confirmed clean before/after every run.
+- 2026-07-28 — **Real gap found**: step 8 (orchestrator wiring) was NOT
+  actually done despite earlier entries implying it was —
+  `expected_benchmark_ids()` never referenced the two new agentic
+  benchmark_ids, no `process_*_build()` called the harness. Fixed
+  (`2df73c7`), verified via a real `--dry-run` on the box: every
+  already-benchmarked build now correctly shows up as needing the two new
+  agentic ids.
+- 2026-07-28 — M-021's Plan is now fully complete: harness built, both
+  methodology YAMLs written, all 3 tasks × both harnesses smoke-tested for
+  real, orchestrator wiring verified via dry-run, the SSH-isolation
+  security gap found (live, during this task's own testing) and fixed.
+  Not yet moved to done/ — Chris paused mid-verification to define a new,
+  complementary tier (M-024) before resuming; revisit once that's settled
+  or if he confirms this one's ready to close independently.
