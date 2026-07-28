@@ -201,6 +201,7 @@ task-2 implementation:
 <!-- append-only. Leave signals for other agents. Format:
      <!-- signal: <pet-name> <ISO8601-UTC> — <short message> -->
 -->
+<!-- signal: claude 2026-07-28T00:00Z — done: docs-research-v1 and docker-lifecycle-v1 task scaffolds built under catalog/agentic-tasks/, committed+pushed to main (2c4604d). git-pr-ci-v1 (task 3) not touched -- being built separately, still uncommitted in this working tree as of my push. -->
 
 ## Decision log
 <!-- append-only, one line per entry, newest last. Never move this card to done/
@@ -225,11 +226,45 @@ task-2 implementation:
   exit codes, no built-in timeout/max-turns), harness will need to enforce
   the time budget itself for both tools rather than trusting either one's
   internals.
+- 2026-07-28 — Built 2 of the 3 task scaffolds under `catalog/agentic-tasks/`
+  (step 5, partial): `docs-research-v1` and `docker-lifecycle-v1`, each with
+  a `starter/` (agent-visible), `hidden/grade.py` (stdlib-only, no LLM
+  judge, never present in the agent's workspace), `task.md` prompt, and a
+  top-level `README.md` documenting the starter/hidden split for whoever
+  builds the harness. `docs-research-v1`: a `ledgerclient` library whose
+  `DOCS.md` documents a non-obvious HTTP retry/backoff contract (honor
+  `Retry-After` exactly, max 3 retries, 503-without-header is
+  non-retryable) that only a docs-read (not a code-read or generic
+  best-practice guess) gets right — verified the grader scores 0/7
+  unimplemented, 7/7 on a contract-correct reference solution, and 5/7 on a
+  plausible-but-docs-ignorant exponential-backoff implementation, so it
+  actually discriminates "read the docs" from "wrote reasonable-looking
+  code." `docker-lifecycle-v1`: a 2-service docker-compose app (python:3-slim,
+  stdlib-only, no pip installs) with a misconfigured `BACKEND_URL` port
+  (infra-layer bug) and an inverted sort-order bug in a `/top` endpoint
+  (application-layer bug that runs and returns 200 but is silently wrong) —
+  the hidden grader starts/uses the agent-modified stack itself, sends real
+  HTTP requests (including reading the backend directly to catch a frontend
+  that fabricates results), and always tears the stack down after; verified
+  2/5 unmodified, 4/5 with only one bug fixed, 5/5 fully fixed, and clean
+  teardown (no leftover containers/images) in every case. Did NOT touch
+  `git-pr-ci-v1/` (task 3, GitHub/PR/CI-flavored) — that's separate work by
+  another agent, left completely alone including not staging/committing it.
+  Did NOT touch the harness script, methodology YAML, or
+  `benchmark_orchestrator.py` — out of scope for this pass.
 
 ## Handoff notes
 <!-- what's half-done, what the next agent picking this up should do first. -->
-Not started on implementation. Repo created, git/PR/CI substrate decided,
-both harnesses (opencode + Pi) researched at the CLI-mechanics level. Next
-real steps: step 4 (repo auth + reset mechanism) and step 5 (task scaffold
-design/build) — can proceed in parallel, neither blocks the other. Step 6
-(harness script) needs both done first since it drives both.
+Step 5 is 2/3 done: `docs-research-v1` and `docker-lifecycle-v1` are built,
+tested end-to-end (including hand-verified partial-credit scoring and clean
+docker teardown), committed, and pushed to main (`2c4604d`). `git-pr-ci-v1`
+(the GitHub/PR/CI task) is being built separately — check its state before
+assuming step 5 is fully done. Step 4 (repo auth + reset mechanism for
+`local-ai-machine-test`) is still not started as far as this pass's author
+knows. Step 6 (harness script) needs step 4 AND all of step 5 done first
+since it drives both harnesses against all three tasks — don't start it
+until `git-pr-ci-v1`'s status is confirmed. Both new task READMEs spell out
+exactly what a harness needs to copy where and when (starter -> workspace
+before the session, hidden/grade.py invoked with --workspace after) — read
+those before writing the harness's copy-in/copy-out logic rather than
+re-deriving it.
