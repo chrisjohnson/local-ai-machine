@@ -1,0 +1,266 @@
+{
+  "model": "llamacpp-deepseek-v4-flash-iq2xxs",
+  "base_url": "http://localhost:8090",
+  "tier_a_pass": 3,
+  "tier_a_total": 3,
+  "tier_b_pass": 5,
+  "tier_b_total": 5,
+  "tier_j_pass": 8,
+  "tier_j_total": 8,
+  "tier_p_pass": 2,
+  "tier_p_total": 2,
+  "tier_d_pass": 1,
+  "tier_d_total": 1,
+  "tier_q_pass": 2,
+  "tier_q_total": 2,
+  "tier_l_pass": 1,
+  "tier_l_total": 1,
+  "results": [
+    {
+      "id": "palindrome",
+      "tier": "A",
+      "elapsed_s": 16.83,
+      "raw_content": "```python\ndef is_palindrome(s: str) -> bool:\n    cleaned = [ch.lower() for ch in s if ch.isalnum()]\n    return cleaned == cleaned[::-1]\n```",
+      "raw_reasoning": "The user wants a Python function that checks if a string is a palindrome, ignoring case and non-alphanumeric characters. I need to output only the function, no explanation, no example usage.\n\nThe function should:\n- Take a string `s` as input.\n- Return `True` if the string is a palindrome after ignoring case and non-alphanumeric characters.\n- Otherwise return `False`.\n\nI'll implement it by:\n1. Filtering the string to keep only alphanumeric characters (using `isalnum()`).\n2. Converting to lowercase (using `lower()`).\n3. Then checking if the resulting string equals its reverse.\n\nAlternatively, I could use two pointers, but the simple reversal is clear and concise.\n\nI'll output just the function definition.",
+      "extracted_code": "def is_palindrome(s: str) -> bool:\n    cleaned = [ch.lower() for ch in s if ch.isalnum()]\n    return cleaned == cleaned[::-1]\n",
+      "passed": true
+    },
+    {
+      "id": "merge_sorted",
+      "tier": "A",
+      "elapsed_s": 23.33,
+      "raw_content": "```python\ndef merge_sorted(a: list, b: list) -> list:\n    i, j = 0, 0\n    result = []\n    while i < len(a) and j < len(b):\n        if a[i] <= b[j]:\n            result.append(a[i])\n            i += 1\n        else:\n            result.append(b[j])\n            j += 1\n    result.extend(a[i:])\n    result.extend(b[j:])\n    return result\n```",
+      "raw_reasoning": "We need to write a merge function that merges two sorted lists into one sorted list. No built-in sort/sorted. Use two-pointer merge algorithm. The function signature: merge_sorted(a: list, b: list) -> list. Return a new list. Assume inputs are sorted ascending? Typically yes. We'll handle duplicates. Use while loops. No extra imports. Output only function.\n\nLet's write code:\n\ndef merge_sorted(a, b):\n    i, j = 0, 0\n    result = []\n    while i < len(a) and j < len(b):\n        if a[i] <= b[j]:\n            result.append(a[i])\n            i += 1\n        else:\n            result.append(b[j])\n            j += 1\n    # add remaining\n    result.extend(a[i:])\n    result.extend(b[j:])\n    return result\n\nThat's it.",
+      "extracted_code": "def merge_sorted(a: list, b: list) -> list:\n    i, j = 0, 0\n    result = []\n    while i < len(a) and j < len(b):\n        if a[i] <= b[j]:\n            result.append(a[i])\n            i += 1\n        else:\n            result.append(b[j])\n            j += 1\n    result.extend(a[i:])\n    result.extend(b[j:])\n    return result\n",
+      "passed": true
+    },
+    {
+      "id": "expr_eval",
+      "tier": "A",
+      "elapsed_s": 162.13,
+      "raw_content": "```python\ndef evaluate(expr: str) -> float:\n    # Tokenization\n    tokens = []\n    i = 0\n    expr = expr.strip()\n    while i < len(expr):\n        ch = expr[i]\n        if ch.isspace():\n            i += 1\n            continue\n        if ch.isdigit():\n            num = 0\n            while i < len(expr) and expr[i].isdigit():\n                num = num * 10 + int(expr[i])\n                i += 1\n            tokens.append(num)\n            continue\n        if ch in '+-*/()':\n            tokens.append(ch)\n            i += 1\n            continue\n        # Should not happen for valid input\n        i += 1\n\n    # Parser using recursive descent\n    pos = [0]  # mutable index\n\n    def peek():\n        return tokens[pos[0]] if pos[0] < len(tokens) else None\n\n    def consume():\n        token = tokens[pos[0]]\n        pos[0] += 1\n        return token\n\n    def parse_factor() -> float:\n        token = peek()\n        if token is None:\n            raise ValueError(\"Unexpected end of expression\")\n        if token == '(':\n            consume()  # '('\n            val = parse_expr()\n            if peek() != ')':\n                raise ValueError(\"Missing closing parenthesis\")\n            consume()  # ')'\n            return val\n        if token == '-':\n            consume()  # '-'\n            return -parse_factor()\n        if isinstance(token, int):\n            return float(consume())\n        raise ValueError(f\"Unexpected token: {token}\")\n\n    def parse_term() -> float:\n        left = parse_factor()\n        while peek() in ('*', '/'):\n            op = consume()\n            right = parse_factor()\n            if op == '*':\n                left *= right\n            else:\n                left /= right\n        return left\n\n    def parse_expr() -> float:\n        left = parse_term()\n        while peek() in ('+', '-'):\n            op = consume()\n            right = parse_term()\n            if op == '+':\n                left += right\n            else:\n                left -= right\n        return left\n\n    result = parse_expr()\n    if pos[0] != len(tokens):\n        raise ValueError(\"Extra tokens after expression\")\n    return result\n```",
+      "raw_reasoning": "We need to write a Python function evaluate(expr: str) -> float that evaluates a simple arithmetic expression with +, -, *, /, parentheses, and integers. No eval/exec. Must output only the function.\n\nWe can implement a tokenizer, shunting-yard or recursive descent parser, then evaluate. Since it's simple arithmetic, we can do a two-pass: first convert infix to postfix (or evaluate directly with precedence). We'll need to handle parentheses, operators, and integers. Return float.\n\nWe need to handle division? Should return float. Use float for result. Assume valid input (no division by zero? Not mentioned but we can handle). We'll implement a precedence table: +, - lowest (1), *, / higher (2). Use stack for operators, output for postfix, then evaluate.\n\nAlternatively, recursive descent: parse expression, term, factor. That might be simpler: evaluate recursively based on grammar:\n\nExpr -> Term {+|- Term}\nTerm -> Factor {*|/ Factor}\nFactor -> '(' Expr ')' | number\n\nWe'll parse using an index. This is straightforward. We'll write a helper parser class or just use recursion with a global index. We'll parse integers (maybe multi-digit). No spaces? Input may contain spaces? Usually expressions can have spaces. We'll strip spaces before parsing or handle them. We'll assume string may have spaces, we'll ignore them.\n\nWe'll implement a function evaluate(expr: str) -> float.\n\nImplementation plan:\n\n- Remove all whitespace from expr (or skip during parsing).\n- Use a recursive descent parser with a pointer.\n- Parse integer: consume digits, return int.\n- Parse factor: if '(' then parse expr after '(', expect ')' else parse number.\n- Parse term: left = factor, then while next token is * or /: operator, right = factor, apply.\n- Parse expr: left = term, then while next token is + or -: operator, right = term, apply.\n- Return float.\n\nWe need to handle negative numbers? The problem says integers, no variables. Usually negative numbers might appear as leading minus. But expression string may have \"-5+3\"? That would be a unary minus. The problem says \"integers\" but could be negative integers? It says \"integers\" and operators +, -, *, /. Typically, negative numbers are allowed as part of the integer literal, like \"-5\". We should handle unary minus at the start or after parentheses. E.g., \"(-5)\" or \"-3+2\". We can handle by treating '-' as part of number if it's at start or after '('? Or we can implement unary minus as a separate token. To simplify, we can allow negative numbers by parsing a leading '-' as part of the number: if current char is '-' and next is digit, we can parse negative number. But careful: subtraction operator also uses '-'. We need to differentiate. In recursive descent, when parsing factor, we can check for '-' and if followed by digits, parse negative number; otherwise it's an operator in expr. However, if we are parsing factor and see '-', it could be a unary minus. We can handle unary minus as: factor = '-' factor (like a prefix). But then we need to treat '-' as unary operator. Alternatively, we can simply allow negative numbers in the tokenization: if the token is '-' and next token is a number, combine into negative number. But that would require lookahead.\n\nSimpler: we can assume no negative numbers in the input? The problem statement says \"integers\" without specifying sign. But it's common to include negative numbers. To be safe, we'll handle unary minus as a prefix operator. In factor: if token is '-' then it's a unary minus applied to the next factor. We'll parse it as: if current char is '-' and not part of a number? We'll need to tokenize. Better to tokenize first: break into tokens: numbers, operators, parentheses. Then parse. We can tokenize by iterating, handling digits (including optional leading minus?), but then we need to differentiate between subtraction and negative sign. Standard approach: tokenize by scanning, treating '-' as part of number only if it is the first character or follows an operator or '('? That's tricky. Many simple evaluators treat '-' as a binary operator only; they don't allow unary minus. But they might allow expressions like \"-5\" as a negative number literal. Since the problem says \"integers\", it likely includes negative integers. So we should handle them.\n\nWe can implement tokenizer that recognizes integer literals optionally preceded by '-' (when at start or after '('). Or we can handle unary minus in parser: when parsing factor, if we see '-' token, it's unary minus; we then parse the factor after it and negate. This works even for multiple negatives like \"--5\". We'll do that. But then we need to tokenize. We'll implement a simple tokenizer that yields tokens: number (int), operators ('+','-','*','/'), parentheses '(' ')'. For numbers, we parse digits and possibly a leading '-'? But if we include '-' in number token, we need to decide when to include it. Instead, we'll tokenize without sign, then handle unary minus in parser: after tokenizing, we have a list of tokens. Then we parse with recursive descent. In token list, '-' will be an operator token. In factor, we check if token is '-', then it's unary minus; we consume it, parse next factor, and return -value. But we need to be careful that in expression parsing, '-' as binary operator is handled in expr rule. So we need to differentiate. In typical grammar:\n\nFactor -> '(' Expr ')' | Number | '-' Factor\n\nSo we need to allow '-' as unary operator. But note that '-' as unary has higher precedence than binary. So in factor, we check for '-' and treat as unary. This will also handle expressions like \"-5\" and \"-(3+2)\". This is standard.\n\nThus, we tokenize: digits for numbers, operators, parentheses. We'll also ignore whitespace.\n\nImplementation steps:\n\n1. Tokenization: iterate over expr, skip whitespace. If digit, parse number (int). If char is '+','-','*','/','(',')' -> add as token. Note: '-' token will be used for both binary and unary, but parser will differentiate.\n\n2. Parser class: has tokens list and index. Provide peek() and consume().\n\n3. parse_expr(): returns float. Use precedence climbing? Or recursive descent:\n   - parse_term(): left = parse_factor() then while token is '+' or '-': op, right = parse_term()? Actually expr is term ( ( '+' | '-' ) term )* . But careful with associativity. We'll do:\n     expr -> term { ('+'|'-') term }\n   - term -> factor { ('*'|'/') factor }\n   - factor -> number | '(' expr ')' | '-' factor\n\n   This handles unary minus. For binary, expr uses term. But note: '-' as binary operator in expr, not in term. So token '-' in expr context is binary minus; in factor context it's unary minus. So parser works.\n\n4. evaluate(): tokenize, create parser, call parse_expr(), return result (float).\n\nEdge cases: parentheses, division by zero? Not mentioned, but we can just let Python raise ZeroDivisionError, or return inf? Probably fine.\n\nWe'll output only the function definition.\n\nLet's write code.",
+      "extracted_code": "def evaluate(expr: str) -> float:\n    # Tokenization\n    tokens = []\n    i = 0\n    expr = expr.strip()\n    while i < len(expr):\n        ch = expr[i]\n        if ch.isspace():\n            i += 1\n            continue\n        if ch.isdigit():\n            num = 0\n            while i < len(expr) and expr[i].isdigit():\n                num = num * 10 + int(expr[i])\n                i += 1\n            tokens.append(num)\n            continue\n        if ch in '+-*/()':\n            tokens.append(ch)\n            i += 1\n            continue\n        # Should not happen for valid input\n        i += 1\n\n    # Parser using recursive descent\n    pos = [0]  # mutable index\n\n    def peek():\n        return tokens[pos[0]] if pos[0] < len(tokens) else None\n\n    def consume():\n        token = tokens[pos[0]]\n        pos[0] += 1\n        return token\n\n    def parse_factor() -> float:\n        token = peek()\n        if token is None:\n            raise ValueError(\"Unexpected end of expression\")\n        if token == '(':\n            consume()  # '('\n            val = parse_expr()\n            if peek() != ')':\n                raise ValueError(\"Missing closing parenthesis\")\n            consume()  # ')'\n            return val\n        if token == '-':\n            consume()  # '-'\n            return -parse_factor()\n        if isinstance(token, int):\n            return float(consume())\n        raise ValueError(f\"Unexpected token: {token}\")\n\n    def parse_term() -> float:\n        left = parse_factor()\n        while peek() in ('*', '/'):\n            op = consume()\n            right = parse_factor()\n            if op == '*':\n                left *= right\n            else:\n                left /= right\n        return left\n\n    def parse_expr() -> float:\n        left = parse_term()\n        while peek() in ('+', '-'):\n            op = consume()\n            right = parse_term()\n            if op == '+':\n                left += right\n            else:\n                left -= right\n        return left\n\n    result = parse_expr()\n    if pos[0] != len(tokens):\n        raise ValueError(\"Extra tokens after expression\")\n    return result\n",
+      "passed": true
+    },
+    {
+      "id": "single_tool_call",
+      "tier": "B",
+      "elapsed_s": 8.95,
+      "called_tool": "read_file",
+      "called_args": {
+        "path": "/tmp/data.txt"
+      },
+      "passed": true
+    },
+    {
+      "id": "multi_step_tool_call",
+      "tier": "B",
+      "elapsed_s": 28.67,
+      "called_tool": "write_file",
+      "called_args": {
+        "path": "/tmp/fizzbuzz.py",
+        "content": "def fizzbuzz(n):\n    \"\"\"Return a list of strings representing FizzBuzz from 1 to n.\"\"\"\n    result = []\n    for i in range(1, n + 1):\n        if i % 15 == 0:\n            result.append(\"FizzBuzz\")\n        elif i % 3 == 0:\n            result.append(\"Fizz\")\n        elif i % 5 == 0:\n            result.append(\"Buzz\")\n        else:\n            result.append(str(i))\n    return result\n\n\ndef fizzbuzz_single(i):\n    \"\"\"Return the FizzBuzz result for a single number.\"\"\"\n    if i % 15 == 0:\n        return \"FizzBuzz\"\n    elif i % 3 == 0:\n        return \"Fizz\"\n    elif i % 5 == 0:\n        return \"Buzz\"\n    else:\n        return str(i)\n\n\nif __name__ == \"__main__\":\n    import sys\n    n = int(sys.argv[1]) if len(sys.argv) > 1 else 100\n    print(\"\\n\".join(fizzbuzz(n)))\n"
+      },
+      "passed": true
+    },
+    {
+      "id": "no_tool_needed",
+      "tier": "B",
+      "elapsed_s": 4.99,
+      "called_tool": null,
+      "passed": true
+    },
+    {
+      "id": "tool_selection_similar",
+      "tier": "B",
+      "elapsed_s": 9.21,
+      "called_tool": "search_internal_docs",
+      "called_args": {
+        "query": "onboarding runbook document"
+      },
+      "passed": true
+    },
+    {
+      "id": "nested_args_tool_call",
+      "tier": "B",
+      "elapsed_s": 12.1,
+      "called_tool": "write_files",
+      "called_args": {
+        "files": [
+          {
+            "path": "/tmp/a.txt",
+            "content": "alpha"
+          },
+          {
+            "path": "/tmp/b.txt",
+            "content": "beta"
+          },
+          {
+            "path": "/tmp/c.txt",
+            "content": "gamma"
+          }
+        ]
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_correct",
+      "tier": "J",
+      "elapsed_s": 14.41,
+      "raw_content": "{\"passes\": true, \"reason\": \"Correctly filters alphanumeric characters, lowercases, and checks if the list equals its reverse.\"}",
+      "raw_reasoning": "We need to evaluate if the code satisfies the rubric. The rubric: function must return True only for strings that are palindromes (ignoring case and non-alphanumeric characters), and False otherwise. The code: def is_palindrome(s): cleaned = [c.lower() for c in s if c.isalnum()]; return cleaned == cleaned[::-1]. This checks if the cleaned list (lowercase alphanumeric characters) is equal to its reverse. That matches the rubric: ignores case and non-alphanumeric, returns True for palindromes, False otherwise. So passes. Reason: short sentence.",
+      "verdict": {
+        "passes": true,
+        "reason": "Correctly filters alphanumeric characters, lowercases, and checks if the list equals its reverse."
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_incorrect",
+      "tier": "J",
+      "elapsed_s": 34.16,
+      "raw_content": "{\"passes\": false, \"reason\": \"The code compares lists without the last character, causing non-palindromes like 'ab' to be incorrectly returned as True.\"}",
+      "raw_reasoning": "The code returns cleaned[:-1] == cleaned[::-1][:-1]. That compares the list without the last element to the reversed list without the last element. But a palindrome should compare the whole cleaned list with its reverse. The current logic is incorrect. For example, \"abba\" cleaned = ['a','b','b','a'], cleaned[:-1] = ['a','b','b'], cleaned[::-1][:-1] = ['a','b','b'] -> true, but that's not checking the full palindrome. Actually \"abba\" is palindrome, but the logic would also consider \"abb\" as palindrome? Let's test: \"abc\" cleaned = ['a','b','c'], cleaned[:-1] = ['a','b'], cleaned[::-1][:-1] = ['b','a'] -> false. But for \"abca\" cleaned = ['a','b','c','a'], cleaned[:-1] = ['a','b','c'], cleaned[::-1][:-1] = ['a','c','b'] -> false. However, the code misses the last character. For \"a\" cleaned = ['a'], cleaned[:-1] = [], cleaned[::-1][:-1] = [] -> true, but \"a\" is palindrome. For empty string cleaned = [], cleaned[:-1] = [], cleaned[::-1][:-1] = [] -> true, but empty string is often considered palindrome? Rubric says \"strings that are palindromes\" \u2014 empty string is typically a palindrome. But the logic is still wrong because it ignores the last character. For example, \"ab\" cleaned = ['a','b'], cleaned[:-1] = ['a'], cleaned[::-1][:-1] = ['a'] -> true, but \"ab\" is not palindrome. So the code is incorrect. Thus fails rubric.",
+      "verdict": {
+        "passes": false,
+        "reason": "The code compares lists without the last character, causing non-palindromes like 'ab' to be incorrectly returned as True."
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_correct_offbyone",
+      "tier": "J",
+      "elapsed_s": 11.65,
+      "raw_content": "{\"passes\": true, \"reason\": \"The function manually sums all elements using a loop and avoids built-in sum().\"}",
+      "raw_reasoning": "We need to check if the code meets the rubric: it must return sum of all elements using manual loop, no built-in sum(). The code uses a manual loop (for i in range(len(nums))) and adds each element. It returns result. So it satisfies. Passes true. Reason: it manually sums elements via loop.\n\nResponse: {\"passes\": true, \"reason\": \"The function manually sums all elements using a loop and avoids built-in sum().\"}",
+      "verdict": {
+        "passes": true,
+        "reason": "The function manually sums all elements using a loop and avoids built-in sum()."
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_incorrect_offbyone",
+      "tier": "J",
+      "elapsed_s": 13.49,
+      "raw_content": "{\"passes\": false, \"reason\": \"The loop uses range(len(nums)-1), which skips the last element, so it does not sum all elements.\"}",
+      "raw_reasoning": "We need to evaluate if the code satisfies the rubric: sum of all elements in the list using a manual loop (no built-in sum()). The code uses a loop but note the range: range(len(nums) - 1). This loops from 0 to len(nums)-2, missing the last element (index len(nums)-1). So it does not sum all elements. The rubric requires sum of all elements. The loop is manual but incomplete. So passes: false. Reason: loop misses last element due to range(len(nums)-1).",
+      "verdict": {
+        "passes": false,
+        "reason": "The loop uses range(len(nums)-1), which skips the last element, so it does not sum all elements."
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_correct_security",
+      "tier": "J",
+      "elapsed_s": 7.19,
+      "raw_content": "{\"passes\": true, \"reason\": \"The function uses a parameterized query with %s placeholder, preventing SQL injection.\"}",
+      "raw_reasoning": "The code uses parameterized query with `%s` placeholder, which is safe from SQL injection. The function looks up a user by username in the database. It passes the rubric.",
+      "verdict": {
+        "passes": true,
+        "reason": "The function uses a parameterized query with %s placeholder, preventing SQL injection."
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_incorrect_security",
+      "tier": "J",
+      "elapsed_s": 10.34,
+      "raw_content": "{\"passes\": false, \"reason\": \"The query uses string interpolation with user input, making it susceptible to SQL injection.\"}",
+      "raw_reasoning": "The user provided a code sample that builds a SQL query using f-string interpolation with the username variable directly. This is vulnerable to SQL injection because the username is not sanitized or parameterized. The rubric requires that the lookup is done without vulnerability to SQL injection. This code does not satisfy that. Therefore, passes is false, and reason should explain why.\n\nI'll respond with a JSON object.",
+      "verdict": {
+        "passes": false,
+        "reason": "The query uses string interpolation with user input, making it susceptible to SQL injection."
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_correct_logic",
+      "tier": "J",
+      "elapsed_s": 8.93,
+      "raw_content": "{\"passes\": true, \"reason\": \"The function correctly returns True when total is >= 50, matching the requirement.\"}",
+      "raw_reasoning": "The code directly returns total >= 50, which matches the rubric: total must be at least 50, and 50 itself qualifies. So it passes.\n\n{\"passes\": true, \"reason\": \"The function correctly returns True when total is >= 50, matching the requirement.\"}",
+      "verdict": {
+        "passes": true,
+        "reason": "The function correctly returns True when total is >= 50, matching the requirement."
+      },
+      "passed": true
+    },
+    {
+      "id": "judge_incorrect_logic",
+      "tier": "J",
+      "elapsed_s": 10.53,
+      "raw_content": "{\n  \"passes\": false,\n  \"reason\": \"The function returns True only if total > 50, but the rubric requires total >= 50 (including 50 itself).\"\n}",
+      "raw_reasoning": "The rubric states: \"the function must return True if a shopping cart total is eligible for free shipping, which requires the total to be AT LEAST $50 (50 itself qualifies).\" So total >= 50 qualifies. The code returns total > 50, which excludes total == 50. Therefore, it fails the rubric.",
+      "verdict": {
+        "passes": false,
+        "reason": "The function returns True only if total > 50, but the rubric requires total >= 50 (including 50 itself)."
+      },
+      "passed": true
+    },
+    {
+      "id": "constrained_summary",
+      "tier": "P",
+      "elapsed_s": 15.82,
+      "raw_content": "The Bosgame M5 uses AMD's Strix Halo APU, combining a Zen 5 CPU with an RDNA 3.5 integrated GPU and up to 128GB of unified LPDDR5X memory. This unified memory allows the GPU to load large language models that typically require dedicated VRAM, making the mini PC capable of local AI inference without a discrete graphics card.",
+      "sentence_count": 2,
+      "passed": true
+    },
+    {
+      "id": "structured_extraction",
+      "tier": "P",
+      "elapsed_s": 9.66,
+      "raw_content": "{\"order_id\":\"A-58291\",\"total_usd\":47.50,\"item_count\":3}",
+      "extracted": {
+        "order_id": "A-58291",
+        "total_usd": 47.5,
+        "item_count": 3
+      },
+      "passed": true
+    },
+    {
+      "id": "debug_off_by_one",
+      "tier": "D",
+      "elapsed_s": 13.65,
+      "final_content": "```python\ndef flag_big_drops(orders):\n    results = []\n    for i in range(len(orders)):\n        if orders[i] > 100 and i + 1 < len(orders):\n            results.append(orders[i] > orders[i+1])\n        else:\n            results.append(False)\n    return results\n```",
+      "extracted_code": "def flag_big_drops(orders):\n    results = []\n    for i in range(len(orders)):\n        if orders[i] > 100 and i + 1 < len(orders):\n            results.append(orders[i] > orders[i+1])\n        else:\n            results.append(False)\n    return results\n",
+      "passed": true
+    },
+    {
+      "id": "planning_new_tool",
+      "tier": "Q",
+      "elapsed_s": 82.85,
+      "raw_content": "I'd love to help you plan your internal tool. Let me start by asking a few clarifying questions so I can tailor the plan to your team's needs. Once you answer these, I'll propose a concrete blueprint.\n\n### First, let me understand your context:\n\n1.  **What problem does this tool solve?**  \n    *(e.g., tracking deployment status, managing on-call rotations, handling customer support tickets, syncing data between systems, automating manual reporting)*\n\n2.  **Who are the primary users?**  \n    *(e.g., engineers, product managers, customer support, leadership)*  \n    - How many people will use it?  \n    - How tech-savvy are they? (Will they tolerate CLI tools, or do they need a polished UI?)\n\n3.  **What existing tools do you already use?**  \n    *(e.g., Slack, Jira, GitHub, AWS, PagerDuty, Airtable, Google Sheets)*  \n    - Does this tool need to integrate with them?  \n    - Do you want it to *replace* something, or fill a gap?\n\n4.  **What are your constraints?**  \n    - Budget: $0? Small AWS budget? Enterprise?  \n    - Infrastructure: Do you have a cloud account, or must it run on-prem?  \n    - Time: Do you need an MVP in a week, or can you spend months?  \n    - Security: Does it handle sensitive data (PII, passwords, internal credentials)?\n\n5.  **What does \u201csuccess\u201d look like?**  \n    - Does it need to be real-time?  \n    - Do you want audit logs, RBAC, multi-user collaboration?  \n    - Do you need a mobile-friendly version?\n\n---\n\n### In the meantime, here is a *generic* template plan you can adapt:\n\n**Phase 0: Discovery (1\u20132 days)**  \n- Interview 3\u20135 potential users to validate the pain point.  \n- List the **top 5 workflows** the tool should handle.  \n- Define the **MVP scope** (one critical workflow, not all).\n\n**Phase 1: Choose Stack (based on your constraints)**  \n- **Low-code / No-code** (if team has limited dev resources): Retool, Budibase, Airtable + Automations, or Google Sheets + Apps Script.  \n- **Full-stack (if you have dev capacity)**:  \n  - Frontend: React / Vue / Svelte (or a simple admin template like Tabler).  \n  - Backend: Node.js / Python / Rails.  \n  - Database: PostgreSQL (most flexible) or SQLite (for small teams).  \n  - Auth: Clerk, Supabase Auth, or self-hosted (OAuth with your SSO).  \n  - Hosting: Fly.io, Railway, DigitalOcean, or AWS ECS.  \n\n**Phase 2: Architecture (keep it simple)**  \n- Start with a **monolith** (don't over-engineer).  \n- Use a single database and REST API.  \n- If you need integrations, use a webhook or background job system (e.g., BullMQ, Sidekiq).  \n\n**Phase 3: MVP Features (prioritize by value)**  \n- *Example for a \u201cDeployment Tracker\u201d tool*:  \n  1. List recent deployments (pull from CI/CD API).  \n  2. Show status (pass/fail/running).  \n  3. Allow team to add manual notes.  \n  4. Notify Slack on failures.  \n\n**Phase 4: Rollout & Iterate**  \n- Deploy to a single team member for 2 days.  \n- Fix UX pain points.  \n- Then invite 3 more users.  \n- Collect feedback and build only what\u2019s validated.\n\n---\n\n### If you share answers to the 5 questions above, I can turn this generic plan into a specific, actionable blueprint (including a recommended tech stack, database schema sketch, and even a rough API route list).\n\nLet me know what sounds most relevant!",
+      "topics_hit": [
+        "users",
+        "tech_stack",
+        "budget"
+      ],
+      "passed": true
+    },
+    {
+      "id": "planning_db_migration",
+      "tier": "Q",
+      "elapsed_s": 110.34,
+      "raw_content": "Excellent, let's plan this migration step by step. Since you didn\u2019t specify the target database system, I\u2019ll outline a **generic migration framework** that works for most targets (e.g., MySQL, Snowflake, DynamoDB, CockroachDB, etc.). You can adapt it based on your actual destination.\n\nI\u2019ll ask a few clarifying questions at the end to refine the plan.\n\n---\n\n### **1. Define Objectives & Success Criteria**\n- **Why migrate?** (Cost, performance, scalability, features, cloud-native?)\n- **Target database** (e.g., MySQL, AWS Aurora, Google Cloud Spanner, MongoDB, etc.)\n- **Downtime tolerance** (zero-downtime vs. scheduled maintenance window)\n- **Data volume & complexity** (TB scale? Complex joins? JSONB? Stored procedures?)\n- **Regulatory requirements** (GDPR, HIPAA \u2013 need audit trails, encryption?)\n\n---\n\n### **2. Inventory & Mapping**\n- **Schema analysis**: List tables, views, triggers, functions, extensions (e.g., PostGIS, pg_trgm).  \n  - Note PostgreSQL-specific features (arrays, hstore, enum, etc.) \u2013 need to map to target equivalents.\n- **Data types mapping**: e.g., `TEXT[]` \u2192 MySQL `JSON` or separate table; `UUID` \u2192 `CHAR(36)`; `JSONB` \u2192 `JSON`/`VARCHAR`.\n- **Indexes & constraints**: Unique, primary, foreign keys, partial indexes, GIN/GiST.\n- **Application dependencies**: Which apps connect? (connection strings, ORMs, queries using PostgreSQL-specific syntax).\n\n---\n\n### **3. Choose Migration Strategy**\nCommon approaches:\n\n| Strategy | Downtime | Complexity | Best for |\n|----------|----------|------------|----------|\n| **Bulk dump + load** | High (offline) | Low | Small DBs, dev/test |\n| **Change Data Capture (CDC)** | Minimal (live sync) | High | Zero-downtime, production |\n| **ETL pipeline (batch)** | Moderate (short window) | Medium | Large DBs, can accept seconds of lag |\n| **Hybrid (dual-write + backfill)** | Minimal | High | Real-time apps |\n\n**Recommendation**: Start with a **dry-run** using dump/load for testing, then move to CDC or batch ETL for production.\n\n---\n\n### **4. Tooling Options**\n- **pg_dump / pg_restore** \u2013 Simple, but offline.\n- **AWS DMS** (if moving to cloud) \u2013 Supports CDC, heterogeneous migrations.\n- **Debezium (CDC)** \u2013 Streams PostgreSQL changes to Kafka \u2192 target DB.\n- **Custom scripts** (e.g., Python + `psycopg2` + target driver) for complex transformations.\n- **ETL tools**: Apache Airflow, Talend, Fivetran.\n\n---\n\n### **5. Execution Phases**\n\n#### **Phase A: Planning & Preparation** (1\u20132 weeks)\n1. **Clone production** to staging (use `pg_dump -Fc` or `pg_basebackup`).\n2. **Test schema conversion** \u2013 Create target schema manually or using tools (e.g., `pg2mysql`).\n3. **Validate data types & constraints** \u2013 Run integrity checks.\n4. **Benchmark** \u2013 Measure performance on target with realistic workload.\n\n#### **Phase B: Test Migration** (offline, 1\u20132 days)\n1. **Full dump + transform**:  \n   ```bash\n   pg_dump -U user -h host -Fc dbname > dump.pgdump\n   # Convert to target format (e.g., using pg_restore with custom script)\n   ```\n2. **Load into target** \u2013 Validate row counts, indexes, foreign keys.\n3. **Run application tests** \u2013 All CRUD, reports, batch jobs.\n\n#### **Phase C: Production Migration** (choose one)\n\n**Option 1: Offline window**  \n- Schedule maintenance window.  \n- Stop app, final sync, switch DNS/connection strings.  \n- Pros: Simple; Cons: Downtime.\n\n**Option 2: Live migration (CDC)**  \n- Set up CDC (Debezium + Kafka + target sink connector).  \n- Run dual-write (app writes to both) for a short period.  \n- Verify lag is near zero, then cut over.  \n- Pros: Zero-downtime; Cons: Complex, need app changes.\n\n#### **Phase D: Post-Migration**  \n- **Performance tuning**: Add missing indexes, analyze query plans.  \n- **Monitor replication lag** (if CDC used).  \n- **Rollback plan**: Keep old Postgres running read-only for a week.  \n- **Cleanup**: Drop old DB once confident.\n\n---\n\n### **6. Common Pitfalls**\n- **Case sensitivity**: PostgreSQL uses lowercase identifiers by default; MySQL/others may be case-insensitive.\n- **Stored procedures / functions**: Syntax differences (PL/pgSQL vs. T-SQL vs. JavaScript).  \n- **Full-text search**: Postgres `tsvector` vs. MySQL `FULLTEXT` index.\n- **Transactional DDL**: Some targets don\u2019t support `CREATE TABLE ... IF NOT EXISTS` inside transactions.\n- **Time zones**: `TIMESTAMPTZ` \u2192 target needs timezone support.\n\n---\n\n### **7. Rollback & Validation**\n- **Before cutover**:  \n  - Take a final pg_dump.  \n  - Checksums on key tables.  \n- **After cutover**:  \n  - Compare row counts, sample data.  \n  - Run a subset of production queries in parallel.  \n  - Monitor error logs.\n\n---\n\n### **Next Steps \u2013 Please Clarify**\n\nTo give you a **tailored** plan, I need:\n\n1. **Target database** (e.g., MySQL 8, Aurora PostgreSQL-compatible, Snowflake, MongoDB, etc.)\n2. **Size** (number of tables, total GB/TB, row counts)\n3. **Downtime budget** (minutes/hours? or zero-downtime?)\n4. **Any constraints** (cloud vs. on-prem, legacy apps, ORM used?)\n\nOnce you provide those, I can refine the steps, recommend specific tools, and even write sample conversion scripts if needed.",
+      "topics_hit": [
+        "motivation",
+        "scale",
+        "downtime",
+        "timeline",
+        "rollback"
+      ],
+      "passed": true
+    },
+    {
+      "id": "needle_in_haystack",
+      "tier": "L",
+      "haystack_chars": 69121,
+      "elapsed_s": 238.24,
+      "raw_content": "BLUEFALCON-77",
+      "passed": true
+    }
+  ]
+}
