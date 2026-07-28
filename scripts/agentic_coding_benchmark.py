@@ -157,6 +157,45 @@ def make_scratch_workspace(task_id: str, run_id: str) -> Path:
     return ws
 
 
+def make_isolated_agent_home(run_id: str) -> Path:
+    """A per-run $HOME for the candidate model's own harness subprocess,
+    deliberately separate from the real chris $HOME. The box's real
+    ~/.ssh/github_deploy_key turned out (2026-07-28) to be an account-level
+    SSH key, not narrowly scoped to one repo — fine for this project's own
+    deliberate, reviewed code paths (e.g. reset_agentic_test_repo.sh), but
+    the candidate model itself runs with full unsandboxed shell access
+    (confirmed for both opencode and Pi — neither documents any sandboxing)
+    and has no reason to ever reach that key: its own git-pr-ci-v1
+    operations go through the workspace's HTTPS remote + GH_TOKEN (the
+    correctly-scoped fine-grained PAT), set up by clone_git_pr_ci_repo()
+    via `gh repo clone` with the box's `gh` configured for the https
+    protocol. Giving the subprocess an isolated $HOME with no .ssh
+    directory at all means `git@github.com:...`/bare `ssh` to any repo
+    fails outright (no identity file, no known_hosts, nothing to fall back
+    to) regardless of what the model's shell commands try — a structural
+    guarantee, not a policy the model is trusted to respect. Real HOME's
+    .npm-global (Pi's install location) and other real tool state are
+    deliberately NOT copied in here; each harness's own config-writer
+    (write_pi_models_config, write_opencode_config) targets this directory
+    directly instead of the real $HOME."""
+    home = Path(tempfile.mkdtemp(prefix=f"agentic-bench-home-{run_id}-"))
+    return home
+
+
+def isolated_agent_env(base_env: dict, agent_home: Path) -> dict:
+    """Env for the candidate model's own subprocess: isolated HOME (see
+    make_isolated_agent_home), and strip anything that could let it reach
+    the real SSH identity by another path (an inherited ssh-agent socket,
+    or a GIT_SSH_COMMAND override) even though neither is expected to be
+    set in this harness's own calling environment — defensive, not just
+    trusting the isolated-HOME mechanism alone."""
+    env = dict(base_env)
+    env["HOME"] = str(agent_home)
+    env.pop("SSH_AUTH_SOCK", None)
+    env.pop("GIT_SSH_COMMAND", None)
+    return env
+
+
 def setup_workspace(task_id: str, workspace: Path) -> None:
     """Copy in ONLY starter/ (never hidden/) for tasks that have one.
     git-pr-ci-v1 has no starter/ — it's set up by reset_git_pr_ci_repo() +
@@ -341,22 +380,22 @@ def build_opencode_cmd(alias: str, prompt: str) -> list:
 # Pi: shared ~/.pi/agent/models.json (rewritten fresh per run) + `pi --mode json`
 # --------------------------------------------------------------------------
 
-def pi_home_config_path() -> Path:
-    return Path.home() / ".pi" / "agent" / "models.json"
+def pi_home_config_path(agent_home: Path) -> Path:
+    return agent_home / ".pi" / "agent" / "models.json"
 
 
-def write_pi_models_config(alias: str, base_url: str, api_key: str) -> None:
+def write_pi_models_config(agent_home: Path, alias: str, base_url: str, api_key: str) -> None:
     """Pi has no documented per-run config-path override (confirmed
     2026-07-28 during implementation — the M-021 card's "baseUrl model
     config" note undersold how literal a JSON config file this is; see
-    Pi's own docs/models.md) — so this REWRITES the one shared
-    ~/.pi/agent/models.json immediately before every run, with exactly one
-    provider/one model entry for this run's target alias. This is only
-    safe because M-021's own GPU-contention safety sequencing already
-    requires runs to be strictly sequential, never concurrent, on this
-    box — a stale alias from a previous run can therefore never be
-    selected by accident, but this file must never be parallelized without
-    a real per-run isolation mechanism (e.g. a per-run HOME override)."""
+    Pi's own docs/models.md) — so this writes exactly one provider/one
+    model entry for this run's target alias into agent_home's
+    ~/.pi/agent/models.json (agent_home is the isolated per-run $HOME from
+    make_isolated_agent_home, not the real chris $HOME — see that
+    function's docstring for why). Rewriting fresh per run (rather than
+    reusing a persistent file) is only safe because M-021's own
+    GPU-contention safety sequencing already requires runs to be strictly
+    sequential, never concurrent, on this box."""
     compat = {}
     if "qwen" in alias.lower():
         # Local Qwen-compatible servers read chat_template_kwargs.enable_thinking,
@@ -387,7 +426,7 @@ def write_pi_models_config(alias: str, base_url: str, api_key: str) -> None:
             }
         }
     }
-    path = pi_home_config_path()
+    path = pi_home_config_path(agent_home)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(config, indent=2))
 
@@ -585,7 +624,9 @@ def run_one(task_id: str, harness: str, build_id: str, base_url: str, served_nam
     transcript_path = RAW_DIR / f"{build_id}--{BENCHMARK_IDS[harness]}--{task_id}--{timestamp}--transcript.jsonl"
 
     workspace = make_scratch_workspace(task_id, run_id)
+    agent_home = make_isolated_agent_home(run_id)
     log(f"[{build_id}/{harness}/{task_id}] Scratch workspace: {workspace}")
+    log(f"[{build_id}/{harness}/{task_id}] Isolated agent $HOME: {agent_home}")
 
     is_git_pr_ci = task_id == "git-pr-ci-v1"
     is_docker_lifecycle = task_id == "docker-lifecycle-v1"
@@ -604,12 +645,20 @@ def run_one(task_id: str, harness: str, build_id: str, base_url: str, served_nam
             setup_workspace(task_id, workspace)
 
         # -------------------- HARNESS CONFIG --------------------
-        env = os.environ.copy()
+        # isolated_agent_env: the candidate model's own subprocess gets a
+        # fake $HOME with no .ssh at all (see make_isolated_agent_home's
+        # docstring) — it structurally cannot reach the box's broad
+        # account-level SSH key regardless of what its shell commands try.
+        # GH_TOKEN (the properly-scoped fine-grained PAT) IS still present,
+        # since that's the intended credential for the agent's own
+        # git-pr-ci-v1 operations against the HTTPS remote clone_git_pr_ci_
+        # repo() already set up.
+        env = isolated_agent_env(os.environ.copy(), agent_home)
         if harness == "opencode":
             write_opencode_config(workspace, served_name, base_url, resolved_api_key)
             cmd = build_opencode_cmd(served_name, prompt)
         else:
-            write_pi_models_config(served_name, base_url, resolved_api_key)
+            write_pi_models_config(agent_home, served_name, base_url, resolved_api_key)
             cmd = build_pi_cmd(served_name, prompt)
             env.setdefault("PATH", os.environ.get("PATH", ""))
 
@@ -676,6 +725,7 @@ def run_one(task_id: str, harness: str, build_id: str, base_url: str, served_nam
             # against, found during harness smoke testing).
             cleanup_stray_docker_lifecycle_containers()
         cleanup_workspace(workspace)
+        shutil.rmtree(agent_home, ignore_errors=True)
 
 
 def run_all_tasks(harness: str, build_id: str, base_url: str, served_name: str,
