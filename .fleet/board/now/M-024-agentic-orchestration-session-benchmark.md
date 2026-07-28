@@ -62,20 +62,42 @@ already-built harness/tasks stay valid as one useful (narrower) signal.
 - What's the actual scenario/mandate given to the candidate model for its
   1-2hr session? Needs to be broad/evolving enough to elicit real
   delegation and judgment calls, bounded enough to grade in reasonable
-  time and not touch Chris's real production systems. A sandboxed variant
-  of this repo's own kind of work (catalog/config changes, sub-task
-  delegation to scripted "sub-agent" stand-ins) is the obvious analog but
-  not yet designed.
-- Does the candidate model get real sub-agent-dispatch capability (e.g. can
-  it actually invoke other model instances as sub-agents?), or is
-  "delegation quality" graded some other way given most local models
-  running via opencode/Pi won't have an equivalent multi-agent
-  orchestration feature out of the box? This is a real, unresolved
-  mechanics question, not just a grading-rubric question.
-- What's the actual LLM-judge rubric, and which model plays judge? (This
-  project's existing Tier J work on judge-role fitness is directly
-  relevant prior art — check `seven-tier-coding-v2.yaml`'s Tier J before
-  designing a new rubric from scratch.)
+  time and not touch Chris's real production systems. Leaning toward
+  extending M-021's existing sandboxed substrate (`local-ai-machine-test`
+  repo, docker-lifecycle scaffolding) with a moderately-scoped starting
+  task plus 1-2 scripted mid-session "complications" (a fake CI failure
+  needing investigation, a scope-addition, and at least one genuinely
+  hard-stop-worthy moment) rather than designing a wholly new substrate —
+  not yet fully speced.
+- **Delegation mechanics — decided 2026-07-28**: scripted stub tool, not
+  real nested sessions. Chris's own real-world observation directly
+  informed this: he's seen Gemma models *claim* they want to spin off a
+  sub-agent without actually invoking the tool — a genuine, concrete
+  instruction-following failure mode, not hypothetical. A scripted stub
+  (`dispatch_subagent()` returning a canned result) is cheap AND lets the
+  harness directly check the exact failure mode Chris described: does the
+  model's stated intent in the transcript ("I'll spin off a sub-agent to
+  do X") actually match a real tool invocation, or is it just talk? This
+  "stated-intent vs. actual-invocation fidelity" check should be an
+  explicit, concrete grading signal in its own right — probably a more
+  foundational/important one than "delegation quality" in the abstract,
+  since it's really testing basic instruction-following reliability under
+  agentic conditions.
+- **Judge model — pending a tiebreak**: "best local model per Tier J
+  results" was confirmed as the approach, but Tier J
+  (`seven-tier-coding-v2`) currently has a 7-way tie at 8/8:
+  `qwen3.6-27b--llamacpp-vulkan-radv-server-v1`,
+  `qwen3-coder-next-gptq4bit--vllm-therock-gfx1151-v1`,
+  `qwen2.5-vl-7b-instruct--vllm-therock-gfx1151-v1`,
+  `glm-4.7-flash--llamacpp-vulkan-radv-v1`,
+  `gemma-4-31b-it--vllm-therock-gfx1151-v1`,
+  `gemma-4-26b-a4b-it--vllm-therock-gfx1151-v1`,
+  `deepseek-v4-flash-iq2xxs--llamacpp-vulkan-radv-v1`. Sizes range from 7B
+  (`qwen2.5-vl-7b-instruct`) to 284B/13B-active
+  (`deepseek-v4-flash-iq2xxs`) — real tradeoff between judge-model cost
+  (competes for GPU budget alongside whatever's being tested) and judging
+  care for a nuanced multi-hour transcript. Chris's tiebreak call still
+  needed.
 - Where does this fit relative to M-021 in build order — after M-021 fully
   ships, or can real design/build work start in parallel? Currently marked
   `blocked_by: M-021` as a placeholder; revisit once M-021 is fully done.
