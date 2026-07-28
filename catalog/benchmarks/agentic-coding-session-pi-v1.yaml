@@ -122,6 +122,19 @@ known_caveats:
      default, confirmed via its own README) — same reliance on the
      scratch-workspace-per-run design as the opencode sibling; never assume
      Pi will self-restrict scope."
+  - "Pi's bash tool can spawn child processes that survive a SIGTERM/SIGKILL
+     sent to the top-level pi process's own process group — real gap found
+     during smoke testing 2026-07-28: an agent that started a foreground
+     long-running server via bash without backgrounding it (a genuine model
+     mistake, not a harness bug) left that child process alive and bound to
+     its port after the harness's timeout-kill had already reaped pi itself.
+     The harness now does a best-effort /proc-cwd sweep to kill any
+     leftover process rooted in the workspace before deleting it
+     (kill_orphans_under_workspace()), but this is a defensive net, not a
+     guarantee — a process that chdir'd elsewhere after spawning could
+     still slip past it. A hung/foreground-server bash tool call is itself
+     a real, valid (if 'improper') data point about a model's agentic
+     behavior under Pi specifically, not something to filter out of results."
   - "Pi's provider config lives in one shared, non-namespaced
      ~/.pi/agent/models.json — correctness of this benchmark_id depends on
      the harness script actually rewriting that file immediately before

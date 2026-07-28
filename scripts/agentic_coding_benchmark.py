@@ -199,7 +199,47 @@ def verify_hidden_never_leaked(task_id: str, workspace: Path) -> None:
             f"it's an unusual coincidence worth a human glance: {suspicious}")
 
 
+def kill_orphans_under_workspace(workspace: Path) -> None:
+    """Best-effort safety net: kill any process whose cwd is still under
+    the workspace, before deleting it. Real gap found during Pi harness
+    smoke testing 2026-07-28: Pi's own `bash` tool can spawn children (e.g.
+    a foreground long-running server the agent itself launched without
+    backgrounding it) that survive a SIGTERM/SIGKILL sent to the top-level
+    `pi` process's process group — confirmed live, a `fake_ledger_server.py`
+    child process the agent started stayed alive and bound to its port
+    after the harness's own timeout-kill had already reaped `pi` itself and
+    torn down the workspace directory. Not fully understood why this one
+    child escaped the group (pi's bash tool implementation likely
+    setsid()s or double-forks its own subprocesses) — this is a defensive
+    net, not a fix to the root cause, and isn't guaranteed exhaustive (a
+    process could also have chdir'd away after spawning), but it materially
+    reduces the chance of a leaked process outliving cleanup_workspace()."""
+    proc_root = Path("/proc")
+    if not proc_root.exists():
+        return  # not on Linux /proc — best-effort only, skip silently.
+    ws_str = str(workspace)
+    for entry in proc_root.iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            cwd_link = (entry / "cwd").resolve()
+        except (OSError, RuntimeError):
+            continue
+        if str(cwd_link).startswith(ws_str):
+            pid = int(entry.name)
+            try:
+                os.kill(pid, signal.SIGKILL)
+                log(f"Killed orphaned process pid={pid} (cwd under {workspace}) "
+                    f"before workspace cleanup.")
+            except ProcessLookupError:
+                pass
+            except PermissionError:
+                log(f"WARNING: found process pid={pid} with cwd under {workspace} "
+                    f"but lack permission to kill it — may leak past cleanup.")
+
+
 def cleanup_workspace(workspace: Path) -> None:
+    kill_orphans_under_workspace(workspace)
     shutil.rmtree(workspace, ignore_errors=True)
 
 
