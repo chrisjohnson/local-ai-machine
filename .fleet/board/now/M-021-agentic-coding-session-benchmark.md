@@ -202,6 +202,7 @@ task-2 implementation:
      <!-- signal: <pet-name> <ISO8601-UTC> — <short message> -->
 -->
 <!-- signal: claude 2026-07-28T00:00Z — done: docs-research-v1 and docker-lifecycle-v1 task scaffolds built under catalog/agentic-tasks/, committed+pushed to main (2c4604d). git-pr-ci-v1 (task 3) not touched -- being built separately, still uncommitted in this working tree as of my push. -->
+<!-- signal: claude 2026-07-28T00:00Z — done: local-ai-machine-test repo auth+baseline+reset (step 4) and git-pr-ci-v1 task scaffold (step 5, 3/3) built, tested, committed+pushed to main (2acd4bf). Did not touch docs-research-v1/docker-lifecycle-v1. One item needs Chris directly: a fine-grained GitHub PAT can only be created via the web UI, not gh/API -- exact steps left in secrets/gh-agentic-test-repo-token.env.example and in Handoff notes below. -->
 
 ## Decision log
 <!-- append-only, one line per entry, newest last. Never move this card to done/
@@ -252,6 +253,43 @@ task-2 implementation:
   another agent, left completely alone including not staging/committing it.
   Did NOT touch the harness script, methodology YAML, or
   `benchmark_orchestrator.py` — out of scope for this pass.
+- 2026-07-28 — Step 4 (repo auth + baseline/reset mechanism) done, plus
+  step 5's third scaffold (`git-pr-ci-v1`). Auth: a fine-grained GitHub PAT
+  scoped only to `local-ai-machine-test` (contents/pull-requests/actions:
+  read+write) is the right shape — confirmed fine-grained PATs cannot be
+  created via `gh`/the GitHub API, only the web UI, so this one step needs
+  Chris directly (exact instructions in
+  `secrets/gh-agentic-test-repo-token.env.example` and Handoff notes below).
+  Baseline: pushed a compact stdlib-only Python `warehouse` inventory
+  library (add/remove stock across bins, `transfer_stock` deliberately
+  unimplemented) plus a real GitHub Actions CI workflow to
+  `local-ai-machine-test`'s `main`, tagged `baseline`. `scripts/
+  reset_agentic_test_repo.sh` force-resets main to that tag, closes open
+  PRs, deletes stray branches — tested against a clean repo (no-op), a
+  dirty repo (real throwaway branch+PR opened and cleaned up), and a stray
+  direct-to-main commit; all three recovered correctly, verified via fresh
+  `gh api` calls after each reset (not just the script's own report).
+  `catalog/agentic-tasks/git-pr-ci-v1/`: task prompt (implement
+  `transfer_stock` per the baseline repo's documented contract, branch, PR,
+  wait for CI, merge) plus a hidden stdlib-only grader (no LLM judge) that
+  checks the real GitHub end state — PR opened+merged, CI actually ran and
+  passed on the PR's head commit (not just present/skipped), test coverage
+  added, `transfer_stock` present and behaviorally correct on merged main
+  (functional checks against a fresh clone, not a grep), full suite still
+  green. Real bug found and fixed during testing: since
+  `local-ai-machine-test` is long-lived and reset between runs, `gh pr list
+  --state merged` keeps returning PRs from prior runs forever (GitHub never
+  un-merges a PR's recorded state even after the underlying commits are
+  force-reset away) — an idle agent that did nothing would have scored
+  credit for a previous run's merge. Fixed by filtering to merge commits
+  actually reachable from main's current tip (`gh api compare`) before
+  treating a PR as "this run's submission." Verified end-to-end against
+  three real simulated submissions on the actual GitHub repo: a correct
+  implementation (10/10), no submission at all (1/10 — only the
+  unrelated-sanity check passes, zero false credit from the stale merge),
+  and a naive buggy implementation matching the README's documented
+  partial-credit/same-bin traps (7/10 — both planted bugs correctly
+  caught). Repo left reset to clean baseline afterward.
 
 ## Handoff notes
 <!-- what's half-done, what the next agent picking this up should do first. -->
@@ -268,3 +306,101 @@ exactly what a harness needs to copy where and when (starter -> workspace
 before the session, hidden/grade.py invoked with --workspace after) — read
 those before writing the harness's copy-in/copy-out logic rather than
 re-deriving it.
+
+**Update — step 4 and step 5's third scaffold (`git-pr-ci-v1`) are now
+done too, so step 5 is 3/3 complete** (pending only a final confirmation
+that nothing was missed across the two parallel passes — the two agents
+never touched each other's files). Pushed to main (`2acd4bf`).
+
+**One thing needs Chris directly before the harness (step 6) can actually
+run task 2 for real: creating the fine-grained GitHub PAT.** This is a
+genuine web-UI-only step — confirmed fine-grained PATs cannot be created
+via `gh` or the GitHub API. Exact steps (also in
+`secrets/gh-agentic-test-repo-token.env.example`):
+1. Go to `https://github.com/settings/personal-access-tokens/new`.
+2. Resource owner: `chrisjohnson`. Repository access: "Only select
+   repositories" → `local-ai-machine-test`.
+3. Repository permissions: **Contents: Read and write**, **Pull requests:
+   Read and write**, **Actions: Read and write**. (Metadata: Read-only is
+   auto-included, no action needed.)
+4. Generate, copy the token (`github_pat_...`), and paste it as `GH_TOKEN=`
+   into `secrets/gh-agentic-test-repo-token.env` (gitignored — create this
+   file locally/on the box, don't commit it; the `.example` file is the
+   tracked template).
+Until that token exists, `scripts/reset_agentic_test_repo.sh` and the
+future harness both currently fall back to whatever `gh` is already
+authenticated as in the calling environment (Chris's own broad-scope `gh
+auth login` session, confirmed via `gh auth status` to have `repo`/`gist`/
+`read:org` OAuth scopes) — that's what this pass's own testing used, and
+it works, but it's Chris's personal credential, not the repo-scoped one
+the task asked for, and shouldn't be what the unattended benchmark harness
+ends up relying on long-term.
+
+**What's built and verified (step 4):**
+- `local-ai-machine-test`'s `main` now holds a real baseline: a compact
+  stdlib-only Python `warehouse` inventory library (`add_stock`/
+  `remove_stock`/queries implemented, `transfer_stock` deliberately
+  missing) with a `tests/` unittest suite and a real `.github/workflows/
+  ci.yml` that runs those tests on every push/PR. Tagged `baseline` —
+  this is the exact ref `scripts/reset_agentic_test_repo.sh` resets to.
+- `scripts/reset_agentic_test_repo.sh` (in this repo, `chmod +x`'d):
+  closes every open PR (`gh pr close --delete-branch`), deletes every
+  non-default branch, force-resets `main` to the `baseline` tag's commit
+  via `gh api -X PATCH .../git/refs/heads/main -f sha=... -F force=true`,
+  then re-verifies (0 open PRs, 0 other branches, `main` sha == baseline
+  sha) and exits nonzero if verification fails. Idempotent — safe to run
+  repeatedly. Tested for real against the live repo three times (clean
+  no-op, dirty-repo full recovery, stray-direct-push recovery) — all
+  passed, each independently re-verified via fresh `gh api` calls after
+  the script exited, not just trusting its own printed report.
+
+**What's built and verified (step 5, `git-pr-ci-v1`):**
+- `catalog/agentic-tasks/git-pr-ci-v1/task.md`: prompt asks the agent to
+  read the baseline repo's README "Transfer semantics" spec, implement
+  `transfer_stock` matching it exactly, add test coverage, branch, PR,
+  wait for CI, merge — small/clearly-scoped per M-021's own instructions,
+  the mechanics (not the code) are the point.
+- `catalog/agentic-tasks/git-pr-ci-v1/hidden/grade.py`: stdlib-only (uses
+  `gh` as an external binary, same pattern as this project's other hidden
+  graders), `--json`/pass_count/total_count output matching the sibling
+  scaffolds' `CheckResult`/`_emit` convention. Checks: a PR was opened and
+  merged into `main`; the merged PR has real commits; CI actually ran
+  (not skipped) and passed on the PR's exact head SHA (checked via `gh run
+  list --commit <sha>`, not just "some run exists"); the PR touched a
+  test file; `transfer_stock` exists and is behaviorally correct on
+  current `main` (fresh clone + direct functional exercise of all four
+  documented contract rules, not a static grep); the full pre-existing
+  test suite still passes against merged main (catches an agent that
+  broke something unrelated while adding the new method).
+- **Load-bearing bug found and fixed during testing, worth flagging
+  loudly for whoever builds the harness**: because this repo persists
+  across runs and only gets reset by the script above, `gh pr list
+  --state merged` returns every PR ever merged against it, forever — a
+  reset does NOT erase a PR's GitHub-recorded `MERGED` state, it just
+  makes the underlying commits unreachable from `main` again. A grader
+  that trusted "most recently merged PR" without checking reachability
+  would give an idle/no-op agent free credit for whatever the *previous*
+  run's agent merged. Fixed by resolving each merged PR's merge-commit
+  SHA and checking `gh api repos/.../compare/<merge_sha>...main` — the
+  PR only counts if `main`'s current tip is "ahead of" or "identical to"
+  that commit (i.e. still reachable), not "behind" it (reset away). This
+  matters for the harness design generally, not just this one script: any
+  future check that reads `local-ai-machine-test`'s GitHub history (not
+  just its current file tree) needs the same reachability filter, or
+  grading will silently leak state across runs. Verified with 3 full
+  real submissions run against the live repo end-to-end (branch → PR →
+  CI wait → merge → grade → reset): correct impl scored 10/10, a
+  clean/untouched repo (no submission) scored 1/10 with zero false credit
+  from the earlier run's stale merge, and a naive buggy implementation
+  (adds to `to_bin` before validating `from_bin`, and doesn't reject a
+  same-bin transfer — exactly the two traps the README spec calls out)
+  scored 7/10, correctly failing both planted-bug checks and the
+  missing-test-coverage check while still passing CI (since it didn't
+  break any *existing* test). Repo was left reset to clean `baseline`
+  state after all testing.
+
+**Next real step for whoever picks this up**: step 6 (harness script) —
+now unblocked design-wise (both step 4 and step 5 fully done across both
+parallel passes), but functionally blocked on Chris creating the
+fine-grained PAT above if the harness is meant to run unattended with a
+repo-scoped credential rather than Chris's own `gh` session.
