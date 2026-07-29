@@ -164,19 +164,48 @@ contribute to. Any agent — regardless of runtime — should be able to:
   journal/decision-log/roadmap-history content that's now in `knowledge/`. Doing this on
   the same `m-003-knowledge-base` branch before merge, then re-reviewing before Chris
   merges.
+- 2026-07-29 — **Cleanup pass complete (isolated worktree, commit `fcc40d4` on
+  `m-003-knowledge-base`).** Before deleting, spot-checked both files' content against
+  `knowledge/` section by section (all of `OPTIMIZATIONS.md`'s major findings — the
+  4-lead "fourth pass," the MTP negative result, the GPT-OSS-120B/20B benchmark, the
+  Ollama version reassessment, the new-MoE-candidate survey — and all of `HANDOFF.md`'s
+  guardrails/catalog-structure/decision-log/open-next-steps content) — everything was
+  already faithfully migrated, nothing new needed backfilling. `git rm`'d both files.
+  Rewrote `README.md` from 1453 lines (mixed architecture spec + running journal) down to
+  278 lines: kept and refreshed the genuine architecture sections (repo layout, system
+  topology diagram, `configuration.nix`/`docker-compose.yml`/LiteLLM design, Hermes
+  delegation, catalog structure) after checking each against the actual current files —
+  found and fixed real drift, since the old README still described the original
+  single-primary/single-judge 2-container vLLM design and a stale model roadmap, while the
+  actual `docker-compose.yml` has moved to M-001's two-tier per-build design (13+ model
+  services on individual fixed ports, `scripts/set-role.sh` for dynamic LiteLLM role
+  aliasing) with a much larger, versioned (M-002) `catalog/` and the Laguna deployment
+  present. Cut the entire "Phased Implementation Roadmap" section (mermaid phase diagram,
+  per-phase COMPLETE checklists, 10+ embedded "Decision Log — <date>" entries, "Open Next
+  Steps") since all of it is already in `knowledge/decisions/`/`knowledge/context/` — left
+  only a brief "current state" paragraph. Deleted the old "Implementation Directives for
+  Coding Agent" section entirely (not moved) since everything in it — declarative-state
+  discipline, secrets hygiene — was already covered by `AGENTS.md`. Updated `AGENTS.md`'s
+  "Where the detailed operational knowledge lives" list (removed the now-stale
+  `HANDOFF.md`/`OPTIMIZATIONS.md`/old-README-shape bullets) and fixed two stale
+  `HANDOFF.md` references in `scripts/benchmark_orchestrator.py`'s docstring. Left board
+  cards' own historical references to the deleted files alone (M-005, M-022) — accurate
+  provenance for what was true when written, not live pointers. Pushed to
+  `m-003-knowledge-base`, PR #8 still open for Chris's review before merge.
 
 ## Handoff notes
-- Done: all 7 plan steps complete. `knowledge/` created with an index README + 3
+- Done: all 7 original plan steps complete, plus the 2026-07-29 scope-change cleanup
+  (HANDOFF.md/OPTIMIZATIONS.md deleted, README.md rewritten as a human-readable
+  architecture doc, AGENTS.md pointers updated). `knowledge/` has an index README + 3
   subdirectory READMEs, 15 files in `decisions/`, 16 in `research/`, 3 in `context/`
   (34 total content files, all with valid `id`/`date`/`source`/`tags`/`status`
-  frontmatter, verified via a PyYAML parse pass). `AGENTS.md` updated with the exact
-  section text from the card's plan step 6, plus updated pointers in its existing
-  "Where the detailed operational knowledge lives" list.
+  frontmatter, verified via a PyYAML parse pass).
 - PR: https://github.com/chrisjohnson/local-ai-machine/pull/8 (branch
-  `m-003-knowledge-base` -> `main`). Not merged — left for Chris's review per the task
-  instructions.
-- Nothing genuinely ambiguous enough to block on came up during migration — the
-  judgment calls above (splitting multi-topic sections, decisions-vs-context framing,
-  one file marked superseded) were all resolved using the card's own stated criteria
-  and recorded above rather than guessed silently.
+  `m-003-knowledge-base` -> `main`, now at commit `fcc40d4`). Not merged — left for
+  Chris's review per the task instructions.
+- Nothing genuinely ambiguous enough to block on came up during either the original
+  migration or this cleanup pass — judgment calls (splitting multi-topic sections,
+  decisions-vs-context framing, which architecture drift to fix, what to cut vs. keep in
+  README) were all resolved using the card's own stated criteria and Chris's explicit
+  instructions, recorded above rather than guessed silently.
 - Do NOT move this card to done/ — leave that for after PR review/merge.
