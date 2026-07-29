@@ -40,14 +40,14 @@ confirm it now correctly shows as `RUN`, not `FAILED`.
 
 ## Plan
 <!-- ordered checklist -->
-1. [ ] Sync the server's checkout to latest `main` (picks up the
+1. [x] Sync the server's checkout to latest `main` (picks up the
    `gpt-oss-120b` fix and `deepseek` status update).
-2. [ ] `--dry-run` on the box, confirm: `gpt-oss-120b--llamacpp-vulkan-radv-v1`
+2. [x] `--dry-run` on the box, confirm: `gpt-oss-120b--llamacpp-vulkan-radv-v1`
    now shows `RUN` (not `FAILED`), and the plan's scope matches expectations
-   (nearly every non-BROKEN build, missing the 4 new agentic-session ids).
-3. [ ] Start the real sweep via `systemctl start benchmark-orchestrator.service`
+   (25 builds queued, missing the 4 new agentic-session ids).
+3. [x] Start the real sweep via `systemctl start benchmark-orchestrator.service`
    (server-side persistent unit, not a piloted SSH loop — survives session
-   disconnects).
+   disconnects). Running as of 2026-07-29T20:46Z.
 4. [ ] Watch for stalls/OOM/crashes per `catalog/OPERATIONS.md`'s safety
    procedure — check in periodically via `journalctl`/`systemctl is-active`,
    not fire-and-forget, but also not blocking the whole conversation on a
@@ -68,6 +68,7 @@ confirm it now correctly shows as `RUN`, not `FAILED`.
      <!-- signal: <pet-name> <ISO8601-UTC> — <short message> -->
 -->
 <!-- signal: claude 2026-07-29T19:50Z — claiming, Chris authorized running the full sweep now -->
+<!-- signal: claude 2026-07-29T20:46Z — sweep running (systemd, real, not dry-run) after a GPU-contention crash on first attempt (laguna recovered, Chris OK'd proceeding). Checking in periodically, not blocking on it. -->
 
 ## Decision log
 <!-- append-only, one line per entry, newest last. Never move this card to done/
@@ -76,6 +77,21 @@ confirm it now correctly shows as `RUN`, not `FAILED`.
   run the big sweep" — this is genuinely new-scope work (a catalog-wide
   run, not the narrow single-build fix [[M-022]] was originally about), so
   tracked as its own card rather than silently folded into M-022's history.
+- 2026-07-29 — **Real incident on first start attempt**: `benchmark_orchestrator.py`
+  has a hardcoded "ensure default services (qwen3.6-35b-a3b, qwen3.5-4b) are
+  up" startup step that predates the laguna deployment — it doesn't know
+  `coder` now points at laguna (llama-server), and unconditionally brought
+  both old vLLM builds up alongside it. This caused a real GPU-contention
+  crash of the live `laguna-s-2.1-118b-q4km--llamacpp-vulkan-radv-v1`
+  container (`RestartCount` 0→1) mid-generation on an actual in-flight
+  request — exactly the failure mode documented in
+  `knowledge/research/2026-07-24-llamacpp-vllm-gpu-contention-crash.md`.
+  Stopped the service, cleaned up the stray vLLM containers, confirmed
+  laguna recovered and healthy. Chris explicitly said disrupting his
+  session is fine and to proceed anyway — restarted the service without
+  fixing the underlying hardcoded-default-services bug (out of scope for
+  tonight; worth a follow-up card so this doesn't bite again on every
+  future sweep start). Real sweep now running as of 2026-07-29T20:46Z.
 
 ## Handoff notes
 <!-- what's half-done, what the next agent picking this up should do first. -->
