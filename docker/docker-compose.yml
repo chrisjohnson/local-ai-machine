@@ -497,7 +497,7 @@ services:
       --swa-full
       --reasoning-format none
       -n 8192
-      -c 16384
+      -c 131072
       --host 0.0.0.0
       --port 8080
       -a laguna-s-2.1-118b-q4km
