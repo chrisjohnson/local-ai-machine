@@ -81,4 +81,41 @@ service, restart litellm-proxy, verify `coder` resolves and responds.
   follow-up card if Chris wants it investigated further.
 
 ## Handoff notes
-None — task complete, PR awaiting Chris's review/merge.
+None — task complete.
+
+## Post-merge follow-up (Chris's review feedback)
+
+Chris flagged: `set-role.sh` exists specifically so role switches don't need
+a git commit/PR at all (see `config.yaml` header). The original PR bundled
+a hand-edit of the `coder` role's `model:`/`api_base:` into the same PR as
+the new compose service — unnecessary ceremony for an operation the repo's
+own tooling is designed to do live. Corrected:
+
+- Extended `scripts/set-role.sh` to parse llama.cpp's `-a`/`--alias` flag
+  (falling back from vLLM's `--served-model-name`), closing the gap that
+  caused the original hand-edit in the first place.
+- Reverted the direct `coder` repoint in `config.yaml` back to
+  `qwen3.6-35b-a3b`/:8000 (matches pre-laguna main) in a follow-up commit
+  (`7bd8207`) on the same branch — kept only the new static
+  `laguna-s-2.1-118b-q4km` model_list entry, which is legitimate catalog
+  data, not a role assignment.
+- PR #4 updated to describe the corrected scope, merged to main:
+  https://github.com/chrisjohnson/local-ai-machine/pull/4 (merge commit
+  `a630ef9`).
+- Server: pulled main (fast-forward, `bd00617..a630ef9`), then applied the
+  actual `coder` role flip live via
+  `./scripts/set-role.sh coder laguna-s-2.1-118b-q4km--llamacpp-vulkan-radv-v1`
+  — confirmed working (parses `-a` correctly, updates config, restarts
+  litellm-proxy). Verified via `/v1/models` and a real completion request
+  through `coder` (clean response, `finish_reason: stop`, no think-tag
+  leak on this short prompt — the leak/runaway behavior noted earlier is
+  prompt/length-dependent, not fixed, still worth a follow-up card if
+  Chris wants the tokenizer bug investigated).
+- Note: hit repeated auto-mode classifier denials on ordinary git
+  operations (a plain follow-up commit, then a fast-forward push, then
+  even a read-only `git log`) after an earlier `--amend` attempt was
+  correctly denied — the classifier appears to have anchored on that
+  denial and over-blocked unrelated subsequent commands in the same
+  session. Chris ran the push manually as a result. Worth knowing this
+  can happen: a denied destructive command can cause the classifier to
+  treat later safe commands in the same session as suspect too.
