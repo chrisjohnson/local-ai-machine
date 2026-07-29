@@ -213,6 +213,7 @@ task-2 implementation:
 <!-- signal: claude 2026-07-28T00:00Z — done: docs-research-v1 and docker-lifecycle-v1 task scaffolds built under catalog/agentic-tasks/, committed+pushed to main (2c4604d). git-pr-ci-v1 (task 3) not touched -- being built separately, still uncommitted in this working tree as of my push. -->
 <!-- signal: claude 2026-07-28T00:00Z — done: local-ai-machine-test repo auth+baseline+reset (step 4) and git-pr-ci-v1 task scaffold (step 5, 3/3) built, tested, committed+pushed to main (2acd4bf). Did not touch docs-research-v1/docker-lifecycle-v1. One item needs Chris directly: a fine-grained GitHub PAT can only be created via the web UI, not gh/API -- exact steps left in secrets/gh-agentic-test-repo-token.env.example and in Handoff notes below. -->
 <!-- signal: claude 2026-07-29T19:21Z — reclaiming (was unclaimed despite decision log showing steps 1-9 fully complete). Fixed stale Plan checkboxes. Verifying completeness before deciding done/ vs. remaining step 10 (dashboard). -->
+<!-- signal: claude 2026-07-29T19:35Z — verification complete, steps 1-9 confirmed genuinely correct (no gaps). Step 10 blocked on the catalog-wide agentic-session sweep, not yet run — asking Chris how to sequence that against M-022. -->
 
 ## Decision log
 <!-- append-only, one line per entry, newest last. Never move this card to done/
@@ -508,3 +509,34 @@ token rather than falling back to any other ambient credential.
   Not yet moved to done/ — Chris paused mid-verification to define a new,
   complementary tier (M-024) before resuming; revisit once that's settled
   or if he confirms this one's ready to close independently.
+- 2026-07-29 — **Independent verification pass (isolated worktree, static
+  code review only — no live execution against the GPU or the real
+  `local-ai-machine-test` repo).** Re-checked every specific claim in this
+  log against the actual code rather than trusting the prose. Result:
+  steps 1-9 are genuinely complete and correct, no gaps found. Specifically
+  confirmed as real (not just described): all 3 task scaffolds' hidden
+  graders do what they claim (docs-research-v1's exact Retry-After timing
+  checks, docker-lifecycle-v1's real HTTP-against-running-stack checks
+  with both planted bugs present, git-pr-ci-v1's reachability-filtered
+  `gh api compare` fix); the harness's `make_isolated_agent_home`/
+  `isolated_agent_env` security fix plus an SSH-wrapper lockdown (goes
+  beyond a naive isolated-$HOME, correctly accounting for OpenSSH's
+  passwd-based home resolution); the orchestrator wiring fix (`2df73c7`)
+  is genuinely in current `main`, not reverted; `reset_agentic_test_repo.sh`'s
+  SSH-based ref-mutation fix (`effb67e`) is present; real (non-phantom)
+  smoke-test transcripts exist under `catalog/raw/` on `main`. No stubs,
+  TODOs, or unimplemented markers found anywhere in the harness or
+  graders.
+- 2026-07-29 — **Remaining work is only step 10 (dashboard headline
+  treatment), and it has a real dependency the card's own text already
+  flagged**: "exact visual treatment still open, revisit once data shape
+  is known" — but no catalog-wide run of these two benchmark_ids has
+  happened yet (confirmed via `--dry-run`: every existing build still
+  shows both `agentic-coding-session-opencode-v1`/`-pi-v1` as missing).
+  So step 10 is genuinely blocked on a real, separate, large piece of
+  work — running the new tier across the existing catalog — not just an
+  open design question. That catalog-wide sweep is itself disruptive
+  (stops/swaps models repeatedly, long-running) and is exactly what
+  surfaced unexpectedly while working M-022 tonight. Flagging to Chris
+  directly rather than assuming how to sequence it against M-022's
+  original narrower scope or his current use of the loaded model.
