@@ -99,6 +99,7 @@ one — several real design questions need answering before touching any files:
 <!-- signal: claude 2026-07-29T04:45Z — research done, Q1-Q4 resolved + schema designed, see decision log. starting implementation (steps 3-6) via sub-agent -->
 <!-- signal: claude 2026-07-29T06:10Z — steps 3-6 implemented, PR #5 open. review pass started (isolated worktree) to verify before this moves to done/ -->
 <!-- signal: claude 2026-07-29T05:10Z — steps 3-6 implemented, PR #5 open (https://github.com/chrisjohnson/local-ai-machine/pull/5), all 29 build files migrated cleanly, dashboard output byte-identical pre/post, not merging — awaiting review -->
+<!-- signal: claude 2026-07-29T06:35Z — review pass complete, verdict: looks correct, ready to merge, no bugs found. one non-blocking robustness note (see decision log). still not merging myself — awaiting Chris -->
 
 ## Decision log
 <!-- append-only, one line per entry, newest last. Never move this card to done/
@@ -238,6 +239,34 @@ one — several real design questions need answering before touching any files:
   the `--ctx<N>` convention retired outright (never adopted by any real
   file). PR: https://github.com/chrisjohnson/local-ai-machine/pull/5 —
   left open for Chris's review, not merged, card stays in now/ until then.
+- 2026-07-29 — **Review pass complete (isolated worktree, per Chris's
+  request for a thorough check including cross-codebase regression risk).**
+  Verdict: correct, ready to merge, no bugs found. Independently re-verified
+  rather than trusting the implementer's claims: diffed all 29 old files
+  against all 29 new family files programmatically (every old id traces to
+  exactly one `version:` entry, `benchmark_runs` content exactly equal, no
+  drops/dupes); confirmed `docker/docker-compose.yml` has zero diff and
+  13/29 `compose_service_id`s match real compose services (unchanged from
+  pre-migration — most builds are one-off CLI/bench runs, not standing
+  services, so this is expected, not a regression); ran
+  `generate_comparison_dashboard.py` at both the pre-migration merge-base
+  and the PR tip and diffed the HTML output byte-identical; ran three
+  live end-to-end `append_benchmark_run()` tests including a
+  prefix-collision stress case (`-v1` vs `-v11`) — correct version targeted
+  every time, no corruption. Cross-codebase consumer check (Chris
+  specifically asked about regressions elsewhere): read
+  `scripts/agentic_coding_benchmark.py` and
+  `scripts/agentic_orchestration_benchmark.py` in full — both are pure
+  libraries imported by `benchmark_orchestrator.py`, neither touches
+  `catalog/builds/*.yaml` directly, so the PR's changed-file surface
+  (`generate_comparison_dashboard.py` + `benchmark_orchestrator.py`) is the
+  complete dependency surface. No test suite/CI exists in this repo, so
+  this manual verification was the only safety net. One non-blocking note:
+  `scripts/migrate_catalog_to_versioned.py:46`'s `VERSION_SUFFIX_RE`
+  (`^(.*)-v(\d+)$`) would misinterpret a future model/engine id that
+  legitimately ends in `-v<N>` for non-version reasons — harmless today
+  (audited, no such case exists) but worth a guard/comment if the script
+  is ever rerun. Not merging the PR myself — that's Chris's call.
 
 ## Handoff notes
 <!-- what's half-done, what the next agent picking this up should do first. -->
