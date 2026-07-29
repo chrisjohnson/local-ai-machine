@@ -11,7 +11,7 @@ model:
   quantization: MXFP4 (native GGUF repack, not a lossier re-quant)
   context_length_native: null
   modality: text
-  files: null
+  files: [gpt-oss-120b-MXFP4.gguf]
   local_path: /var/lib/ai-models/llamacpp-gpt-oss-120b
   size_on_disk_gb: 59
 versions:
