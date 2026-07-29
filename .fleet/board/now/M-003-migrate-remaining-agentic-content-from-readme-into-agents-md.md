@@ -155,6 +155,15 @@ contribute to. Any agent — regardless of runtime — should be able to:
   identifier typo (`gemma-4-26a4b-gguf` → `gemma-4-26b-a4b-gguf` in
   `2026-07-26-ollama-chat-template-root-caused-fixed.md`). Fixes pushed directly to
   `m-003-knowledge-base` (commit `eb213b6`). PR #8 ready for merge.
+- 2026-07-29 — **Scope change, Chris's direct instruction, overrides the card's original
+  Plan step 7 ("do not delete the original files").** Now that the migration is reviewed
+  and content-fidelity-verified, Chris wants the originals actually cleaned up rather than
+  left in place with pointers: `HANDOFF.md` and `OPTIMIZATIONS.md` deleted outright (their
+  content is fully preserved in `knowledge/`), `README.md` rewritten into a standard
+  human-readable project description (architecture/how-it-works), stripped of the
+  journal/decision-log/roadmap-history content that's now in `knowledge/`. Doing this on
+  the same `m-003-knowledge-base` branch before merge, then re-reviewing before Chris
+  merges.
 
 ## Handoff notes
 - Done: all 7 plan steps complete. `knowledge/` created with an index README + 3
