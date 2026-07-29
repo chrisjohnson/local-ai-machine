@@ -40,18 +40,17 @@ decision log for the git/classifier pitfalls encountered.
 ## Plan
 1. [x] Open PR for `laguna-ctx-128k` against main (branch + commit already
    exist, pushed) — https://github.com/chrisjohnson/local-ai-machine/pull/6
-2. [ ] Get Chris's merge approval (or merge directly if authorized) — do not
-   merge unilaterally without confirming. Also waiting on PR #5 (catalog
-   format migration, M-002) to merge first per Chris's request — no file
-   overlap with this PR (#5 only touches `catalog/`), so ordering doesn't
-   matter for conflicts, just for a clean sequential apply on the server.
-3. [ ] On server: `git fetch && git checkout main && git pull --ff-only`
-4. [ ] `docker stop laguna-ctx-test` (ad-hoc test container)
-5. [ ] `docker compose up -d laguna-s-2.1-118b-q4km--llamacpp-vulkan-radv-v1`
-   (now defined with `-c 131072` on main)
-6. [ ] Confirm health on 8101 + a real completion through `coder` role via
-   litellm
-7. [ ] Remove/clean up the ad-hoc `laguna-ctx-test` container definitively
+2. [x] Chris merged PR #5, #6, #7 together
+3. [x] On server: `git pull --ff-only` to latest main (clean fast-forward,
+   only the two known/expected local diffs remained: pre-existing
+   untouched `transcript.jsonl`, and `set-role.sh`-driven
+   `docker/litellm/config.yaml` runtime drift)
+4. [x] `docker stop laguna-ctx-test && docker rm laguna-ctx-test`
+5. [x] `docker compose up -d laguna-s-2.1-118b-q4km--llamacpp-vulkan-radv-v1`
+   (now defined with `-c 131072` + `--reasoning-format deepseek` on main)
+6. [x] Confirmed health on 8101 + a real completion through `coder` role via
+   litellm (`finish_reason: stop`, clean content, no think leak)
+7. [x] Ad-hoc `laguna-ctx-test` container removed
 
 ## Signals
 <!-- signal: claude 2026-07-29T00:00Z — claiming, Chris confirmed "finish the promote" reading of the prior handoff's ambiguity -->
@@ -60,22 +59,13 @@ decision log for the git/classifier pitfalls encountered.
 - Chris resolved the handoff ambiguity explicitly: finish promoting
   `laguna-ctx-128k` (open PR -> merge -> swap live container to
   compose-managed), rather than reverting the live server to current main.
-- PR #6 opened. Chris is separately merging PR #5 (M-002 catalog format
-  migration) and asked that once everything's merged, the server be reset
-  to a clean git state on latest main and the laguna model restarted —
-  this folds the M-027 server-side steps into that reset rather than doing
-  them as an isolated swap.
+- PR #6 opened. Chris merged PR #5, #6, #7 together, then had the server
+  git-pulled to latest main and the laguna compose service recreated with
+  both merged changes live. Confirmed working end to end.
 
 ## Handoff notes
-Worktree for this branch exists at
-`/private/tmp/claude-501/-Users-chrisjohnson-src-chrisjohnson-local-ai-machine/d839afed-eb5a-48c6-8dbc-c209def35f01/scratchpad/laguna-ctx-128k`
-(session-specific scratchpad path — may not exist in a future session; the
-commit is safe on `origin/laguna-ctx-128k` regardless).
-
-Waiting on Chris to merge PR #5, #6 (and #7 from M-028). Once merged: on
-the server, get to a clean git state on latest main (there's a known
-pre-existing unrelated modified file in the checkout,
-`catalog/raw/.../transcript.jsonl` — do not touch/discard it, it's not
-ours; "clean working tree" refers to our own changes, not this file, so
-confirm with Chris if `git status` isn't clean after checking out main),
-then restart the laguna compose service and verify.
+Done. Laguna compose service is live on the server with `-c 131072` and
+`--reasoning-format deepseek` (latter from M-028's PR #7, merged same
+batch). Verified via a real `/v1/chat/completions` request through the
+`coder` role: clean `stop` finish, no think-tag leak. Ad-hoc test
+container fully removed.

@@ -50,9 +50,10 @@ changes to the same compose service.
    confirm `<think>` no longer appears in `content` and instead lands in
    `reasoning_content`
 3. [x] Push branch, open PR — https://github.com/chrisjohnson/local-ai-machine/pull/7
-4. [ ] Get Chris's merge approval
-5. [ ] Apply live on the real compose-managed service once merged (folded
-   into the same server reset as M-027, per Chris's direction)
+4. [x] Chris merged (PR #5, #6, #7 together)
+5. [x] Applied live on the real compose-managed service (folded into the
+   same server reset as M-027) — confirmed via a real completion: `content`
+   clean, `finish_reason: stop`
 
 ## Signals
 <!-- signal: claude 2026-07-29T00:00Z — claiming, root-caused the leak to --reasoning-format none behavior, testing deepseek format live on ad-hoc container -->
