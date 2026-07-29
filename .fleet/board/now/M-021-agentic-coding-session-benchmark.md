@@ -2,8 +2,8 @@
 id: M-021
 title: Add agentic-coding-session benchmark tier (opencode-driven), emphasize in dashboard
 initiative_id: null
-claimed_by: null
-claimed_at: null
+claimed_by: claude
+claimed_at: 2026-07-29T19:21Z
 blocks: null
 blocked_by: null
 status: null
@@ -179,28 +179,28 @@ task-2 implementation:
    synced to `/etc/nixos/secrets/gh-agentic-test-repo-token.env`. Verified:
    `gh auth status` on the box shows `GH_TOKEN` active, `gh repo view`
    returns `ADMIN` permission scoped to exactly this one repo.
-5. [ ] Build the 3 task scaffolds (docs-research, git/PR/CI, docker
+5. [x] Build the 3 task scaffolds (docs-research, git/PR/CI, docker
    lifecycle) under `catalog/agentic-tasks/`, each with hidden grading
    checks that live outside the agent's workspace until graded — harness-
    and model-agnostic, since both opencode and Pi run the identical tasks.
-6. [ ] Build the harness script (e.g. `scripts/agentic_coding_benchmark.py`):
+6. [x] Build the harness script (e.g. `scripts/agentic_coding_benchmark.py`):
    per task/model/**harness** (opencode, Pi — both), clean workspace +
    reset the shared test repo/any docker sandbox to baseline, run the
    harness headless with a 45min ceiling (externally enforced), capture
    full session log/transcript, grade via hidden checks after the fact,
    record pass_count/total_count + wall-clock + full log path, tagged by
    which harness produced it.
-7. [ ] Two new methodology files (or one file covering both, TBD during
+7. [x] Two new methodology files (or one file covering both, TBD during
    implementation): `agentic-coding-session-opencode-v1` and
    `agentic-coding-session-pi-v1` — same tasks/grading/metrics_schema,
    different benchmark_id per harness so results are directly comparable
    side by side, not blended.
-8. [ ] Wire into `scripts/benchmark_orchestrator.py` — both new
+8. [x] Wire into `scripts/benchmark_orchestrator.py` — both new
    benchmark_ids, relies on M-023's `expected_benchmark_ids`/
    `missing_benchmark_ids` registry (PR #3, merged) for correct idempotent
    pickup across already-benchmarked builds, appropriate GPU-contention
    sequencing.
-9. [ ] Smoke test both harnesses against 1-2 already-benchmarked models
+9. [x] Smoke test both harnesses against 1-2 already-benchmarked models
    before running the full matrix.
 10. [ ] Dashboard: make this the headline/primary-sort metric, with
     opencode vs. Pi shown as a direct comparison (not averaged) — exact
@@ -212,6 +212,7 @@ task-2 implementation:
 -->
 <!-- signal: claude 2026-07-28T00:00Z — done: docs-research-v1 and docker-lifecycle-v1 task scaffolds built under catalog/agentic-tasks/, committed+pushed to main (2c4604d). git-pr-ci-v1 (task 3) not touched -- being built separately, still uncommitted in this working tree as of my push. -->
 <!-- signal: claude 2026-07-28T00:00Z — done: local-ai-machine-test repo auth+baseline+reset (step 4) and git-pr-ci-v1 task scaffold (step 5, 3/3) built, tested, committed+pushed to main (2acd4bf). Did not touch docs-research-v1/docker-lifecycle-v1. One item needs Chris directly: a fine-grained GitHub PAT can only be created via the web UI, not gh/API -- exact steps left in secrets/gh-agentic-test-repo-token.env.example and in Handoff notes below. -->
+<!-- signal: claude 2026-07-29T19:21Z — reclaiming (was unclaimed despite decision log showing steps 1-9 fully complete). Fixed stale Plan checkboxes. Verifying completeness before deciding done/ vs. remaining step 10 (dashboard). -->
 
 ## Decision log
 <!-- append-only, one line per entry, newest last. Never move this card to done/
