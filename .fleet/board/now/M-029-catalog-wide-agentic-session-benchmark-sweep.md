@@ -70,6 +70,7 @@ confirm it now correctly shows as `RUN`, not `FAILED`.
 <!-- signal: claude 2026-07-29T19:50Z — claiming, Chris authorized running the full sweep now -->
 <!-- signal: claude 2026-07-29T20:46Z — sweep running (systemd, real, not dry-run) after a GPU-contention crash on first attempt (laguna recovered, Chris OK'd proceeding). Checking in periodically, not blocking on it. -->
 <!-- signal: claude 2026-07-29T21:20Z — second incident (36x crash loop, real root cause: orchestrator blind to laguna entirely). Sweep stopped. Real fix in PR #9, review in progress, do not restart sweep until merged. -->
+<!-- signal: claude 2026-07-29T21:58Z — PR #9 merged, no data poisoned by prior crashes, fix confirmed working live (laguna correctly stopped, no crash-loop). Sweep running again, 25 builds queued. -->
 
 ## Decision log
 <!-- append-only, one line per entry, newest last. Never move this card to done/
@@ -124,13 +125,35 @@ confirm it now correctly shows as `RUN`, not `FAILED`.
   https://github.com/chrisjohnson/local-ai-machine/pull/9 — review pass
   in progress (includes a live `--dry-run` comparison on the real box)
   before merging or restarting the sweep again.
+- 2026-07-29 — Review verdict: ready to merge — independently reproduced
+  the exact incident (old logic returns `[]` for laguna, new logic
+  correctly finds it) and confirmed the dry-run plan is byte-identical
+  otherwise (same 28 builds, only wording changed). Chris merged PR #9
+  (`6dbe41c`). Before restarting: confirmed no data was poisoned by
+  either crash — both happened during the orchestrator's startup phase,
+  before any individual build was ever benchmarked, so `catalog/builds/`
+  and `catalog/raw/` show zero commits/files from either crash window
+  (checked both the git history and the server's working tree directly).
+  Server synced to merged `main`, confirmed clean state (only laguna +
+  infra running, laguna `RestartCount` still 1, no further damage),
+  `--dry-run` re-run against the merged fix: same 25-build plan,
+  `gpt-oss-120b` still correctly `RUN`, and
+  `find_running_exclusive_services()` directly confirmed to return
+  exactly `['laguna-s-2.1-118b-q4km--llamacpp-vulkan-radv-v1']` against
+  live state. Restarted `benchmark-orchestrator.service` — this time it
+  correctly stopped laguna as part of its exclusivity step and moved on
+  to the first real candidate build (`gemma-4-26b-a4b-it`) cleanly, no
+  crash-loop. Watching for stability before stepping back to periodic
+  check-ins.
 
 ## Handoff notes
 <!-- what's half-done, what the next agent picking this up should do first. -->
-Sweep is currently **stopped** pending PR #9's review (fixes the root
-cause: orchestrator had zero concept of laguna needing to be stopped for
-GPU exclusivity). Do not restart `benchmark-orchestrator.service` until
-PR #9 is merged and its dry-run comparison confirms the plan is unchanged
-from before the fix. Once merged: sync server checkout, `--dry-run` to
-re-confirm scope, start `benchmark-orchestrator.service`, then resume
-watching per the original plan (steps 4-8 still pending).
+PR #9 merged, fix confirmed working live. Sweep is **running** again as of
+2026-07-29T21:57Z (25 builds queued) — check `journalctl -u
+benchmark-orchestrator.service`/`systemctl is-active` for status, don't
+restart if already active. No data was poisoned by the two earlier crash
+attempts (verified: both crashed before any individual build was
+benchmarked). Once complete: steps 4-8 of the original plan still apply
+(verify all builds got sane `benchmark_runs`, confirm `gpt-oss-120b`'s
+long-overdue first run, regenerate the dashboard, revisit M-021 step 10,
+move M-021/M-024 to done/).
