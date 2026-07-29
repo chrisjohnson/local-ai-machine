@@ -1,6 +1,6 @@
 id: laguna-s-2.1-118b-q4km--llamacpp-vulkan-radv-v1
 engine: llamacpp-vulkan-radv-v1
-role: 118B/~8B-active MoE candidate, poolside's first public release — UNTESTED, download in progress
+role: 118B/~8B-active MoE candidate, poolside's first public release — attended smoke test passed, ready for full benchmark
 model:
   display_name: Laguna-S-2.1 (UD-Q4_K_M GGUF)
   family: poolside
@@ -53,7 +53,36 @@ notes: >
   with `--reasoning off` or a hard max-tokens cap as a precaution, and this
   build's eventual real benchmark run should carry that same flag if the
   model proves viable.
-status: UNTESTED-BUT-DOWNLOADED
+
+  ATTENDED SMOKE TEST PASSED (2026-07-29): ran via manual `docker run`
+  (llama-server, `-ngl 999 -fa 1 --swa-full --reasoning-format none -n 512
+  -c 16384`), watched the console directly per Chris's requirement. Load:
+  clean, ~81s for 69GB, no crash, no HIP-style error (confirms the
+  RDNA3.5/HIP-specific crash from the PR thread does not apply to this
+  box's Vulkan RADV engine). The documented `special_eos_id is not in
+  special_eog_ids` tokenizer warning DID appear at load time, confirming
+  the backend-independent reasoning/EOS bug is real for this build too —
+  `--reasoning-format none` did NOT suppress `<think>` tag generation in
+  the actual response content (that flag appears to control API response
+  parsing/formatting, not generation itself) — the hard `-n` token cap is
+  the mechanism that actually bounds runaway generation, not the
+  reasoning-format flag; carry the `-n` cap (or an equivalent stop
+  condition) into any real benchmark run of this build, don't rely on
+  `--reasoning-format` alone. Sent one real coding prompt (longest
+  palindromic substring): coherent, technically correct reasoning
+  (identified brute-force O(n^3), Manacher's algorithm, and settled on
+  expand-around-center O(n^2) with correct odd/even-length handling),
+  hit the 512-token cap mid-explanation before emitting actual code —
+  reflects a verbose reasoning style, not a failure; real benchmark runs
+  of this build will need a larger token budget to reach final answers.
+  Real measured speed: 30.0 tok/s generation, 80.4 tok/s prompt
+  processing — notably faster than the community reference video's 12
+  tok/s (that setup used `--n-cpu-moe` to offload experts to system RAM
+  on a VRAM-constrained discrete GPU; this box's unified memory needs no
+  such offload, confirmed via `-ngl 999` placing everything on-GPU
+  without issue). Standing vLLM services were stopped before the test and
+  restored after, per the mandatory GPU-contention procedure.
+status: WORKING
 created: "2026-07-28"
-last_verified: "2026-07-28"
+last_verified: "2026-07-29"
 benchmark_runs: []
