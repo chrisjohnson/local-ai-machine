@@ -216,6 +216,11 @@ contribute to. Any agent — regardless of runtime — should be able to:
   verified against the real `docker-compose.yml`/`litellm/config.yaml`/`configuration.nix`/
   `set-role.sh`/`catalog/` and found accurate, not aspirational. Fixes pushed to
   `m-003-knowledge-base` (commit `790fb90`). PR #8 ready for merge.
+- 2026-07-29 — Chris merged PR #8 (`4e392d6`). Final state: `README.md` at 278 lines
+  (human-readable architecture doc), `HANDOFF.md`/`OPTIMIZATIONS.md` deleted,
+  `knowledge/` holds 16 decision files, 19 research files, 4 context files (including
+  each subdirectory's index README) plus the top-level `knowledge/README.md` index.
+  Moving to done/.
 
 ## Handoff notes
 - Done: all 7 original plan steps complete, plus the 2026-07-29 scope-change cleanup
