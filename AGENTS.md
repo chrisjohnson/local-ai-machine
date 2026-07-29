@@ -83,12 +83,7 @@ appropriate subdirectory following the format in its README.
 - **`catalog/builds/*.yaml`** — one file per verified model+engine combination, benchmark
   identity + results (undergoing restructuring per the board — check `.fleet/board/` for
   the current target schema before assuming today's shape is final).
-- **`HANDOFF.md`** — historical session-handoff log (decisions made, bugs found/fixed,
-  judgment calls) from before the fleet board existed. Still useful as archaeology for
-  *why* something is the way it is; its durable decisions/context have also been migrated
-  into `knowledge/` for structured lookup.
-- **`README.md`** — architecture spec and product docs; its Decision Log entries and Open
-  Next Steps have also been migrated into `knowledge/decisions/` and `knowledge/context/`
-  for structured lookup.
-- **`OPTIMIZATIONS.md`** — flat research/benchmark reference; its findings have also been
-  migrated into `knowledge/research/` for structured lookup.
+- **`README.md`** — human-readable architecture/product description (what this repo is,
+  how the stack is wired together, where things live). Not a journal — decision history and
+  research findings that used to live in README's "Phased Implementation Roadmap" section
+  (plus the now-deleted `HANDOFF.md`/`OPTIMIZATIONS.md`) all live in `knowledge/` instead.
