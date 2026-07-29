@@ -107,6 +107,15 @@ model_list:
       api_base: http://127.0.0.1:8011/v1
       api_key: "none"
 
+  # llama.cpp-server builds — fixed ports, set-role.sh-compatible (reads
+  # -a/--alias for the model name, same as it reads --served-model-name
+  # for vLLM builds).
+  - model_name: laguna-s-2.1-118b-q4km
+    litellm_params:
+      model: openai/laguna-s-2.1-118b-q4km
+      api_base: http://127.0.0.1:8101/v1
+      api_key: "none"
+
 router_settings:
   routing_strategy: usage-based-routing-v2
 

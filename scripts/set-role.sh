@@ -13,7 +13,9 @@
 # The service name must match a service defined in docker-compose.yml.
 # The script reads:
 #   1. The host port from the service's port mapping
-#   2. The served model name from the service's --served-model-name flag
+#   2. The model's public name from the service's command — either vLLM's
+#      --served-model-name or llama.cpp's -a/--alias flag (whichever is
+#      present; --served-model-name is tried first)
 # It then updates the corresponding role entry in the litellm config
 # and restarts the litellm container.
 #
@@ -47,31 +49,23 @@ if [[ -z "$PORT" ]]; then
   exit 1
 fi
 
-# --- Parse served model name from the service's command ---
-MODEL_NAME=$(
-  yq -r "
-    .services.\"${SERVICE}\".command // \"\" |
-    split(\" \") |
-    map(select(. == \"--served-model-name\")) |
-    length as \$idx |
-    . as \$parts |
-    reduce range(\$idx) as \$i (0; . + 1) |
-    \$parts[.]
-  " "$COMPOSE_FILE" 2>/dev/null
-)
+# --- Parse the model's public name from the service's command ---
+# Try vLLM's --served-model-name first, then llama.cpp's -a/--alias.
+COMMAND_STR=$(yq -r ".services.\"${SERVICE}\".command // \"\"" "$COMPOSE_FILE" 2>/dev/null | tr '\n' ' ')
 
-# Fallback: direct grep (more robust for multiline YAML strings)
+MODEL_NAME=$(grep -oP '(?<=--served-model-name )\S+' <<< "$COMMAND_STR" || true)
+
 if [[ -z "$MODEL_NAME" || "$MODEL_NAME" == "null" ]]; then
-  MODEL_NAME=$(
-    yq -r ".services.\"${SERVICE}\".command // \"\"" "$COMPOSE_FILE" 2>/dev/null |
-    tr '\n' ' ' |
-    grep -oP '(?<=--served-model-name )\S+'
-  )
+  MODEL_NAME=$(grep -oP '(?<=--alias )\S+' <<< "$COMMAND_STR" || true)
 fi
 
 if [[ -z "$MODEL_NAME" || "$MODEL_NAME" == "null" ]]; then
-  echo "ERROR: Could not find --served-model-name in service '${SERVICE}' command" >&2
-  echo "This script only supports services with a --served-model-name flag (vLLM)." >&2
+  MODEL_NAME=$(grep -oP '(?<=-a )\S+' <<< "$COMMAND_STR" || true)
+fi
+
+if [[ -z "$MODEL_NAME" || "$MODEL_NAME" == "null" ]]; then
+  echo "ERROR: Could not find --served-model-name (vLLM) or -a/--alias (llama.cpp) in service '${SERVICE}' command" >&2
+  echo "This script only supports services with one of those flags." >&2
   echo "For Ollama or other backends, update the litellm config manually." >&2
   exit 1
 fi
