@@ -495,7 +495,7 @@ services:
       -ngl 999
       -fa 1
       --swa-full
-      --reasoning-format none
+      --reasoning-format deepseek
       -n 8192
       -c 16384
       --host 0.0.0.0
