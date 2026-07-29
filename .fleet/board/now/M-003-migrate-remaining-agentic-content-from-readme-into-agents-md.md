@@ -2,8 +2,8 @@
 id: M-003
 title: Create knowledge/ directory and migrate decisions/research/context from README, HANDOFF, OPTIMIZATIONS
 initiative_id: null
-claimed_by: null
-claimed_at: null
+claimed_by: claude
+claimed_at: 2026-07-29T05:32Z
 blocks: null
 blocked_by: null
 status: null
@@ -99,6 +99,7 @@ contribute to. Any agent — regardless of runtime — should be able to:
   discovery without loading full file contents: `grep -l "tags:.*vllm" knowledge/**/*.md`.
 
 ## Signals
+<!-- signal: claude 2026-07-29T05:32Z — claiming, per Chris's "3 then 22" sequencing -->
 
 ## Decision log
 - 2026-07-26 — rewritten to reflect knowledge-directory approach per Chris's
