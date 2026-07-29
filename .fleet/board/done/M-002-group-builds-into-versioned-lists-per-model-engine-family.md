@@ -267,6 +267,10 @@ one — several real design questions need answering before touching any files:
   legitimately ends in `-v<N>` for non-version reasons — harmless today
   (audited, no such case exists) but worth a guard/comment if the script
   is ever rerun. Not merging the PR myself — that's Chris's call.
+- 2026-07-29 — Chris merged PR #5 (`74357db7`). Catalog is now on the
+  grouped/versioned schema; `catalog/builds/` holds 29 family files (one
+  per pre-migration build, per Q3's finding of no real merges needed).
+  Moving to done/.
 
 ## Handoff notes
 <!-- what's half-done, what the next agent picking this up should do first. -->
