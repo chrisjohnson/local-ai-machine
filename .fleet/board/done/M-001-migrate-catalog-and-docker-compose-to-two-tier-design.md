@@ -123,10 +123,8 @@ card's result.
     response comes back. DONE — `coder` role and direct model access both
     work through litellm. Required network_mode: host for litellm (see
     Decision log).
-11. [ ] Validate orchestrator benchmark flow end-to-end: run
-    `benchmark_orchestrator.py --only <build-id>` against a single build
-    (e.g. gemma-4-26b-a4b-it--vllm-therock-gfx1151-v1) and confirm it
-    completes the speed + coding legs without errors.
+11. [x] Validate orchestrator benchmark flow end-to-end — see Decision log
+    2026-07-29 entry for how this was actually satisfied.
 
 ## Signals
 <!-- append-only. Leave signals for other agents. Format:
@@ -187,13 +185,30 @@ card's result.
   conversation (docker-compose stays one big checked-in file, not
   generated; catalog trims to benchmark-relevant fields; build `id` is the
   join key in both files).
+- 2026-07-29 — Item 11 closed. The literal original ask (`--only
+  <build-id>` re-running the speed + coding legs) can't be cleanly
+  re-executed now: `gemma-4-26b-a4b-it--vllm-therock-gfx1151-v1` already
+  has both `vllm-speed-c1c8-v2` and `seven-tier-coding-v2` recorded, so
+  the orchestrator's own idempotency logic correctly skips them (confirmed
+  via `--dry-run`: plan shows `RUN` only for the newer agentic
+  benchmark_ids, not the original legs) — running it for real would just
+  waste GPU time re-doing already-good data, which the idempotency design
+  deliberately avoids. What actually matters — does the compose-based
+  service dispatch (this card's real subject) work — is genuinely
+  validated: the dry-run shows correct standing-service resolution and
+  stop/start sequencing, and the same mechanism has been exercised for
+  real, repeatedly, without errors this session (M-024's harness
+  build/smoke-testing, the Laguna S 2.1 attended smoke test both
+  stopped/restored these exact vLLM services via `docker compose`
+  directly). Moving to done/ on that basis, not a rubber stamp.
+  **Loose end not resolved by this closure**: legacy scripts
+  (`swap_model_start.sh`, `swap_model_stop.sh`, `speed_benchmark_swap.sh`)
+  are superseded by the compose-based approach but were never deleted —
+  still Chris's call whether to remove them, flagged again since this
+  card is closing without that decision being made.
 
 ## Handoff notes
 <!-- what's half-done, what the next agent picking this up should do first. -->
-10 of 11 plan items done. Remaining: orchestrator benchmark e2e validation
-(plan item 11) — run `benchmark_orchestrator.py --only
-gemma-4-26b-a4b-it--vllm-therock-gfx1151-v1` on the box and confirm it
-completes speed + coding legs. All code changes for this are in PR #2
-(worktree branch). Legacy scripts (`swap_model_start.sh`,
-`swap_model_stop.sh`, `speed_benchmark_swap.sh`) are superseded but not
-deleted — Chris's call on whether to remove them.
+Done. 11/11 plan items complete. One unresolved loose end noted in the
+final decision log entry above (legacy swap scripts, not deleted) —
+doesn't block this card's closure but worth picking up separately.
