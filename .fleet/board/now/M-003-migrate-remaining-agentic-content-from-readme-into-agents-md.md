@@ -102,6 +102,7 @@ contribute to. Any agent — regardless of runtime — should be able to:
 <!-- signal: claude 2026-07-29T05:32Z — claiming, per Chris's "3 then 22" sequencing -->
 <!-- signal: claude 2026-07-29T06:40Z — PR #8 open (m-003-knowledge-base -> main), all 7 plan steps done, awaiting review -->
 <!-- signal: claude 2026-07-29T07:05Z — review complete, 3 minor fixes applied and pushed, PR #8 ready to merge -->
+<!-- signal: claude 2026-07-29T07:40Z — scope-change cleanup (HANDOFF/OPTIMIZATIONS deleted, README rewritten) reviewed, 1 content-loss gap + 1 stale-doc gap found and fixed, PR #8 ready to merge -->
 
 ## Decision log
 - 2026-07-26 — rewritten to reflect knowledge-directory approach per Chris's
@@ -192,6 +193,29 @@ contribute to. Any agent — regardless of runtime — should be able to:
   cards' own historical references to the deleted files alone (M-005, M-022) — accurate
   provenance for what was true when written, not live pointers. Pushed to
   `m-003-knowledge-base`, PR #8 still open for Chris's review before merge.
+- 2026-07-29 — **Review pass complete on the cleanup commit (isolated worktree,
+  before/after comparison).** Verdict: one real content-loss gap found, one stale-doc
+  gap found, everything else solid. `OPTIMIZATIONS.md` was fully and faithfully
+  migrated (verified section-by-section against `knowledge/research/` citations).
+  `HANDOFF.md`'s "Smoke testing (this session's last activity)" subsection had **no
+  home anywhere in `knowledge/`** — a real gap in the earlier migration pass's
+  section-by-section claim, likely missed because one adjacent detail (the Tier J
+  token-budget bump) *did* make it into
+  `knowledge/decisions/2026-07-24-session-cleanup-and-scope-calls.md`, making a
+  sampling-based check look complete when it wasn't. Fixed: added
+  `knowledge/research/2026-07-24-llamacpp-vllm-gpu-contention-crash.md` (the
+  higher-stakes finding — running llama.cpp/Ollama concurrently with resident vLLM
+  services causes real, reproducible GPU-memory-contention crashes, confirmed twice;
+  standing fix is stopping vLLM first, per `catalog/OPERATIONS.md`'s existing
+  procedure) and `knowledge/research/2026-07-24-seven-tier-harness-vllm-smoke-test.md`
+  (the harness-bug-fix + Tier P/Q informational findings from the same smoke test).
+  Also fixed a stale `HANDOFF.md` reference in `docs/comparison-dashboard-2026-07-28.html`
+  (the current, live dashboard — not a frozen historical snapshot, so this one mattered,
+  unlike the older `-07-24`/`-07-26` dashboards which are correctly left alone as
+  historical record). README.md's rewritten architecture claims were independently
+  verified against the real `docker-compose.yml`/`litellm/config.yaml`/`configuration.nix`/
+  `set-role.sh`/`catalog/` and found accurate, not aspirational. Fixes pushed to
+  `m-003-knowledge-base` (commit `790fb90`). PR #8 ready for merge.
 
 ## Handoff notes
 - Done: all 7 original plan steps complete, plus the 2026-07-29 scope-change cleanup
