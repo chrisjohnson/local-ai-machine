@@ -11,15 +11,15 @@ back by `id`, but the finding itself still lives here, not there.
 
 `YYYY-MM-DD-<slug>.md` — date the finding was produced or verified (not the date it was
 migrated into this directory), then a short hyphenated slug (e.g.
-`2026-07-24-mtp-speculative-decoding-confirmed.md`).
+`2026-07-24-fastflowlm-and-mtp-confirmed.md`).
 
 ## Frontmatter
 
 ```yaml
 ---
-id: 2026-07-24-mtp-speculative-decoding-confirmed
+id: 2026-07-24-fastflowlm-and-mtp-confirmed
 date: 2026-07-24
-source: OPTIMIZATIONS.md (Second deep-dive pass — FastFlowLM and confirmed-working MTP)
+source: OPTIMIZATIONS.md ("Second deep-dive pass: FastFlowLM and confirmed-working MTP", lines 119-129)
 tags: [mtp, llamacpp, speculative-decoding, qwen, benchmark]
 status: active
 ---

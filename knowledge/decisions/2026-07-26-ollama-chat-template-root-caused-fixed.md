@@ -27,7 +27,7 @@ blob, no download) and verified with a real live `/v1/chat/completions` request 
 `tools` array — correct structured `tool_calls`, `<think>` content cleanly split into its
 own `reasoning` field instead of leaking into `content`.
 
-**`gemma-4-26a4b-gguf` remains genuinely blocked**: the `gemma4` renderer/parser doesn't
+**`gemma-4-26b-a4b-gguf` remains genuinely blocked**: the `gemma4` renderer/parser doesn't
 exist in this box's pinned Ollama 0.17.7 binary (Ollama's own official model metadata says
 `requires: 0.20.0`, independently confirmed absent from the `v0.17.7` source) — fixable
 only by upgrading Ollama's version, which is an explicit hard stop (a real behavior-change

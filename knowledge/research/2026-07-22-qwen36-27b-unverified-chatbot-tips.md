@@ -25,7 +25,7 @@ explanations for `--vllm-attention-backend triton`, `--quantization awq`,
 **Methodology / confidence**: none of this was independently verified at the time it was
 recorded — it reads as generic AI-chatbot output (specific-sounding numbers and tool
 names like "Chadrockv2 Profiles" that could not be corroborated). A later research pass
-(see `2026-07-24-qwen36-27b-real-benchmark-vs-ollama.md` and
+(see `2026-07-24-qwen36-27b-llamacpp-vs-ollama.md` and
 `2026-07-24-third-pass-gemini-factcheck.md`) explicitly flagged this content as
 unverified and cautioned against treating it as fact.
 
