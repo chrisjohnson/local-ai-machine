@@ -80,15 +80,15 @@ one — several real design questions need answering before touching any files:
    card's Decision log before writing any migration code.
 2. [x] Design the exact YAML schema for a grouped/versioned build file
    (spell it out fully, don't just describe it in prose).
-3. [ ] Write a migration script/pass that converts the post-[[M-001]] catalog
+3. [x] Write a migration script/pass that converts the post-[[M-001]] catalog
    into the new grouped structure, preserving all existing `benchmark_runs:`
    data.
-4. [ ] Update `docker-compose.yml` service naming to match (each version its
+4. [x] Update `docker-compose.yml` service naming to match (each version its
    own service/port, per [[M-001]]'s convention).
-5. [ ] Update anything that reads the catalog structurally (dashboard
+5. [x] Update anything that reads the catalog structurally (dashboard
    generator, `scripts/benchmark_orchestrator.py`'s build-scanning logic) to
    understand the new grouped shape.
-6. [ ] Update `catalog/OPERATIONS.md` to document the new versioning
+6. [x] Update `catalog/OPERATIONS.md` to document the new versioning
    convention (when to cut a new version vs. a new family file).
 
 ## Signals
@@ -97,6 +97,7 @@ one — several real design questions need answering before touching any files:
 -->
 <!-- signal: claude 2026-07-29T04:23Z — claiming, M-001 confirmed done, starting research on open questions 1-4 -->
 <!-- signal: claude 2026-07-29T04:45Z — research done, Q1-Q4 resolved + schema designed, see decision log. starting implementation (steps 3-6) via sub-agent -->
+<!-- signal: claude 2026-07-29T05:10Z — steps 3-6 implemented, PR #5 open (https://github.com/chrisjohnson/local-ai-machine/pull/5), all 29 build files migrated cleanly, dashboard output byte-identical pre/post, not merging — awaiting review -->
 
 ## Decision log
 <!-- append-only, one line per entry, newest last. Never move this card to done/
@@ -204,6 +205,38 @@ one — several real design questions need answering before touching any files:
     #   engine_ref: llamacpp-vulkan-radv-server-v1   # unchanged unless the recipe itself changed
     #   ...
   ```
+- 2026-07-29 — **Implementation done (Plan steps 3-6), PR #5 opened, not
+  merged.** `scripts/migrate_catalog_to_versioned.py` re-audited
+  `(hf_repo, quantization, engine)` groups before migrating (re-checking
+  Q3's finding rather than trusting it blindly) — confirmed again: zero
+  groups with >1 file, so all 29 build files became a lone v1 of their own
+  family file, no merging logic exercised. `benchmark_runs` data verified
+  byte-identical (order + content) for every file against the pre-migration
+  git blob. `docker-compose.yml` needed no changes — verified by diffing
+  every migrated version's `compose_service_id` against the compose file's
+  actual service names (all 13 standing services matched exactly, both
+  vLLM and the one llama.cpp-server build).
+  `generate_comparison_dashboard.py`'s `load_builds()` now flattens each
+  family's `versions:` list into synthetic per-version dicts; full HTML
+  dashboard output diffed byte-for-byte identical before vs. after.
+  `benchmark_orchestrator.py`: added `iter_flattened_versions()` as the
+  single place that understands the grouped shape, so every
+  `process_*_build()` body stays untouched (same flat build-dict shape via
+  `id`/`engine` aliasing). **Deviation flagged**: kept the regex/text-surgery
+  approach for `append_benchmark_run()` rather than switching to
+  `ruamel.yaml` — the only real wrinkle was that a version entry's own keys
+  and its nested `benchmark_runs:` list-item dashes land at the *same*
+  indent depth under `yaml.safe_dump`'s default style (a block-sequence
+  dash can share its parent key's column), which turned out solvable by
+  discriminating "bare key" vs. "dash" at that indent level rather than
+  needing indent depth alone. Validated with a synthetic 2-version fixture
+  (append to an empty-list version, then a non-empty one) confirming
+  correct version targeting and insertion point, plus a real-file EOF-path
+  append test. No files needed genuine v1+v2 merging — Q3's finding held.
+  `catalog/OPERATIONS.md` updated with the Q2 version-vs-family taxonomy and
+  the `--ctx<N>` convention retired outright (never adopted by any real
+  file). PR: https://github.com/chrisjohnson/local-ai-machine/pull/5 —
+  left open for Chris's review, not merged, card stays in now/ until then.
 
 ## Handoff notes
 <!-- what's half-done, what the next agent picking this up should do first. -->
@@ -220,3 +253,21 @@ and retire the now-superseded `--ctx<N>` filename convention). Next agent:
 implement steps 3-6, then have a Review pass verify the dashboard and
 orchestrator still work against the migrated catalog before this moves to
 done/.
+
+**2026-07-29 update — steps 3-6 implemented, PR open, awaiting review:**
+[PR #5](https://github.com/chrisjohnson/local-ai-machine/pull/5)
+(`m-002-versioned-catalog` branch vs. `main`). All 29 build files migrated
+1:1 into families (`scripts/migrate_catalog_to_versioned.py`), zero
+merging needed — confirms Q3. `benchmark_runs` verified byte-identical
+pre/post for every file. `docker-compose.yml` needed no changes (confirmed
+by diffing every migrated `compose_service_id` against the compose file's
+actual service names). `generate_comparison_dashboard.py`'s `load_builds()`
+now flattens `versions:` into synthetic per-version build dicts — full HTML
+render diffed byte-identical before/after. `benchmark_orchestrator.py` gets
+a new `iter_flattened_versions()` (the one place that understands the
+grouped shape) plus a version-aware `append_benchmark_run()` (kept the
+regex/text-surgery approach, not ruamel.yaml — see PR description for why).
+`catalog/OPERATIONS.md` updated with the version-vs-family taxonomy and the
+`--ctx<N>` convention retired. Next agent (Review pass): read the PR diff,
+confirm the reasoning holds, then this card can move to done/ once the PR
+is merged — do not move it to done/ before that.
