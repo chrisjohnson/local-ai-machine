@@ -3,7 +3,7 @@
 catalog/builds/*.yaml, following catalog/OPERATIONS.md's safety procedure
 exactly.
 
-Design constraints (see HANDOFF.md / OPERATIONS.md for full rationale):
+Design constraints (see knowledge/ / OPERATIONS.md for full rationale):
   - Runs ON THE BOX (needs docker, sudo -n systemctl, the GPU). Not meant to
     be piloted over SSH from the Mac, though nothing stops that for --dry-run
     inspection.
@@ -15,7 +15,8 @@ Design constraints (see HANDOFF.md / OPERATIONS.md for full rationale):
     the current pick for that role.
   - Ollama builds are no longer hard-skipped (re-enabled 2026-07-26 — 3 of 4
     registered Ollama models had their broken chat template fixed via
-    RENDERER/PARSER Modelfile directives; see HANDOFF.md decision log). The
+    RENDERER/PARSER Modelfile directives; see
+    knowledge/decisions/2026-07-26-ollama-chat-template-root-caused-fixed.md). The
     remaining genuinely-broken build (gemma-4-26b-a4b-gguf, unsupported GGUF
     architecture on this pinned Ollama version) and the documented -rocm
     crash build are excluded the same way every other broken build is:
