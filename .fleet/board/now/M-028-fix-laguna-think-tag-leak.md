@@ -42,22 +42,49 @@ context bump (M-027), since they're independently reviewable/revertable
 changes to the same compose service.
 
 ## Plan
-1. [ ] Branch off main, change `--reasoning-format none` ->
+1. [x] Branch off main, change `--reasoning-format none` ->
    `--reasoning-format deepseek` in the laguna compose service
-2. [ ] Validate live on the ad-hoc `laguna-ctx-test` container (already
+2. [x] Validate live on the ad-hoc `laguna-ctx-test` container (already
    running, not compose-managed, safe to recreate) before finalizing:
    recreate it with the new flag, send a real completion through it,
    confirm `<think>` no longer appears in `content` and instead lands in
    `reasoning_content`
-3. [ ] Push branch, open PR
+3. [x] Push branch, open PR — https://github.com/chrisjohnson/local-ai-machine/pull/7
 4. [ ] Get Chris's merge approval
-5. [ ] Apply live on the real compose-managed service once merged
+5. [ ] Apply live on the real compose-managed service once merged (folded
+   into the same server reset as M-027, per Chris's direction)
 
 ## Signals
 <!-- signal: claude 2026-07-29T00:00Z — claiming, root-caused the leak to --reasoning-format none behavior, testing deepseek format live on ad-hoc container -->
+<!-- signal: claude 2026-07-29T00:20Z — validated fix live, PR #7 open, awaiting merge alongside M-027/PR #5 -->
 
 ## Decision log
-(pending)
+- Confirmed live: with `--reasoning-format deepseek` on the ad-hoc test
+  container, a real `coder`-role completion returned clean `content` and
+  populated `reasoning_content`; with a larger `max_tokens` budget the
+  model reached `finish_reason: stop` naturally rather than running to the
+  `-n` cap, suggesting the earlier "runaway" observation in M-026 may partly
+  have been this model simply being very verbose in its reasoning rather
+  than solely the tokenizer eos/eog defect — that defect is still real
+  (warnings persist at load) and unaddressed by this change, `-n 8192`
+  remains the safety net.
+- After validating, the ad-hoc `laguna-ctx-test` container was restored to
+  its prior state (`-c 131072`, `--reasoning-format none`) rather than left
+  on the new flag, since neither this PR nor #6 is merged yet — avoids
+  leaving unmerged config live.
 
 ## Handoff notes
-(pending)
+Worktree at
+`/private/tmp/claude-501/-Users-chrisjohnson-src-chrisjohnson-local-ai-machine/f0b580f5-2e07-4475-95e1-927509e7cb0e/scratchpad/laguna-reasoning-format`
+(session-specific scratchpad — may not exist later; commit is safe on
+`origin/laguna-reasoning-format`).
+
+Waiting on Chris to merge PR #5 (M-002), #6 (M-027), and #7 (this card).
+Once merged, server-side apply is folded into the same reset described in
+M-027's handoff notes — clean `git pull --ff-only` on main (confirmed no
+file overlap between #5/#6/#7 and the server's two expected local diffs:
+the pre-existing untouched `transcript.jsonl` and the `set-role.sh`-driven
+`docker/litellm/config.yaml` drift, which is deliberate runtime state, not
+something to discard), then restart the laguna compose service with both
+changes (`-c 131072` + `--reasoning-format deepseek`) live, verify health
+and a real completion through `coder`.
