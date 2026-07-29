@@ -20,6 +20,18 @@ version: '3.8'
 # Only start the service you want — everything else stays defined-but-stopped.
 # GPU contention means at most one vLLM + one llama-server can co-reside;
 # Ollama is always safe alongside either (small GPU footprint).
+#
+# --gpu-memory-utilization: judge-sized models (roughly <25B — the ones
+# almost always run co-resident alongside a larger candidate model, e.g.
+# qwen3.5-4b-judge at 0.20, qwen2.5-vl-7b-instruct at 0.20 for the M-024
+# LLM-judge role) should carry an explicit low cap so they don't starve
+# whatever they're running alongside — vLLM's default (0.90) assumes it
+# owns the whole GPU, which is only true for a standalone candidate. Larger
+# models that might reasonably serve standalone (no separate judge needed)
+# intentionally don't get a cap here — see M-025 for the followup pass
+# systematically reviewing which services need one, including borderline
+# MoE cases where total params exceed the ~25B judge threshold but active
+# params don't.
 
 services:
 
@@ -391,6 +403,7 @@ services:
       --host 0.0.0.0
       --port 8000
       --tensor-parallel-size 1
+      --gpu-memory-utilization 0.20
       --dtype auto
       --trust-remote-code
       --enable-prefix-caching
