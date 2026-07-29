@@ -69,6 +69,7 @@ confirm it now correctly shows as `RUN`, not `FAILED`.
 -->
 <!-- signal: claude 2026-07-29T19:50Z — claiming, Chris authorized running the full sweep now -->
 <!-- signal: claude 2026-07-29T20:46Z — sweep running (systemd, real, not dry-run) after a GPU-contention crash on first attempt (laguna recovered, Chris OK'd proceeding). Checking in periodically, not blocking on it. -->
+<!-- signal: claude 2026-07-29T21:20Z — second incident (36x crash loop, real root cause: orchestrator blind to laguna entirely). Sweep stopped. Real fix in PR #9, review in progress, do not restart sweep until merged. -->
 
 ## Decision log
 <!-- append-only, one line per entry, newest last. Never move this card to done/
@@ -92,8 +93,44 @@ confirm it now correctly shows as `RUN`, not `FAILED`.
   fixing the underlying hardcoded-default-services bug (out of scope for
   tonight; worth a follow-up card so this doesn't bite again on every
   future sweep start). Real sweep now running as of 2026-07-29T20:46Z.
+- 2026-07-29 — **Second incident, worse than the first**: the restarted
+  sweep crashed at 21:07 ("Timed out waiting for qwen3.6-35b-a3b to become
+  healthy"), auto-restarted via systemd (`Restart=on-failure`,
+  `RestartSec=180`) at 21:10, and got stuck in a genuine crash loop —
+  `qwen3.6-35b-a3b--vllm-therock-gfx1151-v1` hit `RestartCount=36` with a
+  real HIP/ROCm OOM error in its own logs, never successfully starting.
+  Root cause confirmed deeper than the first incident's framing: it's not
+  just that the hardcoded default-services step is stale, it's that
+  `stop_all_vllm_services()`/`find_running_vllm_services()` were scoped to
+  the vLLM port range (8000-8099) only — completely blind to laguna
+  (llama.cpp-server, port 8101). Laguna was **never going to be stopped by
+  any benchmark run in this sweep**, vLLM or otherwise — every single
+  build would have run with it still resident. Chris confirmed benchmarks
+  must have exclusive GPU access, no exceptions. Stopped the sweep again,
+  cleaned up stray containers, confirmed laguna healthy
+  (`RestartCount` stayed at 1, no further damage).
+- 2026-07-29 — **Real fix implemented** (not deferred this time, given two
+  incidents): `docker-compose.yml` services now carry a
+  `com.local-ai-machine.always-up: "true"` label on the 9 genuine infra
+  services; the 14 model-serving builds (including laguna) carry no label
+  and are exclusive/stoppable by default — new builds need no label to be
+  correctly covered, only infra needs the flag (fail-safe default).
+  `benchmark_orchestrator.py`'s `ensure_default_services_up()` removed
+  entirely; `list_vllm_services`/`find_running_vllm_services`/
+  `stop_all_vllm_services`/`restore_vllm_services` renamed and generalized
+  to `*_exclusive_services*`, driven by the label instead of a hardcoded
+  vLLM port range. `catalog/OPERATIONS.md` and the compose file's own
+  comment block updated to document the convention. PR:
+  https://github.com/chrisjohnson/local-ai-machine/pull/9 — review pass
+  in progress (includes a live `--dry-run` comparison on the real box)
+  before merging or restarting the sweep again.
 
 ## Handoff notes
 <!-- what's half-done, what the next agent picking this up should do first. -->
-Not started yet. Next: sync server checkout, dry-run to confirm scope,
-start `benchmark-orchestrator.service`.
+Sweep is currently **stopped** pending PR #9's review (fixes the root
+cause: orchestrator had zero concept of laguna needing to be stopped for
+GPU exclusivity). Do not restart `benchmark-orchestrator.service` until
+PR #9 is merged and its dry-run comparison confirms the plan is unchanged
+from before the fix. Once merged: sync server checkout, `--dry-run` to
+re-confirm scope, start `benchmark-orchestrator.service`, then resume
+watching per the original plan (steps 4-8 still pending).
