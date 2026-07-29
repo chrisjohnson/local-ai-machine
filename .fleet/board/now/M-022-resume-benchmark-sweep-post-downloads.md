@@ -63,6 +63,7 @@ later review (2026-07-27) — same posture as the original weekend sweep.
 <!-- append-only. Leave signals for other agents. Format:
      <!-- signal: <pet-name> <ISO8601-UTC> — <short message> -->
 -->
+<!-- signal: claude 2026-07-29T05:32Z — claimed_at is stale (2 days old), systemd unit finished ("=== Done ===" 2026-07-28T01:27:55Z) but did NOT fully complete: gpt-oss-120b--llamacpp-vulkan-radv still has zero benchmark_runs. Root cause confirmed via journalctl: "FAILED: build has no model.files entries — cannot construct -m path". Catalog entry (post-M-002 migration: catalog/builds/gpt-oss-120b--llamacpp-vulkan-radv.yaml) has `model.files: null`, but the real file is on disk and complete: /var/lib/ai-models/llamacpp-gpt-oss-120b/gpt-oss-120b-MXFP4.gguf (.download-complete present). Fix is a one-line `files: [gpt-oss-120b-MXFP4.gguf]` data-entry correction, then re-run just this one build. Chris directed "3 then 22" sequencing and noted he's actively using the currently-loaded model — do not stop/swap services for the M-022 re-run until confirmed clear. -->
 
 ## Decision log
 <!-- append-only, one line per entry, newest last. Never move this card to done/
