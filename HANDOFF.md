@@ -3,6 +3,11 @@
 Written 2026-07-24 for a fresh session picking this up while Chris is away. Read this whole
 file before doing anything — it has the current state, the guardrails, and what's next.
 
+*(This file's durable decisions and operational context have also been migrated into
+`knowledge/decisions/` and `knowledge/context/` as individual, dated, tagged files for
+structured/agent-friendly lookup — see `knowledge/README.md`. This file remains the full
+session-narrative record.)*
+
 ## Guardrails — read this first
 
 - **Keep moving. Don't wait for Chris and don't waste cycles deliberating.** If you hit a

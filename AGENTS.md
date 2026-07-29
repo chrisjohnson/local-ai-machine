@@ -60,8 +60,19 @@ machine.
   decision (affects every registered model, not just the one being fixed), not a
   drive-by dependency bump.
 
+## Knowledge base — read at session start
+
+`knowledge/` contains this project's institutional memory: decisions made and
+why, research findings with sources, and current operational context. Any agent
+working in this repo should scan `knowledge/README.md` at session start, then
+load relevant files from `knowledge/decisions/`, `knowledge/research/`, and
+`knowledge/context/` as needed for the task at hand. New findings go into the
+appropriate subdirectory following the format in its README.
+
 ## Where the detailed operational knowledge lives
 
+- **`knowledge/`** — structured, agent-friendly index of decisions/research/context (see
+  above) — start here for anything that isn't in the catalog itself.
 - **`catalog/OPERATIONS.md`** — the safety-critical benchmark procedure: preflight/
   teardown sequencing, the real OOM incident that motivated vLLM-restart-before-download-
   resume ordering, required run-fingerprint fields, build-naming conventions. Read before
@@ -74,4 +85,10 @@ machine.
   the current target schema before assuming today's shape is final).
 - **`HANDOFF.md`** — historical session-handoff log (decisions made, bugs found/fixed,
   judgment calls) from before the fleet board existed. Still useful as archaeology for
-  *why* something is the way it is.
+  *why* something is the way it is; its durable decisions/context have also been migrated
+  into `knowledge/` for structured lookup.
+- **`README.md`** — architecture spec and product docs; its Decision Log entries and Open
+  Next Steps have also been migrated into `knowledge/decisions/` and `knowledge/context/`
+  for structured lookup.
+- **`OPTIMIZATIONS.md`** — flat research/benchmark reference; its findings have also been
+  migrated into `knowledge/research/` for structured lookup.
