@@ -76,9 +76,9 @@ one — several real design questions need answering before touching any files:
 
 ## Plan
 <!-- ordered checklist -->
-1. [ ] Answer the four open questions above and record the decisions in this
+1. [x] Answer the four open questions above and record the decisions in this
    card's Decision log before writing any migration code.
-2. [ ] Design the exact YAML schema for a grouped/versioned build file
+2. [x] Design the exact YAML schema for a grouped/versioned build file
    (spell it out fully, don't just describe it in prose).
 3. [ ] Write a migration script/pass that converts the post-[[M-001]] catalog
    into the new grouped structure, preserving all existing `benchmark_runs:`
@@ -96,6 +96,7 @@ one — several real design questions need answering before touching any files:
      <!-- signal: <pet-name> <ISO8601-UTC> — <short message> -->
 -->
 <!-- signal: claude 2026-07-29T04:23Z — claiming, M-001 confirmed done, starting research on open questions 1-4 -->
+<!-- signal: claude 2026-07-29T04:45Z — research done, Q1-Q4 resolved + schema designed, see decision log. starting implementation (steps 3-6) via sub-agent -->
 
 ## Decision log
 <!-- append-only, one line per entry, newest last. Never move this card to done/
@@ -104,8 +105,118 @@ one — several real design questions need answering before touching any files:
   research-first (open design questions listed above are real, not
   rhetorical) and sequenced after [[M-001]] since it builds on that card's
   trimmed catalog schema and port convention.
+- 2026-07-29 — M-001 confirmed done, claimed and started. Research pass
+  (sub-agent) read every build/engine file, `docker-compose.yml`,
+  `catalog/OPERATIONS.md`, `generate_comparison_dashboard.py`, and
+  `benchmark_orchestrator.py` to answer the four open questions with
+  evidence rather than guesses. Findings + decisions below.
+- 2026-07-29 — **Q1 (version vs file identity) resolved.** Confirmed via
+  `catalog/engines/llamacpp-vulkan-radv-server-v1.yaml:6-9` (explicit
+  "distinct engine" comment) that engine-recipe `-v1`/`-v2` and
+  build-serving-config version are genuinely different axes today only
+  coincidentally sharing a suffix. Decision: family `id` drops the version
+  suffix AND is scoped to a specific engine recipe *identity minus its own
+  version number* (e.g. `qwen3.6-27b--llamacpp-vulkan-radv`,
+  `qwen3.6-27b--llamacpp-vulkan-radv-server`, and
+  `qwen3.6-27b--llamacpp-vulkan-radv-mtp` are three separate families, not
+  one — the bench/server/mtp split is structural, per Q2). Each version
+  entry carries its own `version: vN`, `compose_service_id: <family-id>-vN`
+  (this exactly reproduces today's compose service names for every
+  existing file — zero compose/port renaming needed for migrated data,
+  only for future v2+ entries), and its own `engine_ref:` pointing at the
+  exact engine-recipe file/version it was built against. `engine_ref`
+  defaults to whatever v1 used; bumping it is independent of bumping
+  `version` — a build version bump does NOT imply an engine-recipe bump.
+- 2026-07-29 — **Q2 (family vs version taxonomy) resolved.** Audited all
+  29 current build files by (model, engine) pair: zero existing cases
+  differ *only* in a tunable serving parameter — every multi-file pair
+  found (`qwen3.6-27b` x5, `gemma-4-26b-a4b-it` x3, `glm-4.7-flash` x3) is
+  a structural split (different binary/invocation entirely: llama-bench
+  vs llama-cli-MTP vs llama-server vs ollama vs vllm), confirming the
+  card's suspected taxonomy split is real, not hypothetical. Decision:
+  **new version** = same engine recipe (same binary/invocation shape) +
+  same model artifact (same quant/files) + a serving-config-only change
+  (batch size, ctx length — this retires the unused `--ctx<N>` filename
+  suffix convention in `catalog/OPERATIONS.md`, folding it into `version:`
+  instead — GPU-mem cap, KV-cache flags, etc). **New family** = different
+  engine recipe, different quantization/model artifact, or different
+  backend (vllm/llamacpp/ollama). Rationale: quantization changes the
+  actual loaded weights (memory/quality tradeoff), not a like-for-like
+  serving tweak — not what the version-over-time dashboard trend is for.
+- 2026-07-29 — **Q3 (migration mechanics) resolved.** All 29 current build
+  files become a lone `v1` of a new same-named family file — a 1:1
+  wrap/rename, no retroactive merging needed since Q2's audit found no
+  config-only duplicates in today's data. `compose_service_id` for every
+  migrated v1 equals its current filename stem exactly, so
+  `docker-compose.yml` needs **no changes** for the migration itself
+  (Plan step 4 only matters for future v2+ entries).
+- 2026-07-29 — **Q4 (dashboard/reader implications) resolved.** Both
+  `scripts/generate_comparison_dashboard.py` (`load_builds()`/`find_runs()`,
+  lines 79-89) and `scripts/benchmark_orchestrator.py` (`list_build_files`,
+  `gather_plan`, `already_has_run`, `missing_benchmark_ids`,
+  `process_vllm_build` lines 143-236, 1085-1090) hard-assume file == id ==
+  compose-service-name and one `benchmark_runs:` list per file — all need
+  to iterate the new `versions:` list instead. Highest-risk piece:
+  `benchmark_orchestrator.py`'s `append_benchmark_run()` (lines 526-562)
+  does column-0 regex text-surgery on a literal top-level `benchmark_runs:`
+  string — must become version-aware (locate the right nested block under
+  the matching `version: vN` entry) instead of a single top-level match.
+  Dashboard: migrate `_build_id` to `compose_service_id` per version
+  (reproduces every existing row's label/identity unchanged); a genuine
+  version-over-time trend section is additive/future work, not required
+  for the initial migration since no family has 2+ versions yet.
+- 2026-07-29 — **Schema finalized** (Plan step 2). Full example below,
+  migrated from `catalog/builds/qwen3.6-27b--llamacpp-vulkan-radv-server-v1.yaml`:
+
+  ```yaml
+  id: qwen3.6-27b--llamacpp-vulkan-radv-server   # family id: no version suffix
+  model:                                          # hoisted: shared by all versions
+    display_name: Qwen3.6-27B
+    family: Qwen3.6
+    hf_repo: unsloth/Qwen3.6-27B-GGUF
+    hf_revision: null
+    architecture: dense
+    total_params: 26.90e9
+    active_params: null
+    num_experts: null
+    quantization: GGUF-Q4_K_M
+    context_length_native: null
+    modality: text
+    files: [Qwen3.6-27B-Q4_K_M.gguf]
+    local_path: /var/lib/ai-models/ollama-qwen3.6-27b
+    size_on_disk_gb: 15.65
+  versions:
+    - version: v1
+      compose_service_id: qwen3.6-27b--llamacpp-vulkan-radv-server-v1
+      engine_ref: llamacpp-vulkan-radv-server-v1
+      role: first concurrent-serving benchmark for llama.cpp on this hardware
+      notes: >
+        ...(verbatim from today's file)...
+      status: WORKING
+      created: "2026-07-24"
+      last_verified: "2026-07-24"
+      benchmark_runs:
+        - timestamp: '2026-07-26T01:29:33Z'
+          benchmark_id: llamacpp-bench-v1
+          # ...(unchanged shape, verbatim from today's per-file benchmark_runs entries)
+    # - version: v2   (future — e.g. a -np/batch-size retune)
+    #   compose_service_id: qwen3.6-27b--llamacpp-vulkan-radv-server-v2
+    #   engine_ref: llamacpp-vulkan-radv-server-v1   # unchanged unless the recipe itself changed
+    #   ...
+  ```
 
 ## Handoff notes
 <!-- what's half-done, what the next agent picking this up should do first. -->
-Not started. Blocked on [[M-001]] landing first — the trimmed catalog schema
-and port-allocation convention this card depends on don't exist yet.
+Research (Plan step 1) and schema design (Plan step 2) are done — see
+Decision log above for the full resolved taxonomy and schema. Remaining:
+step 3 (migration script — should be a 1:1 wrap per family per Q3, no
+merging logic needed for current data, but write it generally since future
+runs may have real multi-version merges), step 4 (docker-compose.yml — a
+no-op for existing services per Q3, just confirm), step 5 (update
+`generate_comparison_dashboard.py` and `benchmark_orchestrator.py` per Q4,
+`append_benchmark_run()` is the highest-risk piece), step 6
+(`catalog/OPERATIONS.md` — document the version-vs-family taxonomy from Q2
+and retire the now-superseded `--ctx<N>` filename convention). Next agent:
+implement steps 3-6, then have a Review pass verify the dashboard and
+orchestrator still work against the migrated catalog before this moves to
+done/.
