@@ -2,8 +2,8 @@
 id: M-002
 title: Research + implement grouping builds into versioned lists (v1, v2, ...) within a single catalog file
 initiative_id: null
-claimed_by: null
-claimed_at: null
+claimed_by: claude
+claimed_at: 2026-07-29T04:23Z
 blocks: null
 blocked_by: M-001
 status: null
@@ -95,6 +95,7 @@ one — several real design questions need answering before touching any files:
 <!-- append-only. Leave signals for other agents. Format:
      <!-- signal: <pet-name> <ISO8601-UTC> — <short message> -->
 -->
+<!-- signal: claude 2026-07-29T04:23Z — claiming, M-001 confirmed done, starting research on open questions 1-4 -->
 
 ## Decision log
 <!-- append-only, one line per entry, newest last. Never move this card to done/
