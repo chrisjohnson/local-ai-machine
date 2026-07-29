@@ -8,11 +8,17 @@ Design constraints (see knowledge/ / OPERATIONS.md for full rationale):
     be piloted over SSH from the Mac, though nothing stops that for --dry-run
     inspection.
   - Two-tier design (M-001): every verified model+engine build is its own
-    compose service with a fixed port. The orchestrator stops all vLLM
-    services to free the full GPU budget, starts the target service, runs
-    benchmarks against its fixed port, then restores previously-running
-    services. LiteLLM aliases role names to whichever localhost:<port> is
-    the current pick for that role.
+    compose service with a fixed port. The orchestrator stops all
+    "exclusive" services (every compose service NOT labeled
+    com.local-ai-machine.always-up: "true" in docker-compose.yml — every
+    model-serving build regardless of engine family, whatever currently
+    occupies the coder/judge roles) to free the full GPU budget, starts the
+    target service, runs benchmarks against its fixed port, then restores
+    exactly whichever exclusive services were running beforehand. New
+    model services default to exclusive/stoppable — only infra (litellm,
+    databases, monitoring, ollama, ...) needs the always-up label. LiteLLM
+    aliases role names to whichever localhost:<port> is the current pick
+    for that role.
   - Ollama builds are no longer hard-skipped (re-enabled 2026-07-26 — 3 of 4
     registered Ollama models had their broken chat template fixed via
     RENDERER/PARSER Modelfile directives; see
@@ -346,8 +352,10 @@ _COMPOSE_SERVICES_CACHE = None
 
 def _load_compose_services():
     """Parse docker-compose.yml and return dict keyed by service name with
-    port (host-side int) and served_model_name (from --served-model-name
-    flag in command, or None for non-vLLM services)."""
+    port (host-side int), served_model_name (from --served-model-name flag
+    in command, or None for non-vLLM services), and always_up (whether the
+    service carries the com.local-ai-machine.always-up=true label — infra
+    services that must never be stopped for benchmark GPU exclusivity)."""
     global _COMPOSE_SERVICES_CACHE
     if _COMPOSE_SERVICES_CACHE is not None:
         return _COMPOSE_SERVICES_CACHE
@@ -375,28 +383,39 @@ def _load_compose_services():
                     if part == "--served-model-name" and i + 1 < len(parts):
                         served_name = parts[i + 1]
                         break
-        services[svc_name] = {"port": port, "served_model_name": served_name}
+        labels = svc.get("labels") or {}
+        if isinstance(labels, dict):
+            always_up = labels.get("com.local-ai-machine.always-up") == "true"
+        else:
+            # Compose also allows a list-of-"key=value" strings form.
+            always_up = "com.local-ai-machine.always-up=true" in (labels or [])
+        services[svc_name] = {"port": port, "served_model_name": served_name, "always_up": always_up}
     _COMPOSE_SERVICES_CACHE = services
     return services
 
 
-def list_vllm_services():
-    """Return list of service names whose ports are in the vLLM range (8000-8099)."""
+def list_exclusive_services():
+    """Return list of service names NOT labeled always-up — i.e. every
+    benchmarkable model-serving service (vLLM, llama.cpp-server, ...),
+    regardless of engine family or port range. New model services default
+    to exclusive/stoppable unless explicitly labeled always-up in
+    docker-compose.yml — a new build added without the label is safely
+    included here, not silently exempted."""
     return [
         name for name, info in _load_compose_services().items()
-        if info["port"] is not None and 8000 <= info["port"] <= 8099
+        if not info["always_up"]
     ]
 
 
-def find_running_vllm_services():
-    """Return list of vLLM compose service names that are currently running."""
+def find_running_exclusive_services():
+    """Return list of non-always-up compose services that are currently running."""
     result = run(
         ["docker", "compose", "ps", "--services", "--filter", "status=running"],
         cwd=str(DOCKER_DIR), check=False,
     )
     running = result.stdout.strip().splitlines()
-    vllm_names = set(list_vllm_services())
-    return [s for s in running if s in vllm_names]
+    exclusive_names = set(list_exclusive_services())
+    return [s for s in running if s in exclusive_names]
 
 
 def get_compose_service_port(service_name):
@@ -417,14 +436,17 @@ def get_compose_served_name(service_name):
     return info["served_model_name"]
 
 
-def stop_all_vllm_services():
-    """Stop all vLLM compose services to free the full GPU budget."""
-    vllm_svcs = list_vllm_services()
-    if not vllm_svcs:
-        log("No vLLM services found in compose — nothing to stop.")
+def stop_all_exclusive_services():
+    """Stop every non-always-up compose service (all model-serving builds,
+    whichever engine family) to free the full GPU budget. Covers whatever
+    is currently occupying the coder/judge roles — laguna, a standing vLLM
+    pair, anything — not a hardcoded set."""
+    exclusive_svcs = list_exclusive_services()
+    if not exclusive_svcs:
+        log("No exclusive/benchmarkable services found in compose — nothing to stop.")
         return
-    log(f"Stopping all vLLM services ({len(vllm_svcs)} services) for full GPU budget.")
-    run(["docker", "compose", "stop", *vllm_svcs], cwd=str(DOCKER_DIR))
+    log(f"Stopping all exclusive services ({len(exclusive_svcs)} services) for full GPU budget.")
+    run(["docker", "compose", "stop", *exclusive_svcs], cwd=str(DOCKER_DIR))
 
 
 def start_compose_service(service_name):
@@ -441,12 +463,16 @@ def start_compose_service(service_name):
     raise RuntimeError(f"Timed out waiting for {service_name} to become healthy on port {port}.")
 
 
-def restore_vllm_services(services):
-    """Restart the given vLLM services and wait for all to become healthy."""
+def restore_previously_running_services(services):
+    """Restart exactly the services that were running before this build's
+    stop_all_exclusive_services() call, and wait for all to become
+    healthy. Deliberately takes the caller's own snapshot rather than
+    assuming any particular service belongs here — whatever was actually
+    serving before (laguna, a vLLM pair, nothing) is what comes back."""
     if not services:
         log("No services to restore.")
         return
-    log(f"Restoring vLLM services: {services}")
+    log(f"Restoring previously-running services: {services}")
     run(["docker", "compose", "up", "-d", *services], cwd=str(DOCKER_DIR))
     deadline = time.time() + 20 * 60
     while time.time() < deadline:
@@ -460,7 +486,7 @@ def restore_vllm_services(services):
             log(f"All {len(services)} restored services healthy.")
             return
         time.sleep(10)
-    raise RuntimeError(f"Timed out waiting for restored vLLM services to become healthy.")
+    raise RuntimeError(f"Timed out waiting for restored services to become healthy.")
 
 
 def cleanup_stale_containers():
@@ -473,17 +499,6 @@ def cleanup_stale_containers():
     for n in stale:
         log(f"Removing stale container: {n}")
         run(["docker", "rm", "-f", n], check=False)
-
-
-def ensure_default_services_up():
-    """Ensure the default coder and judge services are up and healthy at
-    startup. These are the standing services that LiteLLM routes to."""
-    default_coder = "qwen3.6-35b-a3b--vllm-therock-gfx1151-v1"
-    default_judge = "qwen3.5-4b--vllm-therock-gfx1151-v1"
-    log(f"Startup: ensuring default services ({default_coder}, {default_judge}) are up.")
-    run(["docker", "compose", "up", "-d", default_coder, default_judge], cwd=str(DOCKER_DIR))
-    for svc in (default_coder, default_judge):
-        start_compose_service(svc)
 
 
 # --------------------------------------------------------------------------
@@ -1220,17 +1235,17 @@ def process_vllm_build(build_id, build_path, build, dry_run, downloads_paused, k
     except RuntimeError as e:
         raise RuntimeError(f"{build_id}: {e} — cannot benchmark without a compose service definition") from e
 
-    previously_running = find_running_vllm_services()
+    previously_running = find_running_exclusive_services()
     services_stopped = False
 
     try:
-        log(f"[{build_id}] Stopping all vLLM services for full GPU budget, then starting {compose_service} on :{port}.")
+        log(f"[{build_id}] Stopping all exclusive services for full GPU budget, then starting {compose_service} on :{port}.")
         if dry_run:
-            log(f"[dry-run] would stop all vLLM services, start {compose_service} on :{port}, benchmark {served_name}")
+            log(f"[dry-run] would stop all exclusive services, start {compose_service} on :{port}, benchmark {served_name}")
             return
 
         check_no_other_benchmark_activity()
-        stop_all_vllm_services()
+        stop_all_exclusive_services()
         services_stopped = True
         start_compose_service(compose_service)
         container = compose_service
@@ -1373,7 +1388,7 @@ def process_vllm_build(build_id, build_path, build, dry_run, downloads_paused, k
         if services_stopped:
             log(f"[{build_id}] Stopping {compose_service}, restoring previously-running services.")
             run(["docker", "compose", "stop", compose_service], cwd=str(DOCKER_DIR))
-            restore_vllm_services(previously_running)
+            restore_previously_running_services(previously_running)
 
 
 def process_llamacpp_build(build_id, build_path, build, dry_run, downloads_paused, kernel, repo_commit, gpu_driver):
@@ -1382,14 +1397,14 @@ def process_llamacpp_build(build_id, build_path, build, dry_run, downloads_pause
     timestamp = utcnow_iso().replace(":", "").replace("-", "")
     window_start = utcnow_iso()
 
-    log(f"[{build_id}] llama.cpp build — stopping all vLLM services for the full GPU budget (mandatory per engine gotchas).")
+    log(f"[{build_id}] llama.cpp build — stopping all exclusive services for the full GPU budget (mandatory per engine gotchas).")
     if dry_run:
-        log(f"[dry-run] would stop all vLLM services, run llama-bench, then {'llama-server correctness+concurrency' if is_server_variant else 'llama-server + coding harness'}, then restore stack")
+        log(f"[dry-run] would stop all exclusive services, run llama-bench, then {'llama-server correctness+concurrency' if is_server_variant else 'llama-server + coding harness'}, then restore stack")
         return
 
     check_no_other_benchmark_activity()
-    previously_running = find_running_vllm_services()
-    stop_all_vllm_services()
+    previously_running = find_running_exclusive_services()
+    stop_all_exclusive_services()
     vllm_stopped_for_run = True
     toolbox_digest = toolbox_image_digest()
 
@@ -1581,8 +1596,8 @@ def process_llamacpp_build(build_id, build_path, build, dry_run, downloads_pause
         # loop owns pause/resume symmetrically for both engine families (see
         # its own finally block), so there's exactly one resume call per
         # pause call, never a double-resume.
-        log(f"[{build_id}] Restoring previously-running vLLM services.")
-        restore_vllm_services(previously_running)
+        log(f"[{build_id}] Restoring previously-running services.")
+        restore_previously_running_services(previously_running)
 
 
 # --------------------------------------------------------------------------
@@ -1690,10 +1705,10 @@ def process_ollama_build(build_id, build_path, build, dry_run, downloads_paused,
     timestamp = utcnow_iso().replace(":", "").replace("-", "")
     window_start = utcnow_iso()
 
-    log(f"[{build_id}] Ollama build — stopping all vLLM services for the full GPU budget "
-        f"(same GPU-contention risk as llama.cpp; Ollama itself keeps running, only vLLM is stopped).")
+    log(f"[{build_id}] Ollama build — stopping all exclusive services for the full GPU budget "
+        f"(same GPU-contention risk as llama.cpp; Ollama itself is labeled always-up and keeps running).")
     if dry_run:
-        log(f"[dry-run] would stop all vLLM services, run 1 cold + 3 warm /api/generate against "
+        log(f"[dry-run] would stop all exclusive services, run 1 cold + 3 warm /api/generate against "
             f"{served_name} on the standing ollama container, then restore stack")
         return
 
@@ -1716,8 +1731,8 @@ def process_ollama_build(build_id, build_path, build, dry_run, downloads_paused,
     orch_pi_already_done = already_has_run(build, ORCH_PI_ID)
 
     check_no_other_benchmark_activity()
-    previously_running = find_running_vllm_services()
-    stop_all_vllm_services()
+    previously_running = find_running_exclusive_services()
+    stop_all_exclusive_services()
     vllm_stopped_for_run = True
 
     try:
@@ -1835,8 +1850,8 @@ def process_ollama_build(build_id, build_path, build, dry_run, downloads_paused,
     finally:
         # Same reasoning as process_llamacpp_build: download resume is owned
         # by main()'s per-build loop, not here — exactly one resume per pause.
-        log(f"[{build_id}] Restoring previously-running vLLM services.")
-        restore_vllm_services(previously_running)
+        log(f"[{build_id}] Restoring previously-running services.")
+        restore_previously_running_services(previously_running)
 
 
 # --------------------------------------------------------------------------
@@ -1891,16 +1906,15 @@ def main():
 
     if not args.dry_run:
         cleanup_stale_containers()
-        ensure_default_services_up()
 
     kernel, repo_commit = capture_host_fingerprint_common()
     gpu_driver = capture_gpu_driver_via_toolbox() if not args.dry_run else "not-captured-dry-run"
 
-    # Batch by engine family to minimize container churn (vLLM builds first,
-    # since standing services are already up; llamacpp/ollama builds both
-    # need the standard stack down for their whole batch — grouped together
-    # for the same reason llamacpp builds are grouped, minimize vLLM
-    # stop/start churn across the batch).
+    # Batch by engine family to minimize container churn. Each build's own
+    # process_*_build() snapshots whatever is currently running (via
+    # find_running_exclusive_services()) before stopping it, and restores
+    # exactly that afterward — no assumption here about what's up at batch
+    # start, unlike the old hardcoded-default-services behavior.
     vllm_builds = [b for b in runnable if b[3] == "vllm"]
     llamacpp_builds = [b for b in runnable if b[3] == "llamacpp"]
     ollama_builds = [b for b in runnable if b[3] == "ollama"]
@@ -1923,13 +1937,13 @@ def main():
             process_llamacpp_build(build_id, path, build, args.dry_run, downloads_paused, kernel, repo_commit, gpu_driver)
         except Exception as e:  # noqa: BLE001
             # process_llamacpp_build's own finally already restores
-            # previously-running vLLM services unconditionally (success or
-            # failure) once it's past the initial stop_all_vllm_services()
+            # previously-running services unconditionally (success or
+            # failure) once it's past the initial stop_all_exclusive_services()
             # call — restore here too is a safe no-op in case the exception
             # fired before that point.
             log(f"[{build_id}] FAILED: {e}")
             if not args.dry_run:
-                restore_vllm_services(find_running_vllm_services())
+                restore_previously_running_services(find_running_exclusive_services())
         finally:
             if not args.dry_run:
                 resume_downloads(downloads_paused)
@@ -1941,13 +1955,13 @@ def main():
             process_ollama_build(build_id, path, build, args.dry_run, downloads_paused, kernel, repo_commit, gpu_driver)
         except Exception as e:  # noqa: BLE001
             # Same reasoning as the llamacpp branch above: process_ollama_build's
-            # own finally already restores previously-running vLLM services
-            # unconditionally once past the initial stop_all_vllm_services()
+            # own finally already restores previously-running services
+            # unconditionally once past the initial stop_all_exclusive_services()
             # call — restore here too is a safe no-op in case the exception
             # fired before that point.
             log(f"[{build_id}] FAILED: {e}")
             if not args.dry_run:
-                restore_vllm_services(find_running_vllm_services())
+                restore_previously_running_services(find_running_exclusive_services())
         finally:
             if not args.dry_run:
                 resume_downloads(downloads_paused)

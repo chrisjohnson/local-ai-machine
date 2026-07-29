@@ -21,6 +21,16 @@ version: '3.8'
 # GPU contention means at most one vLLM + one llama-server can co-reside;
 # Ollama is always safe alongside either (small GPU footprint).
 #
+# Always-up vs. exclusive/benchmarkable (see catalog/OPERATIONS.md for full
+# rationale): infra services below carry
+#   labels:
+#     com.local-ai-machine.always-up: "true"
+# scripts/benchmark_orchestrator.py stops every service WITHOUT that label
+# before running a candidate build, then restores exactly whichever ones
+# were running beforehand. New model-serving builds need no label at all —
+# they're exclusive/stoppable by default; only genuine infra should ever
+# carry always-up: "true".
+#
 # --gpu-memory-utilization: judge-sized models (roughly <25B — the ones
 # almost always run co-resident alongside a larger candidate model, e.g.
 # qwen3.5-4b-judge at 0.20, qwen2.5-vl-7b-instruct at 0.20 for the M-024
@@ -516,6 +526,8 @@ services:
     image: ollama/ollama:0.17.7
     container_name: ollama
     restart: unless-stopped
+    labels:
+      com.local-ai-machine.always-up: "true"
     environment:
       - OLLAMA_VULKAN=1
       - HIP_VISIBLE_DEVICES=-1
@@ -543,6 +555,8 @@ services:
     image: postgres:16-alpine
     container_name: litellm-db
     restart: unless-stopped
+    labels:
+      com.local-ai-machine.always-up: "true"
     ports:
       - "127.0.0.1:5432:5432"
     environment:
@@ -556,6 +570,8 @@ services:
     image: ghcr.io/berriai/litellm:main-latest
     container_name: litellm-proxy
     restart: unless-stopped
+    labels:
+      com.local-ai-machine.always-up: "true"
     network_mode: host
     volumes:
       - ./litellm/config.yaml:/app/config.yaml
@@ -572,6 +588,8 @@ services:
     image: pgautoupgrade/pgautoupgrade:18-alpine
     container_name: turnstone-db
     restart: unless-stopped
+    labels:
+      com.local-ai-machine.always-up: "true"
     environment:
       POSTGRES_DB: turnstone
       POSTGRES_USER: turnstone
@@ -583,6 +601,8 @@ services:
     image: ghcr.io/turnstonelabs/turnstone:latest
     container_name: turnstone-server
     restart: unless-stopped
+    labels:
+      com.local-ai-machine.always-up: "true"
     command: ["turnstone-server", "--host", "0.0.0.0", "--port", "8080"]
     ports:
       - "8080:8080"
@@ -603,6 +623,8 @@ services:
     image: prom/prometheus:latest
     container_name: prometheus
     restart: unless-stopped
+    labels:
+      com.local-ai-machine.always-up: "true"
     ports:
       - "9090:9090"
     volumes:
@@ -614,6 +636,8 @@ services:
     image: prom/node-exporter:latest
     container_name: node-exporter
     restart: unless-stopped
+    labels:
+      com.local-ai-machine.always-up: "true"
     pid: host
     volumes:
       - /proc:/host/proc:ro
@@ -631,6 +655,8 @@ services:
     image: grafana/grafana:latest
     container_name: grafana
     restart: unless-stopped
+    labels:
+      com.local-ai-machine.always-up: "true"
     ports:
       - "3000:3000"
     environment:
@@ -647,6 +673,8 @@ services:
     image: ghcr.io/open-webui/open-webui:main
     container_name: open-webui
     restart: unless-stopped
+    labels:
+      com.local-ai-machine.always-up: "true"
     ports:
       - "3001:8080"
     environment:

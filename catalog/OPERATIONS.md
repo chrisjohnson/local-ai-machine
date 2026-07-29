@@ -130,6 +130,35 @@ As of M-001, deployment detail lives exclusively in `docker-compose.yml`:
 - Port allocation: vLLM builds → 8000-8099, llama.cpp-server → 8100+, Ollama → 11434
   (shared instance, model switch via API).
 
+### Always-up vs. exclusive/benchmarkable services
+
+Every service in `docker-compose.yml` is either **always-up** (infra: LiteLLM, its
+Postgres DB, Turnstone + its DB, Prometheus, node-exporter, Grafana, Open WebUI, the
+shared Ollama instance) or **exclusive** (any model-serving build — vLLM, llama.cpp-server,
+regardless of engine family). `scripts/benchmark_orchestrator.py` stops every exclusive
+service before running a candidate build (mandatory for full GPU budget/no contention)
+and restores exactly whichever ones were running beforehand.
+
+The distinction is driven by a compose label, not a hardcoded name/port-range list:
+
+```yaml
+services:
+  litellm:
+    labels:
+      com.local-ai-machine.always-up: "true"
+```
+
+**New model-serving builds need no label at all** — a service is treated as
+exclusive/stoppable by default; only genuine infra should ever carry
+`com.local-ai-machine.always-up: "true"`. This is a deliberate fail-safe default: a new
+build added without remembering the label still gets correctly stopped for GPU
+exclusivity, rather than silently escaping it. (Real incident, 2026-07-29: before this
+label existed, the orchestrator had a hardcoded "bring up qwen3.6-35b-a3b + qwen3.5-4b
+at startup" step that predated the laguna deployment — it didn't know `coder` now
+pointed at laguna, brought the old vLLM pair up alongside it anyway, and caused a real
+GPU-contention crash. The label-driven approach generalizes correctly no matter which
+model currently serves which role.)
+
 ### Switching which model serves a role
 
 ```
