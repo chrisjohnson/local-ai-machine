@@ -101,6 +101,7 @@ contribute to. Any agent — regardless of runtime — should be able to:
 ## Signals
 <!-- signal: claude 2026-07-29T05:32Z — claiming, per Chris's "3 then 22" sequencing -->
 <!-- signal: claude 2026-07-29T06:40Z — PR #8 open (m-003-knowledge-base -> main), all 7 plan steps done, awaiting review -->
+<!-- signal: claude 2026-07-29T07:05Z — review complete, 3 minor fixes applied and pushed, PR #8 ready to merge -->
 
 ## Decision log
 - 2026-07-26 — rewritten to reflect knowledge-directory approach per Chris's
@@ -140,6 +141,20 @@ contribute to. Any agent — regardless of runtime — should be able to:
   `knowledge/` files — no content in the originals was removed or rewritten, confirmed
   via `git diff` showing additive-only changes (one line replaced in AGENTS.md's
   existing bullet list to extend it, not delete it).
+- 2026-07-29 — **Review pass complete (isolated worktree).** Verdict: high-quality,
+  faithful migration, minor fixes needed before merge. Spot-checked 8+ files across all
+  three subdirectories against `main`'s originals — content fidelity strong (exact
+  benchmark numbers preserved, hedge/caveat language like "later flagged as likely
+  partly fabricated" kept intact, not laundered into fact), zero
+  Claude/opencode/Anthropic mentions anywhere in `knowledge/`, "light-touch" claim on
+  the three originals confirmed genuine via diff. Found and fixed 3 mechanical issues:
+  two dangling cross-references (`2026-07-22-qwen36-27b-unverified-chatbot-tips.md` and
+  `knowledge/research/README.md`'s own worked example pointed at filenames that don't
+  exist — both now point at the real files, `2026-07-24-qwen36-27b-llamacpp-vs-ollama.md`
+  and `2026-07-24-fastflowlm-and-mtp-confirmed.md` respectively) and one transposed
+  identifier typo (`gemma-4-26a4b-gguf` → `gemma-4-26b-a4b-gguf` in
+  `2026-07-26-ollama-chat-template-root-caused-fixed.md`). Fixes pushed directly to
+  `m-003-knowledge-base` (commit `eb213b6`). PR #8 ready for merge.
 
 ## Handoff notes
 - Done: all 7 plan steps complete. `knowledge/` created with an index README + 3
