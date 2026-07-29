@@ -81,27 +81,52 @@ floating image tag or host state can drift between two runs of "the same" build 
   Grafana link (dashboards aren't stable-URL-per-range in this setup) — just the timestamps
   needed to look it up.
 
-## Build naming for config variants (e.g. different served context length)
+## Build versioning: new version vs. new family (M-002)
 
-If the same model+engine pair is tested at more than one meaningfully different serving
-config (most commonly `--max-model-len`, but could be any flag that materially changes
-footprint/behavior), that's two different **builds**, not two runs of one build.
+As of M-002, `catalog/builds/*.yaml` files are **families**, not individual builds: one file
+per (model, engine-recipe-identity, any other major structural difference), holding a
+`versions:` list of that family's serving-config iterations over time (v1, v2, v3, ...). The
+`model:` block is hoisted to the family level, shared by every version. Each version entry
+carries its own `version: vN`, `compose_service_id:` (the real `docker-compose.yml` join key
+for that version — see "Two-tier model" below), `engine_ref:` (which `catalog/engines/*.yaml`
+recipe this version was built against — independent of `version:`; bumping a build's version
+does NOT imply bumping the engine-recipe reference), plus `role`, `notes`, `status`, `created`,
+`last_verified`, and `benchmark_runs:`.
 
-- File naming: `<model>--<engine>--<variant-tag>.yaml` (e.g. `--ctx65536` / `--ctx131072`),
-  only when more than one variant exists for a model+engine pair — no suffix needed otherwise.
-- Add a `context_length_served: <N>` field at the top level of the build (not just buried
-  inside the compose service's command), so it's queryable without parsing compose YAML.
-- The `model:` block (repo, architecture, params, quantization) is duplicated verbatim across
-  variant files — that's intentional, not an inconsistency to fix. The point of a build file is
-  to be a single, complete, self-contained unit sufficient to reconstruct a docker-compose
-  entry on its own; splitting `model:` out into a shared reference would break that property.
+Deciding which bucket a config change falls into:
+
+- **New version within the existing family** — same engine recipe (same binary/invocation
+  shape) + same model artifact (same quant/files) + a serving-config-only change: batch size,
+  context length (`--max-model-len`/`-c`), GPU-memory cap, KV-cache flags, and similar
+  like-for-like serving tweaks. This is the versioning this section used to route through a
+  `--ctx<N>` filename suffix (retired below) — it now goes through `version:` instead, which
+  also gets you version-over-time comparison in the dashboard for free.
+- **New family (new file)** — different engine recipe, different quantization/model artifact,
+  or a different backend entirely (vllm/llamacpp/ollama). Any of these changes the actual
+  loaded weights or the invocation shape, not just a serving-time tunable — not what the
+  version-over-time trend within one family is for.
+
+Practical mechanics for cutting a new version:
+- Append a new entry to the family's `versions:` list with the next `vN`, a fresh
+  `compose_service_id:` (own fixed port, per the two-tier convention below — do not reuse a
+  prior version's compose service name), `engine_ref:` (unchanged from the prior version unless
+  the engine recipe itself changed), and its own empty `benchmark_runs: []` to start.
+- Do not mutate a prior version's fields in place — each version is a permanent, independently
+  comparable record. If an "optimization" regresses something, the prior version's data is
+  still there to flip back to.
+
+**Retired**: the pre-M-002 `--ctx<N>`-style filename-suffix convention (`<model>--<engine>--
+<variant-tag>.yaml`) for tracking context-length/config variants is superseded by `version:`
+above. It was never actually adopted by any of the files migrated into the new schema — clean
+retirement, not a deprecate-in-place.
 
 ## Two-tier model: catalog + compose
 
 As of M-001, deployment detail lives exclusively in `docker-compose.yml`:
 - `build_specific_flags`, `build_specific_env`, `compose_service`, `served_model_name`
   have been removed from `catalog/builds/*.yaml`.
-- Each build's compose service name = its catalog `id` (exact match, the join key).
+- Each version's compose service name = its `compose_service_id` (exact match, the join key;
+  as of M-002 this lives on the version entry, not the family's top-level `id`).
 - Port allocation: vLLM builds → 8000-8099, llama.cpp-server → 8100+, Ollama → 11434
   (shared instance, model switch via API).
 
@@ -122,8 +147,9 @@ The script reads the port and served-model-name from docker-compose.yml,
 updates the litellm config, and restarts the litellm container. No git
 commit required — this is a runtime selection, not a definition change.
 
-The service name is the exact docker-compose service name (which equals the
-catalog build `id`). Run `docker compose ps` to see what's running, or
+The service name is the exact docker-compose service name (which equals a
+version's `compose_service_id`, not the family file's top-level `id` — see
+"Build versioning" above). Run `docker compose ps` to see what's running, or
 `docker compose config --services` to list all defined services.
 
 ### llama.cpp builds: benchmarker vs. server

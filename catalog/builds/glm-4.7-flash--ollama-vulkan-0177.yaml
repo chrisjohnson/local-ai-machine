@@ -1,6 +1,4 @@
-id: glm-4.7-flash--ollama-vulkan-0177-v1
-engine: ollama-vulkan-0177-v1
-role: WORKING (slow) — the model/file that discovered the whole ROCm-crash saga
+id: glm-4.7-flash--ollama-vulkan-0177
 model:
   display_name: GLM-4.7-Flash
   family: GLM-4.7
@@ -13,21 +11,27 @@ model:
   quantization: GGUF-Q4_K_M
   context_length_native: null
   modality: text
-  files: [GLM-4.7-Flash-Q4_K_M.gguf]
+  files:
+  - GLM-4.7-Flash-Q4_K_M.gguf
   local_path: /var/lib/ai-models/ollama-glm-4.7-flash
   size_on_disk_gb: 18.31
-served_model_name: glm-4.7-flash-gguf   # ollama model tag
-notes: >
-  ~13 tok/s generation (rough measurement, vllm-primary running concurrently
-  so conservative/pessimistic, not a clean isolated test), vs. llama.cpp
-  direct's clean 70.1 tok/s for the same file — roughly 5.4x slower than
-  llama.cpp direct for this exact model/file. Real chat completion
-  succeeded (full generated essay, not a crash) — this was the file/combo
-  used to discover the -rocm tag crash -> Vulkan-workaround -> wrong-tag saga.
-status: WORKING
-created: "2026-07-24"
-last_verified: "2026-07-24"
-benchmark_runs:
+versions:
+- version: v1
+  compose_service_id: glm-4.7-flash--ollama-vulkan-0177-v1
+  engine_ref: ollama-vulkan-0177-v1
+  role: WORKING (slow) — the model/file that discovered the whole ROCm-crash saga
+  served_model_name: glm-4.7-flash-gguf
+  notes: '~13 tok/s generation (rough measurement, vllm-primary running concurrently so conservative/pessimistic,
+    not a clean isolated test), vs. llama.cpp direct''s clean 70.1 tok/s for the same file — roughly 5.4x
+    slower than llama.cpp direct for this exact model/file. Real chat completion succeeded (full generated
+    essay, not a crash) — this was the file/combo used to discover the -rocm tag crash -> Vulkan-workaround
+    -> wrong-tag saga.
+
+    '
+  status: WORKING
+  created: '2026-07-24'
+  last_verified: '2026-07-24'
+  benchmark_runs:
   - timestamp: '2026-07-28T00:26:19Z'
     benchmark_id: ollama-warm-request-v2
     fingerprint:

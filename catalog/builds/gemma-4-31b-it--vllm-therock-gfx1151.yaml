@@ -1,6 +1,4 @@
-id: gemma-4-31b-it--vllm-therock-gfx1151-v1
-engine: vllm-therock-gfx1151-v1
-role: dense comparison tier — not a standing compose service, swap-in only
+id: gemma-4-31b-it--vllm-therock-gfx1151
 model:
   display_name: Gemma-4-31B-it
   family: Gemma-4
@@ -11,21 +9,26 @@ model:
   active_params: null
   num_experts: null
   quantization: bf16
-  context_length_native: 65536   # bumped from the toolbox's proven-but-conservative 32768 default
+  context_length_native: 65536
   modality: text
   files: null
   local_path: /var/lib/ai-models/gemma-4-31b-it
   size_on_disk_gb: null
-notes: >
-  Slowest model tested all session, degrades hardest under concurrency
-  (near-1-minute p99 TTFT at c8) — a real architectural cost of being dense
-  at this size, not a config problem. Despite this, scored a perfect 5/5
-  coding-harness result under tier-ab-coding-v0 — speed and coding
-  capability do not correlate here.
-status: WORKING
-created: "2026-07-23"
-last_verified: "2026-07-23"
-benchmark_runs:
+versions:
+- version: v1
+  compose_service_id: gemma-4-31b-it--vllm-therock-gfx1151-v1
+  engine_ref: vllm-therock-gfx1151-v1
+  role: dense comparison tier — not a standing compose service, swap-in only
+  notes: 'Slowest model tested all session, degrades hardest under concurrency (near-1-minute p99 TTFT
+    at c8) — a real architectural cost of being dense at this size, not a config problem. Despite this,
+    scored a perfect 5/5 coding-harness result under tier-ab-coding-v0 — speed and coding capability do
+    not correlate here.
+
+    '
+  status: WORKING
+  created: '2026-07-23'
+  last_verified: '2026-07-23'
+  benchmark_runs:
   - timestamp: '2026-07-25T03:52:21Z'
     benchmark_id: vllm-speed-c1c8-v2
     fingerprint:
@@ -171,7 +174,6 @@ benchmark_runs:
         - catalog/raw/gemma-4-31b-it--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c8-trial2--20260725T035221Z.json
         - catalog/raw/gemma-4-31b-it--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c8-trial3--20260725T035221Z.json
       server_log_raw_file: catalog/raw/gemma-4-31b-it--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--server-log--20260725T035221Z.txt
-
   - timestamp: '2026-07-25T03:52:21Z'
     benchmark_id: seven-tier-coding-v2
     fingerprint:

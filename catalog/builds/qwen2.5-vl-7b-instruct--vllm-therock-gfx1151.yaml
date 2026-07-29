@@ -1,6 +1,4 @@
-id: qwen2.5-vl-7b-instruct--vllm-therock-gfx1151-v1
-engine: vllm-therock-gfx1151-v1
-role: vision/OCR specialist — not a coding candidate, not a standing compose service
+id: qwen2.5-vl-7b-instruct--vllm-therock-gfx1151
 model:
   display_name: Qwen2.5-VL-7B-Instruct
   family: Qwen2.5-VL
@@ -11,21 +9,26 @@ model:
   active_params: null
   num_experts: null
   quantization: bf16
-  context_length_native: 32768   # deliberately below the 64K requirement — role is quick OCR/vision, not long-context coding
+  context_length_native: 32768
   modality: vision-text
   files: null
   local_path: /var/lib/ai-models/qwen2.5-vl-7b-instruct
   size_on_disk_gb: 16
-notes: >
-  No Qwen3 tool-call parser used (older generation, different template).
-  Will need --limit-mm-per-prompt flags once actually used for real vision
-  workloads — not yet exercised. Deliberately excluded from the coding
-  harness (vision/OCR specialist, not a coding candidate). None of the
-  KV-cache/concurrency footprint figures were captured for this model.
-status: WORKING
-created: "2026-07-23"
-last_verified: "2026-07-23"
-benchmark_runs:
+versions:
+- version: v1
+  compose_service_id: qwen2.5-vl-7b-instruct--vllm-therock-gfx1151-v1
+  engine_ref: vllm-therock-gfx1151-v1
+  role: vision/OCR specialist — not a coding candidate, not a standing compose service
+  notes: 'No Qwen3 tool-call parser used (older generation, different template). Will need --limit-mm-per-prompt
+    flags once actually used for real vision workloads — not yet exercised. Deliberately excluded from
+    the coding harness (vision/OCR specialist, not a coding candidate). None of the KV-cache/concurrency
+    footprint figures were captured for this model.
+
+    '
+  status: WORKING
+  created: '2026-07-23'
+  last_verified: '2026-07-23'
+  benchmark_runs:
   - timestamp: '2026-07-25T09:26:53Z'
     benchmark_id: vllm-speed-c1c8-v2
     fingerprint:
@@ -171,7 +174,6 @@ benchmark_runs:
         - catalog/raw/qwen2.5-vl-7b-instruct--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c8-trial2--20260725T092653Z.json
         - catalog/raw/qwen2.5-vl-7b-instruct--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c8-trial3--20260725T092653Z.json
       server_log_raw_file: catalog/raw/qwen2.5-vl-7b-instruct--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--server-log--20260725T092653Z.txt
-
   - timestamp: '2026-07-25T09:26:53Z'
     benchmark_id: seven-tier-coding-v2
     fingerprint:

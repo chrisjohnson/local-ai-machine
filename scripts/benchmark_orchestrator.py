@@ -144,6 +144,37 @@ def list_build_files():
     return sorted(BUILDS_DIR.glob("*.yaml"))
 
 
+def iter_flattened_versions():
+    """M-002: catalog/builds/*.yaml files are now families holding a
+    `versions:` list (one entry per model+engine serving-config iteration),
+    not one-file-one-build. Every function below this point (gather_plan,
+    process_*_build, etc.) still operates on a single flat "build" dict per
+    logical build, exactly like the pre-M-002 shape -- so this is the one
+    place that understands the grouped file layout: it flattens each
+    family's model: block + one version entry into a synthetic build dict
+    carrying `id`/`engine` aliases (= that version's compose_service_id /
+    engine_ref, same values the old flat id/engine fields held for every
+    migrated build) plus `_family_path` and `_version` so callers that need
+    to write back (append_benchmark_run) know which family file and which
+    nested version block to target.
+
+    Yields (build_id, family_path, version_label, build_dict) tuples, in
+    family-file-sorted, then version-list order.
+    """
+    for path in list_build_files():
+        family = load_yaml(path)
+        model = family.get("model")
+        for version_entry in family.get("versions") or []:
+            build = dict(version_entry)
+            build["model"] = model
+            build["id"] = version_entry.get("compose_service_id")
+            if "engine_ref" in version_entry:
+                build["engine"] = version_entry["engine_ref"]
+            build["_family_path"] = path
+            build["_version"] = version_entry.get("version")
+            yield build["id"], path, version_entry.get("version"), build
+
+
 def model_download_complete(local_path: str) -> bool:
     """Check the real, live .download-complete marker — never trust build
     file notes/status text, which can drift (confirmed drift found live
@@ -210,11 +241,16 @@ def missing_benchmark_ids(build: dict, family: str) -> list:
 
 
 def gather_plan(only_build_id=None):
-    """Return list of (build_id, path, build_dict, reason_skip_or_None)."""
+    """Return list of (build_id, family_path, build_dict, family, reason_skip_or_None).
+
+    M-002: one entry per version (across every catalog/builds/*.yaml
+    family's `versions:` list), not one entry per file — `build_id` is the
+    version's compose_service_id (identical to the pre-M-002 flat file's id
+    for every migrated build), `family_path` is the family file's path
+    (still needed by callers to locate/write back to the right file, now
+    via append_benchmark_run's family-file + version-aware surgery)."""
     plan = []
-    for path in list_build_files():
-        build_id = path.stem
-        build = load_yaml(path)
+    for build_id, family_path, version_label, build in iter_flattened_versions():
         if only_build_id and build_id != only_build_id:
             continue
 
@@ -232,7 +268,7 @@ def gather_plan(only_build_id=None):
         elif not model_download_complete(local_path):
             skip_reason = f"model not fully downloaded yet (.download-complete missing at {local_path})"
 
-        plan.append((build_id, path, build, family, skip_reason))
+        plan.append((build_id, family_path, build, family, skip_reason))
     return plan
 
 
@@ -523,43 +559,134 @@ def render_run_entry_yaml(entry: dict, indent: int = 2) -> str:
     return "\n".join(out) + "\n"
 
 
-def append_benchmark_run(build_path: Path, entry: dict):
-    text = build_path.read_text()
-    entry_yaml = render_run_entry_yaml(entry)
+def _find_version_block_range(lines: list, compose_service_id: str, build_path: Path) -> tuple:
+    """M-002: build files are now families holding a `versions:` list, each
+    entry a `- version: vN` / `compose_service_id: ...` block indented 2
+    spaces under `versions:` (list-item dash at column 0, block contents at
+    column 2). Locate the version entry whose `compose_service_id:` matches
+    (this is the unique per-version key — `version: vN` alone is not
+    globally unique across families, but is unique within one family file,
+    and compose_service_id is unique full stop), then return
+    (block_start_line, block_end_line) spanning just that version's own
+    lines (from its `- version:` line up to, but not including, the next
+    sibling version's `- version:` line or EOF) — the region append's
+    nested-benchmark_runs search must stay confined to."""
+    versions_start = None
+    for i, line in enumerate(lines):
+        if re.match(r"^versions:\s*$", line):
+            versions_start = i
+            break
+    if versions_start is None:
+        raise RuntimeError(f"{build_path}: could not locate top-level `versions:` block")
 
-    if "benchmark_runs: []" in text:
-        new_text = text.replace("benchmark_runs: []", "benchmark_runs:\n" + entry_yaml.rstrip("\n"), 1)
-    elif re.search(r"^benchmark_runs:\s*$", text, re.MULTILINE):
-        # Existing non-empty list — append after the last top-level list
-        # item block. Find the benchmark_runs: line, then find where the
-        # list block ends (next line that is not indented under it, or EOF).
-        lines = text.split("\n")
-        start = None
-        for i, line in enumerate(lines):
-            if re.match(r"^benchmark_runs:\s*$", line):
-                start = i
+    # Collect the line index of every sibling version entry's `- version:`
+    # line (column-0 dash, 2-space-indented key — the only marker that's
+    # unambiguous both for "this is a new version entry" and "this list
+    # item belongs directly under versions:", since nested list items
+    # inside benchmark_runs/etc. are indented further).
+    version_entry_starts = []
+    for i in range(versions_start + 1, len(lines)):
+        if re.match(r"^- version:\s", lines[i]):
+            version_entry_starts.append(i)
+
+    target_start = None
+    for idx, start in enumerate(version_entry_starts):
+        end = version_entry_starts[idx + 1] if idx + 1 < len(version_entry_starts) else len(lines)
+        block = "\n".join(lines[start:end])
+        if re.search(
+            rf"^  compose_service_id:\s*{re.escape(compose_service_id)}\s*$", block, re.MULTILINE,
+        ):
+            target_start = start
+            target_end = end
+            break
+
+    if target_start is None:
+        raise RuntimeError(
+            f"{build_path}: could not locate a version entry with "
+            f"compose_service_id: {compose_service_id!r}"
+        )
+    return target_start, target_end
+
+
+def append_benchmark_run(build_path: Path, compose_service_id: str, entry: dict):
+    """Append a benchmark_runs[] entry under the correct version's nested
+    block (M-002: build files are grouped families, `benchmark_runs:` is no
+    longer a single top-level column-0 key — it's per-version, indented 2
+    spaces under that version's `- version: vN` list entry). Text-surgery
+    only, same no-full-re-dump discipline as before M-002, now scoped to
+    the matching version's own line range so an append can never land under
+    the wrong version or match a stale top-level `benchmark_runs:` string
+    from a different part of the file.
+
+    Indentation note: yaml.safe_dump's default (non-flow, non-indented-seq)
+    style puts a version entry's OWN keys at 2 spaces (e.g.
+    `  compose_service_id:`) *and* its nested `benchmark_runs:` list items'
+    dashes also at 2 spaces (`  - timestamp:`) — a block-sequence dash is
+    allowed to sit at the same indent as its parent mapping key. So "next
+    version-level key" vs. "next benchmark_runs list item" can't be told
+    apart by indent depth alone; the discriminator is the dash: a
+    version-level sibling key line is `  keyname:` (no leading dash), a
+    benchmark_runs list item is `  - ` (leading dash) or deeper (nested
+    content of the current list item, 4+ spaces).
+    """
+    text = build_path.read_text()
+    lines = text.split("\n")
+    entry_yaml = render_run_entry_yaml(entry, indent=2)
+
+    block_start, block_end = _find_version_block_range(lines, compose_service_id, build_path)
+    block_lines = lines[block_start:block_end]
+    block_text = "\n".join(block_lines)
+
+    if re.search(r"^  benchmark_runs:\s*\[\]\s*$", block_text, re.MULTILINE):
+        new_block_text = re.sub(
+            r"^  benchmark_runs:\s*\[\]\s*$",
+            "  benchmark_runs:\n" + entry_yaml.rstrip("\n"),
+            block_text, count=1, flags=re.MULTILINE,
+        )
+    elif re.search(r"^  benchmark_runs:\s*$", block_text, re.MULTILINE):
+        # Existing non-empty list under this version — append after its
+        # last list-item block. Find the (nested) benchmark_runs: line
+        # within this version's own line range, then find where that
+        # list's items stop: the next line that is a version-level sibling
+        # key (2-space indent, no dash) rather than a list item (2-space
+        # dash) or that item's own nested content (4+ spaces).
+        sub_lines = block_lines
+        sub_start = None
+        for i, line in enumerate(sub_lines):
+            if re.match(r"^  benchmark_runs:\s*$", line):
+                sub_start = i
                 break
-        if start is None:
-            raise RuntimeError(f"{build_path}: could not locate benchmark_runs: block")
-        end = len(lines)
-        for j in range(start + 1, len(lines)):
-            line = lines[j]
+        if sub_start is None:
+            raise RuntimeError(
+                f"{build_path}: could not locate nested benchmark_runs: block for "
+                f"compose_service_id {compose_service_id!r}"
+            )
+        sub_end = len(sub_lines)
+        for j in range(sub_start + 1, len(sub_lines)):
+            line = sub_lines[j]
             if line.strip() == "":
                 continue
-            # A line belongs to the list block if it starts with at least
-            # 2 spaces (list items / their nested content). Top-level keys
-            # (status:, created:, etc.) start at column 0.
-            if not line.startswith("  "):
-                end = j
+            if re.match(r"^  \S", line) and not line.startswith("  -"):
+                # 2-space indent, immediately followed by a non-space char
+                # that is NOT a dash -> a version-level sibling key, i.e.
+                # the end of this benchmark_runs list.
+                sub_end = j
                 break
+            # Otherwise: either "  - " (a list item's dash) or 4+ spaces
+            # (nested content of the current/previous item) -- both belong
+            # to this list, keep scanning.
         else:
-            end = len(lines)
-        new_lines = lines[:end] + entry_yaml.rstrip("\n").split("\n") + lines[end:]
-        new_text = "\n".join(new_lines)
+            sub_end = len(sub_lines)
+        new_sub_lines = sub_lines[:sub_end] + entry_yaml.rstrip("\n").split("\n") + sub_lines[sub_end:]
+        new_block_text = "\n".join(new_sub_lines)
     else:
-        raise RuntimeError(f"{build_path}: no `benchmark_runs: []` or `benchmark_runs:` block found")
+        raise RuntimeError(
+            f"{build_path}: version {compose_service_id!r} has no `benchmark_runs: []` or "
+            "`benchmark_runs:` block"
+        )
 
-    build_path.write_text(new_text)
+    new_lines = lines[:block_start] + new_block_text.split("\n") + lines[block_end:]
+    build_path.write_text("\n".join(new_lines))
 
 
 # --------------------------------------------------------------------------
@@ -1081,7 +1208,10 @@ def process_vllm_build(build_id, build_path, build, dry_run, downloads_paused, k
     window_start = utcnow_iso()
     model_dir = Path(build["model"]["local_path"]).name
 
-    # Look up compose service (build ID = service name in two-tier design).
+    # Look up compose service. M-002: build_id here is the version's
+    # compose_service_id (iter_flattened_versions() aliases it to `id`), so
+    # this is still the real docker-compose.yml join key, same as the
+    # pre-M-002 flat-file build_id was.
     compose_service = build_id
     try:
         port = get_compose_service_port(compose_service)
@@ -1180,7 +1310,7 @@ def process_vllm_build(build_id, build_path, build, dry_run, downloads_paused, k
 
         benchmarks_run = []
         if not speed_already_done:
-            append_benchmark_run(build_path, {
+            append_benchmark_run(build_path, build_id, {
                 "timestamp": window_start,
                 "benchmark_id": VLLM_SPEED_BENCHMARK_ID,
                 "fingerprint": fingerprint,
@@ -1188,7 +1318,7 @@ def process_vllm_build(build_id, build_path, build, dry_run, downloads_paused, k
             })
             benchmarks_run.append(VLLM_SPEED_BENCHMARK_ID)
         if not coding_already_done:
-            append_benchmark_run(build_path, {
+            append_benchmark_run(build_path, build_id, {
                 "timestamp": window_start,
                 "benchmark_id": CODING_BENCHMARK_ID,
                 "fingerprint": fingerprint,
@@ -1196,7 +1326,7 @@ def process_vllm_build(build_id, build_path, build, dry_run, downloads_paused, k
             })
             benchmarks_run.append(CODING_BENCHMARK_ID)
         if not opencode_already_done:
-            append_benchmark_run(build_path, {
+            append_benchmark_run(build_path, build_id, {
                 "timestamp": window_start,
                 "benchmark_id": AGENTIC_OPENCODE_ID,
                 "fingerprint": fingerprint,
@@ -1204,7 +1334,7 @@ def process_vllm_build(build_id, build_path, build, dry_run, downloads_paused, k
             })
             benchmarks_run.append(AGENTIC_OPENCODE_ID)
         if not pi_already_done:
-            append_benchmark_run(build_path, {
+            append_benchmark_run(build_path, build_id, {
                 "timestamp": window_start,
                 "benchmark_id": AGENTIC_PI_ID,
                 "fingerprint": fingerprint,
@@ -1212,7 +1342,7 @@ def process_vllm_build(build_id, build_path, build, dry_run, downloads_paused, k
             })
             benchmarks_run.append(AGENTIC_PI_ID)
         if not orch_opencode_already_done:
-            append_benchmark_run(build_path, {
+            append_benchmark_run(build_path, build_id, {
                 "timestamp": window_start,
                 "benchmark_id": ORCH_OPENCODE_ID,
                 "fingerprint": fingerprint,
@@ -1220,7 +1350,7 @@ def process_vllm_build(build_id, build_path, build, dry_run, downloads_paused, k
             })
             benchmarks_run.append(ORCH_OPENCODE_ID)
         if not orch_pi_already_done:
-            append_benchmark_run(build_path, {
+            append_benchmark_run(build_path, build_id, {
                 "timestamp": window_start,
                 "benchmark_id": ORCH_PI_ID,
                 "fingerprint": fingerprint,
@@ -1435,7 +1565,7 @@ def process_llamacpp_build(build_id, build_path, build, dry_run, downloads_pause
                 stop_llama_server(container)
 
         for entry in entries_to_append:
-            append_benchmark_run(build_path, entry)
+            append_benchmark_run(build_path, build_id, entry)
 
         raw_new_files = list(RAW_DIR.glob(f"{build_id}--*{timestamp}*"))
         if entries_to_append:
@@ -1652,7 +1782,7 @@ def process_ollama_build(build_id, build_path, build, dry_run, downloads_paused,
 
         benchmarks_run = []
         if not warm_already_done:
-            append_benchmark_run(build_path, {
+            append_benchmark_run(build_path, build_id, {
                 "timestamp": window_start,
                 "benchmark_id": OLLAMA_WARM_REQUEST_ID,
                 "fingerprint": fingerprint,
@@ -1660,7 +1790,7 @@ def process_ollama_build(build_id, build_path, build, dry_run, downloads_paused,
             })
             benchmarks_run.append(OLLAMA_WARM_REQUEST_ID)
         if not opencode_already_done:
-            append_benchmark_run(build_path, {
+            append_benchmark_run(build_path, build_id, {
                 "timestamp": window_start,
                 "benchmark_id": AGENTIC_OPENCODE_ID,
                 "fingerprint": fingerprint,
@@ -1668,7 +1798,7 @@ def process_ollama_build(build_id, build_path, build, dry_run, downloads_paused,
             })
             benchmarks_run.append(AGENTIC_OPENCODE_ID)
         if not pi_already_done:
-            append_benchmark_run(build_path, {
+            append_benchmark_run(build_path, build_id, {
                 "timestamp": window_start,
                 "benchmark_id": AGENTIC_PI_ID,
                 "fingerprint": fingerprint,
@@ -1676,7 +1806,7 @@ def process_ollama_build(build_id, build_path, build, dry_run, downloads_paused,
             })
             benchmarks_run.append(AGENTIC_PI_ID)
         if not orch_opencode_already_done:
-            append_benchmark_run(build_path, {
+            append_benchmark_run(build_path, build_id, {
                 "timestamp": window_start,
                 "benchmark_id": ORCH_OPENCODE_ID,
                 "fingerprint": fingerprint,
@@ -1684,7 +1814,7 @@ def process_ollama_build(build_id, build_path, build, dry_run, downloads_paused,
             })
             benchmarks_run.append(ORCH_OPENCODE_ID)
         if not orch_pi_already_done:
-            append_benchmark_run(build_path, {
+            append_benchmark_run(build_path, build_id, {
                 "timestamp": window_start,
                 "benchmark_id": ORCH_PI_ID,
                 "fingerprint": fingerprint,

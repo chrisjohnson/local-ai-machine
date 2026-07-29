@@ -1,6 +1,4 @@
-id: minimax-m2.7--llamacpp-vulkan-radv-v1
-engine: llamacpp-vulkan-radv-v1
-role: confirmed single-node viable (unlike an earlier MiniMax variant that needed TP=2/multi-GPU) — UNTESTED, download queued
+id: minimax-m2.7--llamacpp-vulkan-radv
 model:
   display_name: MiniMax-M2.7
   family: MiniMax
@@ -8,26 +6,32 @@ model:
   hf_revision: null
   architecture: moe
   total_params: 228.69e9
-  active_params: null   # not recorded
+  active_params: null
   num_experts: null
   quantization: GGUF-Q3_K_S (UD)
   context_length_native: null
   modality: text
   files:
-    - UD-Q3_K_S/MiniMax-M2.7-UD-Q3_K_S-00001-of-00003.gguf
-    - UD-Q3_K_S/MiniMax-M2.7-UD-Q3_K_S-00002-of-00003.gguf
-    - UD-Q3_K_S/MiniMax-M2.7-UD-Q3_K_S-00003-of-00003.gguf
+  - UD-Q3_K_S/MiniMax-M2.7-UD-Q3_K_S-00001-of-00003.gguf
+  - UD-Q3_K_S/MiniMax-M2.7-UD-Q3_K_S-00002-of-00003.gguf
+  - UD-Q3_K_S/MiniMax-M2.7-UD-Q3_K_S-00003-of-00003.gguf
   local_path: /var/lib/ai-models/llamacpp-minimax-m2.7
   size_on_disk_gb: 93.6
-notes: >
-  Not yet measured locally. Reference figure from kyuz0's raw results.json:
-  31.08 tok/s TG128, confirmed single-node viable (rpc:false in the source
-  benchmark data) — an earlier MiniMax variant considered in this project
-  was disqualified for requiring TP=2/multi-GPU; this one is not.
-status: UNTESTED-BUT-DOWNLOADED
-created: "2026-07-24"
-last_verified: "2026-07-24"
-benchmark_runs:
+versions:
+- version: v1
+  compose_service_id: minimax-m2.7--llamacpp-vulkan-radv-v1
+  engine_ref: llamacpp-vulkan-radv-v1
+  role: confirmed single-node viable (unlike an earlier MiniMax variant that needed TP=2/multi-GPU) —
+    UNTESTED, download queued
+  notes: 'Not yet measured locally. Reference figure from kyuz0''s raw results.json: 31.08 tok/s TG128,
+    confirmed single-node viable (rpc:false in the source benchmark data) — an earlier MiniMax variant
+    considered in this project was disqualified for requiring TP=2/multi-GPU; this one is not.
+
+    '
+  status: UNTESTED-BUT-DOWNLOADED
+  created: '2026-07-24'
+  last_verified: '2026-07-24'
+  benchmark_runs:
   - timestamp: '2026-07-26T00:27:51Z'
     benchmark_id: llamacpp-bench-v1
     fingerprint:
@@ -47,7 +51,6 @@ benchmark_runs:
       tg128_tok_s: 30.88 ± 0.09
       engine_build: c812c543f (10128)
       raw_stdout_file: catalog/raw/minimax-m2.7--llamacpp-vulkan-radv-v1--llamacpp-bench-v1--20260726T002751Z.txt
-
   - timestamp: '2026-07-26T00:27:51Z'
     benchmark_id: seven-tier-coding-v2
     fingerprint:

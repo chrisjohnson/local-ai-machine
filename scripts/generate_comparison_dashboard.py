@@ -77,11 +77,25 @@ JUDGE_DIMENSIONS = [
 
 
 def load_builds() -> list:
+    """Emit one logical "build" per version entry across every
+    catalog/builds/*.yaml family file (M-002: families group a model+engine
+    identity's serving-config versions into one file's `versions:` list).
+    Each emitted dict is shaped like the old flat per-build dict (`model`
+    from the family, plus the version's own fields) so every downstream
+    consumer of `_build_id` / `benchmark_runs` here is unaffected by the
+    schema change -- `_build_id` is the version's `compose_service_id`,
+    which is byte-identical to the old flat file's `id`/filename stem for
+    every build migrated by M-002, so existing dashboard rows/labels are
+    unchanged."""
     builds = []
     for path in sorted(BUILDS_DIR.glob("*.yaml")):
-        data = yaml.safe_load(path.read_text())
-        data["_build_id"] = path.stem
-        builds.append(data)
+        family = yaml.safe_load(path.read_text())
+        model = family.get("model")
+        for version in family.get("versions") or []:
+            data = dict(version)
+            data["model"] = model
+            data["_build_id"] = version.get("compose_service_id")
+            builds.append(data)
     return builds
 
 

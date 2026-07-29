@@ -1,6 +1,4 @@
-id: qwen3.5-122b-a10b-awq4bit--vllm-therock-gfx1151-v1
-engine: vllm-therock-gfx1151-v1
-role: 100B+ comparison tier — not a standing compose service, swap-in only
+id: qwen3.5-122b-a10b-awq4bit--vllm-therock-gfx1151
 model:
   display_name: Qwen3.5-122B-A10B
   family: Qwen3.5
@@ -11,23 +9,29 @@ model:
   active_params: 10e9
   num_experts: null
   quantization: AWQ-4bit
-  context_length_native: 65536   # served at this length; bumped up from an earlier under-provisioned 32768
+  context_length_native: 65536
   modality: text
   files: null
   local_path: /var/lib/ai-models/qwen3.5-122b-a10b-awq4bit
-  size_on_disk_gb: 80   # bigger than raw param math suggests — bundles a vision encoder
-notes_on_size: "~80GB on disk despite being a text-only serving target here — bundles a vision encoder not otherwise exercised."
-notes: >
-  Swapped in via swap_model_start.sh with SWAP_ENV_VARS='VLLM_USE_TRITON_AWQ=1'.
-  Standing default (adopted 2026-07-23): do NOT pass --enforce-eager — tested
-  both ways, non-eager is a real (marginal) improvement on every metric, at
-  the cost of a slower cold start (~410s vs ~350s from CUDA graph capture).
-  --max-num-batched-tokens 16384 came out flat on throughput here (the one
-  exception in that sweep) but still worsened TTFT +12.9% — still not adopted.
-status: WORKING
-created: "2026-07-22"
-last_verified: "2026-07-23"
-benchmark_runs:
+  size_on_disk_gb: 80
+versions:
+- version: v1
+  compose_service_id: qwen3.5-122b-a10b-awq4bit--vllm-therock-gfx1151-v1
+  engine_ref: vllm-therock-gfx1151-v1
+  role: 100B+ comparison tier — not a standing compose service, swap-in only
+  notes_on_size: ~80GB on disk despite being a text-only serving target here — bundles a vision encoder
+    not otherwise exercised.
+  notes: 'Swapped in via swap_model_start.sh with SWAP_ENV_VARS=''VLLM_USE_TRITON_AWQ=1''. Standing default
+    (adopted 2026-07-23): do NOT pass --enforce-eager — tested both ways, non-eager is a real (marginal)
+    improvement on every metric, at the cost of a slower cold start (~410s vs ~350s from CUDA graph capture).
+    --max-num-batched-tokens 16384 came out flat on throughput here (the one exception in that sweep)
+    but still worsened TTFT +12.9% — still not adopted.
+
+    '
+  status: WORKING
+  created: '2026-07-22'
+  last_verified: '2026-07-23'
+  benchmark_runs:
   - timestamp: '2026-07-25T10:49:02Z'
     benchmark_id: vllm-speed-c1c8-v2
     fingerprint:
@@ -173,7 +177,6 @@ benchmark_runs:
         - catalog/raw/qwen3.5-122b-a10b-awq4bit--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c8-trial2--20260725T104902Z.json
         - catalog/raw/qwen3.5-122b-a10b-awq4bit--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c8-trial3--20260725T104902Z.json
       server_log_raw_file: catalog/raw/qwen3.5-122b-a10b-awq4bit--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--server-log--20260725T104902Z.txt
-
   - timestamp: '2026-07-25T10:49:02Z'
     benchmark_id: seven-tier-coding-v2
     fingerprint:
