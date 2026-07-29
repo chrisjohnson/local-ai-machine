@@ -1,6 +1,4 @@
-id: gemma-4-26b-a4b-it--vllm-therock-gfx1151-v1
-engine: vllm-therock-gfx1151-v1
-role: MoE comparison tier, best-performing model overall — not promoted to production, Chris's deliberate call
+id: gemma-4-26b-a4b-it--vllm-therock-gfx1151
 model:
   display_name: Gemma-4-26B-A4B-it
   family: Gemma-4
@@ -16,20 +14,24 @@ model:
   files: null
   local_path: /var/lib/ai-models/gemma-4-26b-a4b-it
   size_on_disk_gb: null
-notes: >
-  Strongest combined speed + coding result of any vLLM-served model tested —
-  not promoted to production primary (Chris's call, deliberately deferred;
-  testing/swapping is standing permission, changing the default is not).
-  Best combination of small footprint and high concurrency headroom until
-  GLM-4.7-Flash-AWQ later beat it (20.27x vs 28.10x). Same GGUF file
-  separately benchmarked via llama.cpp direct and Ollama — llama.cpp/GGUF
-  decode speed does NOT rank this model the same way vLLM does (comes out
-  slower than GLM-4.7-Flash's GGUF there) — vLLM-serving fitness and raw
-  GGUF decode speed aren't the same ranking.
-status: WORKING
-created: "2026-07-23"
-last_verified: "2026-07-23"
-benchmark_runs:
+versions:
+- version: v1
+  compose_service_id: gemma-4-26b-a4b-it--vllm-therock-gfx1151-v1
+  engine_ref: vllm-therock-gfx1151-v1
+  role: MoE comparison tier, best-performing model overall — not promoted to production, Chris's deliberate
+    call
+  notes: 'Strongest combined speed + coding result of any vLLM-served model tested — not promoted to production
+    primary (Chris''s call, deliberately deferred; testing/swapping is standing permission, changing the
+    default is not). Best combination of small footprint and high concurrency headroom until GLM-4.7-Flash-AWQ
+    later beat it (20.27x vs 28.10x). Same GGUF file separately benchmarked via llama.cpp direct and Ollama
+    — llama.cpp/GGUF decode speed does NOT rank this model the same way vLLM does (comes out slower than
+    GLM-4.7-Flash''s GGUF there) — vLLM-serving fitness and raw GGUF decode speed aren''t the same ranking.
+
+    '
+  status: WORKING
+  created: '2026-07-23'
+  last_verified: '2026-07-23'
+  benchmark_runs:
   - timestamp: '2026-07-24T23:54:01Z'
     benchmark_id: vllm-speed-c1c8-v2
     fingerprint:
@@ -213,8 +215,3 @@ benchmark_runs:
           pass: 1
           total: 1
       raw_file: catalog/raw/gemma-4-26b-a4b-it--vllm-therock-gfx1151-v1--seven-tier-coding-v2--20260725T033620Z.json
-# seven-tier-coding-v2 run from 2026-07-24T23:54:01Z removed 2026-07-25 — recorded before
-# build_specific_flags had --enable-auto-tool-choice (parser alone isn't enough), so Tier B
-# scored 0/5 on HTTP 400s rather than real model behavior. Raw file left at
-# catalog/raw/gemma-4-26b-a4b-it--vllm-therock-gfx1151-v1--seven-tier-coding-v2--20260724T235401Z.json
-# for reference. Orchestrator will re-run this leg fresh now that the flag is fixed.

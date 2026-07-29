@@ -1,6 +1,4 @@
-id: gemma-4-26b-a4b-it--llamacpp-vulkan-radv-v1
-engine: llamacpp-vulkan-radv-v1
-role: same underlying weights as the vLLM build, cross-engine comparison
+id: gemma-4-26b-a4b-it--llamacpp-vulkan-radv
 model:
   display_name: Gemma-4-26B-A4B-it
   family: Gemma-4
@@ -13,23 +11,28 @@ model:
   quantization: GGUF-Q4_K_M
   context_length_native: null
   modality: text
-  files: [gemma-4-26B-A4B-it-UD-Q4_K_M.gguf]
+  files:
+  - gemma-4-26B-A4B-it-UD-Q4_K_M.gguf
   local_path: /var/lib/ai-models/ollama-gemma-4-26b-a4b-it
   size_on_disk_gb: 15.77
-notes: >
-  Two runs 2026-07-24: first run contaminated by a concurrent background hf
-  download — pp512 1192.75±11.10, tg128 54.50±0.29 tok/s. Clean re-run
-  (verified no download activity via ps aux/systemctl before and after):
-  pp512 1251.33±17.08, tg128 53.96±0.15 tok/s — this is the benchmark-of-
-  record. Contention cost: ~4.9% PP-only hit from a concurrent download; TG
-  statistically unaffected. Notably slower on both axes than GLM-4.7-Flash's
-  llama.cpp numbers (81.3/70.1) despite this model being the strongest
-  vLLM/coding performer tested — raw llama.cpp decode speed and vLLM-serving
-  fitness don't necessarily rank models the same way.
-status: WORKING
-created: "2026-07-24"
-last_verified: "2026-07-24"
-benchmark_runs:
+versions:
+- version: v1
+  compose_service_id: gemma-4-26b-a4b-it--llamacpp-vulkan-radv-v1
+  engine_ref: llamacpp-vulkan-radv-v1
+  role: same underlying weights as the vLLM build, cross-engine comparison
+  notes: 'Two runs 2026-07-24: first run contaminated by a concurrent background hf download — pp512 1192.75±11.10,
+    tg128 54.50±0.29 tok/s. Clean re-run (verified no download activity via ps aux/systemctl before and
+    after): pp512 1251.33±17.08, tg128 53.96±0.15 tok/s — this is the benchmark-of- record. Contention
+    cost: ~4.9% PP-only hit from a concurrent download; TG statistically unaffected. Notably slower on
+    both axes than GLM-4.7-Flash''s llama.cpp numbers (81.3/70.1) despite this model being the strongest
+    vLLM/coding performer tested — raw llama.cpp decode speed and vLLM-serving fitness don''t necessarily
+    rank models the same way.
+
+    '
+  status: WORKING
+  created: '2026-07-24'
+  last_verified: '2026-07-24'
+  benchmark_runs:
   - timestamp: '2026-07-25T23:53:40Z'
     benchmark_id: llamacpp-bench-v1
     fingerprint:
@@ -49,7 +52,6 @@ benchmark_runs:
       tg128_tok_s: 53.85 ± 0.30
       engine_build: c812c543f (10128)
       raw_stdout_file: catalog/raw/gemma-4-26b-a4b-it--llamacpp-vulkan-radv-v1--llamacpp-bench-v1--20260725T235340Z.txt
-
   - timestamp: '2026-07-25T23:53:40Z'
     benchmark_id: seven-tier-coding-v2
     fingerprint:

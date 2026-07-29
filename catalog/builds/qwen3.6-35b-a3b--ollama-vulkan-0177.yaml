@@ -1,6 +1,4 @@
-id: qwen3.6-35b-a3b--ollama-vulkan-0177-v1
-engine: ollama-vulkan-0177-v1
-role: WORKING — confirms Qwen3.6 MoE variant also recognized, larger Ollama-overhead gap than the dense sibling
+id: qwen3.6-35b-a3b--ollama-vulkan-0177
 model:
   display_name: Qwen3.6-35B-A3B
   family: Qwen3.6
@@ -13,24 +11,29 @@ model:
   quantization: GGUF-Q4_K_M
   context_length_native: null
   modality: text
-  files: [Qwen3.6-35B-A3B-UD-Q4_K_M.gguf]
+  files:
+  - Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
   local_path: /var/lib/ai-models/ollama-qwen3.6-35b-a3b
-  size_on_disk_gb: 20.60
-served_model_name: qwen3.6-35b-a3b-gguf   # ollama model tag
-notes: >
-  Single /api/generate request (first request after ollama create):
-  eval_count 1511, eval_duration 135177304222ns -> 11.18 tok/s. Well below
-  llama.cpp-direct for the same file (63.43 tok/s) — roughly a 5.7x gap,
-  much closer to GLM-4.7-Flash's ~5.4x MoE-overhead gap than to the dense
-  Qwen3.6-27B's comparatively narrow ~17% gap. Pattern now seen twice:
-  Ollama's Go wrapper/scheduling overhead appears to cost MoE models
-  proportionally more than dense models on this hardware — mechanism not
-  isolated, worth a dedicated investigation if Ollama's MoE performance
-  ever needs to be relied on for real.
-status: WORKING
-created: "2026-07-24"
-last_verified: "2026-07-24"
-benchmark_runs:
+  size_on_disk_gb: 20.6
+versions:
+- version: v1
+  compose_service_id: qwen3.6-35b-a3b--ollama-vulkan-0177-v1
+  engine_ref: ollama-vulkan-0177-v1
+  role: WORKING — confirms Qwen3.6 MoE variant also recognized, larger Ollama-overhead gap than the dense
+    sibling
+  served_model_name: qwen3.6-35b-a3b-gguf
+  notes: 'Single /api/generate request (first request after ollama create): eval_count 1511, eval_duration
+    135177304222ns -> 11.18 tok/s. Well below llama.cpp-direct for the same file (63.43 tok/s) — roughly
+    a 5.7x gap, much closer to GLM-4.7-Flash''s ~5.4x MoE-overhead gap than to the dense Qwen3.6-27B''s
+    comparatively narrow ~17% gap. Pattern now seen twice: Ollama''s Go wrapper/scheduling overhead appears
+    to cost MoE models proportionally more than dense models on this hardware — mechanism not isolated,
+    worth a dedicated investigation if Ollama''s MoE performance ever needs to be relied on for real.
+
+    '
+  status: WORKING
+  created: '2026-07-24'
+  last_verified: '2026-07-24'
+  benchmark_runs:
   - timestamp: '2026-07-28T01:08:44Z'
     benchmark_id: ollama-warm-request-v2
     fingerprint:

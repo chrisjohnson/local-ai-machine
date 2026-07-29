@@ -1,6 +1,4 @@
-id: nvidia-nemotron-3-super-120b-a12b--llamacpp-vulkan-radv-v1
-engine: llamacpp-vulkan-radv-v1
-role: new model, not otherwise in this project's lineup — UNTESTED, download queued
+id: nvidia-nemotron-3-super-120b-a12b--llamacpp-vulkan-radv
 model:
   display_name: NVIDIA-Nemotron-3-Super-120B-A12B
   family: Nemotron-3
@@ -14,18 +12,23 @@ model:
   context_length_native: null
   modality: text
   files:
-    - UD-Q4_K_XL/NVIDIA-Nemotron-3-Super-120B-A12B-UD-Q4_K_XL-00001-of-00003.gguf
-    - UD-Q4_K_XL/NVIDIA-Nemotron-3-Super-120B-A12B-UD-Q4_K_XL-00002-of-00003.gguf
-    - UD-Q4_K_XL/NVIDIA-Nemotron-3-Super-120B-A12B-UD-Q4_K_XL-00003-of-00003.gguf
+  - UD-Q4_K_XL/NVIDIA-Nemotron-3-Super-120B-A12B-UD-Q4_K_XL-00001-of-00003.gguf
+  - UD-Q4_K_XL/NVIDIA-Nemotron-3-Super-120B-A12B-UD-Q4_K_XL-00002-of-00003.gguf
+  - UD-Q4_K_XL/NVIDIA-Nemotron-3-Super-120B-A12B-UD-Q4_K_XL-00003-of-00003.gguf
   local_path: /var/lib/ai-models/llamacpp-nemotron-3-super-120b
   size_on_disk_gb: 83.8
-notes: >
-  Not yet measured locally. Reference figure from kyuz0's raw results.json:
-  14.86 tok/s TG128.
-status: UNTESTED-BUT-DOWNLOADED
-created: "2026-07-24"
-last_verified: "2026-07-24"
-benchmark_runs:
+versions:
+- version: v1
+  compose_service_id: nvidia-nemotron-3-super-120b-a12b--llamacpp-vulkan-radv-v1
+  engine_ref: llamacpp-vulkan-radv-v1
+  role: new model, not otherwise in this project's lineup — UNTESTED, download queued
+  notes: 'Not yet measured locally. Reference figure from kyuz0''s raw results.json: 14.86 tok/s TG128.
+
+    '
+  status: UNTESTED-BUT-DOWNLOADED
+  created: '2026-07-24'
+  last_verified: '2026-07-24'
+  benchmark_runs:
   - timestamp: '2026-07-26T03:23:23Z'
     benchmark_id: llamacpp-bench-v1
     fingerprint:
@@ -45,7 +48,6 @@ benchmark_runs:
       tg128_tok_s: 17.62 ± 0.01
       engine_build: c812c543f (10128)
       raw_stdout_file: catalog/raw/nvidia-nemotron-3-super-120b-a12b--llamacpp-vulkan-radv-v1--llamacpp-bench-v1--20260726T032323Z.txt
-
   - timestamp: '2026-07-26T03:23:23Z'
     benchmark_id: seven-tier-coding-v2
     fingerprint:

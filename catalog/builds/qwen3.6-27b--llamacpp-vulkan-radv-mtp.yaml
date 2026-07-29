@@ -1,0 +1,36 @@
+id: qwen3.6-27b--llamacpp-vulkan-radv-mtp
+model:
+  display_name: Qwen3.6-27B
+  family: Qwen3.6
+  hf_repo: unsloth/Qwen3.6-27B-GGUF
+  hf_revision: null
+  architecture: dense
+  total_params: 26.90e9
+  active_params: null
+  num_experts: null
+  quantization: GGUF-Q4_K_M
+  context_length_native: null
+  modality: text
+  files:
+  - Qwen3.6-27B-Q4_K_M.gguf
+  local_path: /var/lib/ai-models/ollama-qwen3.6-27b
+  size_on_disk_gb: 15.65
+versions:
+- version: v1
+  compose_service_id: qwen3.6-27b--llamacpp-vulkan-radv-mtp-v1
+  engine_ref: llamacpp-vulkan-radv-mtp-v1
+  role: BROKEN — file lacks MTP head tensors, mechanism itself proven fine
+  notes: 'Exact error from llama_init_from_model: "context type MTP requested but model doesn''t contain
+    MTP layers." Server exits cleanly with code 1. Root cause: unsloth publishes MTP-head-bearing GGUFs
+    as a SEPARATE HF repo (unsloth/Qwen3.6-27B-MTP-GGUF, confirmed to exist via the HF API), not bundled
+    as extra files alongside this plain quant. Reproducing a real MTP speedup for this model requires
+    downloading that separate repo — a new-model-download decision requiring Chris''s check-in, not done
+    here. The mechanism/flags themselves are confirmed real and correctly wired, matching the upstream
+    PR author''s own invocation exactly (llama.cpp PR #22673) — this is a missing-artifact failure, not
+    a broken engine.
+
+    '
+  status: BROKEN
+  created: '2026-07-24'
+  last_verified: '2026-07-24'
+  benchmark_runs: []

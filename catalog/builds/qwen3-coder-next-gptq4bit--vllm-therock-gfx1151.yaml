@@ -1,6 +1,4 @@
-id: qwen3-coder-next-gptq4bit--vllm-therock-gfx1151-v1
-engine: vllm-therock-gfx1151-v1
-role: 80B comparison tier — not a standing compose service, swap-in only
+id: qwen3-coder-next-gptq4bit--vllm-therock-gfx1151
 model:
   display_name: Qwen3-Coder-Next
   family: Qwen3-Coder-Next
@@ -16,19 +14,23 @@ model:
   files: null
   local_path: /var/lib/ai-models/qwen3-coder-next-gptq4bit
   size_on_disk_gb: 50
-notes: >
-  Swapped in via scripts/speed_benchmark_swap.sh / swap_model_start.sh, not a
-  standing service. Smaller on disk than the 35B bf16 primary despite 2.3x
-  the params — GPTQ-4bit beats bf16 for footprint. Wins single-stream (c1)
-  over the bf16 primary due to lower per-token memory-bandwidth cost of
-  4-bit weights, loses at c8 where the primary's MoE aggregate throughput
-  pulls ahead. VLLM_ROCM_USE_AITER=1 tested — crashes identically to the
-  primary (same engine-level gotcha). --max-num-batched-tokens 16384 also
-  regresses this model (-8.3% throughput, +97.6% TTFT).
-status: WORKING
-created: "2026-07-22"
-last_verified: "2026-07-22"
-benchmark_runs:
+versions:
+- version: v1
+  compose_service_id: qwen3-coder-next-gptq4bit--vllm-therock-gfx1151-v1
+  engine_ref: vllm-therock-gfx1151-v1
+  role: 80B comparison tier — not a standing compose service, swap-in only
+  notes: 'Swapped in via scripts/speed_benchmark_swap.sh / swap_model_start.sh, not a standing service.
+    Smaller on disk than the 35B bf16 primary despite 2.3x the params — GPTQ-4bit beats bf16 for footprint.
+    Wins single-stream (c1) over the bf16 primary due to lower per-token memory-bandwidth cost of 4-bit
+    weights, loses at c8 where the primary''s MoE aggregate throughput pulls ahead. VLLM_ROCM_USE_AITER=1
+    tested — crashes identically to the primary (same engine-level gotcha). --max-num-batched-tokens 16384
+    also regresses this model (-8.3% throughput, +97.6% TTFT).
+
+    '
+  status: WORKING
+  created: '2026-07-22'
+  last_verified: '2026-07-22'
+  benchmark_runs:
   - timestamp: '2026-07-24T20:09:29Z'
     benchmark_id: vllm-speed-c1c8-v2
     fingerprint:
@@ -212,8 +214,3 @@ benchmark_runs:
           pass: 1
           total: 1
       raw_file: catalog/raw/qwen3-coder-next-gptq4bit--vllm-therock-gfx1151-v1--seven-tier-coding-v2--20260725T102803Z.json
-# seven-tier-coding-v2 run from 2026-07-24T20:09:29Z removed 2026-07-24 — recorded before
-# build_specific_flags had --enable-auto-tool-choice/--tool-call-parser, so Tier B scored 0/5
-# on HTTP 400s rather than real model behavior. Raw file left at
-# catalog/raw/qwen3-coder-next-gptq4bit--vllm-therock-gfx1151-v1--seven-tier-coding-v2--20260724T200929Z.json
-# for reference. Orchestrator will re-run this leg fresh now that the flags are fixed.

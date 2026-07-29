@@ -1,6 +1,4 @@
-id: qwen3.6-27b--llamacpp-vulkan-radv-server-v1
-engine: llamacpp-vulkan-radv-server-v1
-role: first concurrent-serving benchmark for llama.cpp on this hardware
+id: qwen3.6-27b--llamacpp-vulkan-radv-server
 model:
   display_name: Qwen3.6-27B
   family: Qwen3.6
@@ -13,25 +11,29 @@ model:
   quantization: GGUF-Q4_K_M
   context_length_native: null
   modality: text
-  files: [Qwen3.6-27B-Q4_K_M.gguf]
+  files:
+  - Qwen3.6-27B-Q4_K_M.gguf
   local_path: /var/lib/ai-models/ollama-qwen3.6-27b
   size_on_disk_gb: 15.65
-notes: >
-  Correctness check PASSED first (mandatory per engine gotchas): 4 concurrent
-  requests with clearly distinguishable prompts (17*23, capital of France,
-  BANANA x5, sky color) each returned the objectively correct answer, no
-  cross-contamination/corruption/hang. Throughput: c1 12.60 tok/s (closely
-  matches the llama-bench tg128 baseline of 12.75±0.03 for this file — good
-  cross-check). c4 ~38.3-39.1 tok/s aggregate (~9.7-9.8 tok/s per slot) —
-  ~3.0-3.1x aggregate throughput gain over single-stream, at the cost of
-  each individual request taking ~27% longer wall-clock (42.0s -> 53.5s for
-  a 512-token completion). Reasoning-model quirk: needed max_tokens=800 (not
-  50) on the correctness check so the model could finish its <think> trace
-  before emitting the final answer.
-status: WORKING
-created: "2026-07-24"
-last_verified: "2026-07-24"
-benchmark_runs:
+versions:
+- version: v1
+  compose_service_id: qwen3.6-27b--llamacpp-vulkan-radv-server-v1
+  engine_ref: llamacpp-vulkan-radv-server-v1
+  role: first concurrent-serving benchmark for llama.cpp on this hardware
+  notes: 'Correctness check PASSED first (mandatory per engine gotchas): 4 concurrent requests with clearly
+    distinguishable prompts (17*23, capital of France, BANANA x5, sky color) each returned the objectively
+    correct answer, no cross-contamination/corruption/hang. Throughput: c1 12.60 tok/s (closely matches
+    the llama-bench tg128 baseline of 12.75±0.03 for this file — good cross-check). c4 ~38.3-39.1 tok/s
+    aggregate (~9.7-9.8 tok/s per slot) — ~3.0-3.1x aggregate throughput gain over single-stream, at the
+    cost of each individual request taking ~27% longer wall-clock (42.0s -> 53.5s for a 512-token completion).
+    Reasoning-model quirk: needed max_tokens=800 (not 50) on the correctness check so the model could
+    finish its <think> trace before emitting the final answer.
+
+    '
+  status: WORKING
+  created: '2026-07-24'
+  last_verified: '2026-07-24'
+  benchmark_runs:
   - timestamp: '2026-07-26T01:29:33Z'
     benchmark_id: llamacpp-bench-v1
     fingerprint:
@@ -51,7 +53,6 @@ benchmark_runs:
       tg128_tok_s: 12.72 ± 0.03
       engine_build: c812c543f (10128)
       raw_stdout_file: catalog/raw/qwen3.6-27b--llamacpp-vulkan-radv-server-v1--llamacpp-bench-v1--20260726T012933Z.txt
-
   - timestamp: '2026-07-26T01:29:33Z'
     benchmark_id: llamacpp-server-concurrent-v1
     fingerprint:

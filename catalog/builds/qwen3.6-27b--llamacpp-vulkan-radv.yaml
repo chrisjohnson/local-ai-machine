@@ -1,6 +1,4 @@
-id: qwen3.6-27b--llamacpp-vulkan-radv-v1
-engine: llamacpp-vulkan-radv-v1
-role: plain single-stream decode baseline for this file (see also the MTP and server-concurrent builds using the same GGUF)
+id: qwen3.6-27b--llamacpp-vulkan-radv
 model:
   display_name: Qwen3.6-27B
   family: Qwen3.6
@@ -13,24 +11,29 @@ model:
   quantization: GGUF-Q4_K_M
   context_length_native: null
   modality: text
-  files: [Qwen3.6-27B-Q4_K_M.gguf]
+  files:
+  - Qwen3.6-27B-Q4_K_M.gguf
   local_path: /var/lib/ai-models/ollama-qwen3.6-27b
   size_on_disk_gb: 15.65
-notes: >
-  pp512 342.55±14.41 tok/s, tg128 12.75±0.03 tok/s (2026-07-24, vllm-primary/
-  judge stopped, download queue paused first). Markedly slower generation
-  than the dense-tier comparison would suggest at a glance — Gemma-4-26B-A4B
-  (MoE) hit tg128 53.96 on the same engine; this dense 27B's generation
-  speed is roughly a quarter of that, consistent with the dense-vs-MoE gap
-  seen in the vLLM entries. Same file also has a proven Ollama build (see
-  qwen3.6-27b--ollama-vulkan-0177-v1) and an MTP attempt (see
-  qwen3.6-27b--llamacpp-vulkan-radv-mtp-v1, BROKEN — missing MTP tensors)
-  and a concurrent-serving benchmark (see
-  qwen3.6-27b--llamacpp-vulkan-radv-server-v1).
-status: WORKING
-created: "2026-07-24"
-last_verified: "2026-07-24"
-benchmark_runs:
+versions:
+- version: v1
+  compose_service_id: qwen3.6-27b--llamacpp-vulkan-radv-v1
+  engine_ref: llamacpp-vulkan-radv-v1
+  role: plain single-stream decode baseline for this file (see also the MTP and server-concurrent builds
+    using the same GGUF)
+  notes: 'pp512 342.55±14.41 tok/s, tg128 12.75±0.03 tok/s (2026-07-24, vllm-primary/ judge stopped, download
+    queue paused first). Markedly slower generation than the dense-tier comparison would suggest at a
+    glance — Gemma-4-26B-A4B (MoE) hit tg128 53.96 on the same engine; this dense 27B''s generation speed
+    is roughly a quarter of that, consistent with the dense-vs-MoE gap seen in the vLLM entries. Same
+    file also has a proven Ollama build (see qwen3.6-27b--ollama-vulkan-0177-v1) and an MTP attempt (see
+    qwen3.6-27b--llamacpp-vulkan-radv-mtp-v1, BROKEN — missing MTP tensors) and a concurrent-serving benchmark
+    (see qwen3.6-27b--llamacpp-vulkan-radv-server-v1).
+
+    '
+  status: WORKING
+  created: '2026-07-24'
+  last_verified: '2026-07-24'
+  benchmark_runs:
   - timestamp: '2026-07-24T22:42:22Z'
     benchmark_id: llamacpp-bench-v1
     fingerprint:
@@ -46,11 +49,10 @@ benchmark_runs:
       image_digest: '[kyuz0/amd-strix-halo-toolboxes@sha256:e5a7e7df8c02b7aed8dfe430384aa77c8d5dfa0150809ba9b87acd2ff803a568]'
       engine_version: 555881ebc (10121)
     result:
-      pp512_tok_s: "344.83 \xB1 14.49"
-      tg128_tok_s: "12.77 \xB1 0.02"
+      pp512_tok_s: 344.83 ± 14.49
+      tg128_tok_s: 12.77 ± 0.02
       engine_build: 555881ebc (10121)
       raw_stdout_file: catalog/raw/qwen3.6-27b--llamacpp-vulkan-radv-v1--llamacpp-bench-v1--20260724T224222Z.txt
-
   - timestamp: '2026-07-24T22:42:22Z'
     benchmark_id: seven-tier-coding-v2
     fingerprint:

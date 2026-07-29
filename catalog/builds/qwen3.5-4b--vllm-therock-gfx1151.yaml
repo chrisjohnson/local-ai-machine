@@ -1,6 +1,4 @@
-id: qwen3.5-4b--vllm-therock-gfx1151-v1
-engine: vllm-therock-gfx1151-v1
-role: JUDGE — standing production judge/quick-tasks slot
+id: qwen3.5-4b--vllm-therock-gfx1151
 model:
   display_name: Qwen3.5-4B
   family: Qwen3.5
@@ -16,11 +14,16 @@ model:
   files: null
   local_path: /var/lib/ai-models/qwen3.5-4b
   size_on_disk_gb: null
-notes: standing docker-compose.yml service.
-status: WORKING
-created: "2026-07-22"
-last_verified: "2026-07-24"
-benchmark_runs:
+versions:
+- version: v1
+  compose_service_id: qwen3.5-4b--vllm-therock-gfx1151-v1
+  engine_ref: vllm-therock-gfx1151-v1
+  role: JUDGE — standing production judge/quick-tasks slot
+  notes: standing docker-compose.yml service.
+  status: WORKING
+  created: '2026-07-22'
+  last_verified: '2026-07-24'
+  benchmark_runs:
   - timestamp: '2026-07-25T15:17:27Z'
     benchmark_id: vllm-speed-c1c8-v2
     fingerprint:
@@ -166,14 +169,6 @@ benchmark_runs:
         - catalog/raw/qwen3.5-4b--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c8-trial2--20260725T151727Z.json
         - catalog/raw/qwen3.5-4b--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c8-trial3--20260725T151727Z.json
       server_log_raw_file: catalog/raw/qwen3.5-4b--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--server-log--20260725T151727Z.txt
-# vllm-speed-c1c8-v2 run from 2026-07-25T14:41:57Z removed 2026-07-25 — a real
-# orchestrator bug (--base-url hardcoded to port 8000 instead of the judge's
-# actual 8001) made every request fail instantly (completed=0/failed=N per
-# trial); the file-existence check let the all-zero result through as if
-# valid. Fixed in scripts/benchmark_orchestrator.py (port now threaded
-# through properly, plus a completed=0 guard so this can't happen silently
-# again). The seven-tier-coding-v2 entry below is unaffected and kept — it
-# correctly used port 8001 throughout.
   - timestamp: '2026-07-25T14:41:57Z'
     benchmark_id: seven-tier-coding-v2
     fingerprint:

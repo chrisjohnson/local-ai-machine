@@ -1,6 +1,4 @@
-id: gpt-oss-20b--vllm-therock-gfx1151-v1
-engine: vllm-therock-gfx1151-v1
-role: best concurrency headroom of any model tested — candidate to replace Qwen3.5-4B as judge, not yet promoted
+id: gpt-oss-20b--vllm-therock-gfx1151
 model:
   display_name: GPT-OSS-20B
   family: GPT-OSS
@@ -8,30 +6,36 @@ model:
   hf_revision: null
   architecture: moe
   total_params: 20e9
-  active_params: 3.5e9   # approx — smaller expert pool than the 120B tier, exact count not recorded
-  num_experts: null   # smaller pool than 120B's 128, exact count not recorded
+  active_params: 3.5e9
+  num_experts: null
   quantization: MXFP4-native (bf16 compute path)
   context_length_native: 131072
   modality: text
-  files: [model-00000-of-00002.safetensors, model-00001-of-00002.safetensors]
+  files:
+  - model-00000-of-00002.safetensors
+  - model-00001-of-00002.safetensors
   local_path: /var/lib/ai-models/gpt-oss-20b
   size_on_disk_gb: 13.8
-notes: >
-  First real serve/benchmark of this model in any form on this machine,
-  2026-07-24, run immediately after GPT-OSS-120B in the same session
-  (standard stack down the whole time between the two, not restored in
-  between). Speed numbers look completely normal/competitive for a
-  small-active-param MoE model — no sign of the 120B tier's per-token
-  slowdown despite identical MXFP4 format and parser stack, reinforcing
-  that the 120B slowdown is param-count/expert-pool-driven, not a blanket
-  MXFP4-on-this-hardware penalty. Six-tier harness 10/12 — solid but not
-  top-tier; strong speed and best-in-class concurrency headroom make it a
-  judge-role candidate. Same --backend openai --endpoint /v1/completions
-  methodology deviation as GPT-OSS-120B required (harmony format).
-status: WORKING
-created: "2026-07-24"
-last_verified: "2026-07-24"
-benchmark_runs:
+versions:
+- version: v1
+  compose_service_id: gpt-oss-20b--vllm-therock-gfx1151-v1
+  engine_ref: vllm-therock-gfx1151-v1
+  role: best concurrency headroom of any model tested — candidate to replace Qwen3.5-4B as judge, not
+    yet promoted
+  notes: 'First real serve/benchmark of this model in any form on this machine, 2026-07-24, run immediately
+    after GPT-OSS-120B in the same session (standard stack down the whole time between the two, not restored
+    in between). Speed numbers look completely normal/competitive for a small-active-param MoE model —
+    no sign of the 120B tier''s per-token slowdown despite identical MXFP4 format and parser stack, reinforcing
+    that the 120B slowdown is param-count/expert-pool-driven, not a blanket MXFP4-on-this-hardware penalty.
+    Six-tier harness 10/12 — solid but not top-tier; strong speed and best-in-class concurrency headroom
+    make it a judge-role candidate. Same --backend openai --endpoint /v1/completions methodology deviation
+    as GPT-OSS-120B required (harmony format).
+
+    '
+  status: WORKING
+  created: '2026-07-24'
+  last_verified: '2026-07-24'
+  benchmark_runs:
   - timestamp: '2026-07-26T07:28:51Z'
     benchmark_id: vllm-speed-c1c8-v2
     fingerprint:
@@ -177,7 +181,6 @@ benchmark_runs:
         - catalog/raw/gpt-oss-20b--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c8-trial2--20260726T072851Z.json
         - catalog/raw/gpt-oss-20b--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c8-trial3--20260726T072851Z.json
       server_log_raw_file: catalog/raw/gpt-oss-20b--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--server-log--20260726T072851Z.txt
-
   - timestamp: '2026-07-26T07:28:51Z'
     benchmark_id: seven-tier-coding-v2
     fingerprint:
