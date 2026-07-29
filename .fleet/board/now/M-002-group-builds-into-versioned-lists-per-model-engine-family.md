@@ -97,6 +97,7 @@ one — several real design questions need answering before touching any files:
 -->
 <!-- signal: claude 2026-07-29T04:23Z — claiming, M-001 confirmed done, starting research on open questions 1-4 -->
 <!-- signal: claude 2026-07-29T04:45Z — research done, Q1-Q4 resolved + schema designed, see decision log. starting implementation (steps 3-6) via sub-agent -->
+<!-- signal: claude 2026-07-29T06:10Z — steps 3-6 implemented, PR #5 open. review pass started (isolated worktree) to verify before this moves to done/ -->
 <!-- signal: claude 2026-07-29T05:10Z — steps 3-6 implemented, PR #5 open (https://github.com/chrisjohnson/local-ai-machine/pull/5), all 29 build files migrated cleanly, dashboard output byte-identical pre/post, not merging — awaiting review -->
 
 ## Decision log
