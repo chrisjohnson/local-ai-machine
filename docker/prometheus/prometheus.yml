@@ -13,7 +13,7 @@ scrape_configs:
   # showing as permanently "down" as a result.
   - job_name: "litellm"
     static_configs:
-      - targets: ["litellm:4000"]
+      - targets: ["localhost:4000"]
 
   # Port-keyed, not container-name-keyed. This project's two-tier design
   # means the container occupying a given port changes constantly (models
@@ -28,33 +28,37 @@ scrape_configs:
   # 8000-8099, llama.cpp-server: 8100-8199), so scrape by port instead —
   # whichever model currently occupies a given port shows up under that
   # port's target; unoccupied ports just show as a harmless "down" target.
-  # host.docker.internal (see docker-compose.yml's extra_hosts on this
-  # service) reaches the host's published 127.0.0.1:<port> bindings from
-  # inside the prometheus container.
+  # Every model-serving port here is bound to 127.0.0.1 only (not exposed
+  # on the LAN) — reaching them requires this service to actually share the
+  # host's network namespace (network_mode: host in docker-compose.yml,
+  # same reason litellm uses it), not extra_hosts/host.docker.internal,
+  # which arrives via the bridge gateway IP and gets refused by a
+  # 127.0.0.1-only listener (confirmed directly — real connection-refused
+  # errors, not a hypothetical).
   - job_name: "vllm"
     static_configs:
       - targets:
-          - "host.docker.internal:8000"
-          - "host.docker.internal:8001"
-          - "host.docker.internal:8002"
-          - "host.docker.internal:8003"
-          - "host.docker.internal:8004"
-          - "host.docker.internal:8005"
-          - "host.docker.internal:8006"
-          - "host.docker.internal:8007"
-          - "host.docker.internal:8008"
-          - "host.docker.internal:8009"
-          - "host.docker.internal:8010"
-          - "host.docker.internal:8011"
+          - "localhost:8000"
+          - "localhost:8001"
+          - "localhost:8002"
+          - "localhost:8003"
+          - "localhost:8004"
+          - "localhost:8005"
+          - "localhost:8006"
+          - "localhost:8007"
+          - "localhost:8008"
+          - "localhost:8009"
+          - "localhost:8010"
+          - "localhost:8011"
 
   # llama.cpp-server builds — requires --metrics on each service's command
   # (disabled by default). Same port-keyed reasoning as the vllm job above.
   - job_name: "llamacpp"
     static_configs:
       - targets:
-          - "host.docker.internal:8100"
-          - "host.docker.internal:8101"
-          - "host.docker.internal:8102"
+          - "localhost:8100"
+          - "localhost:8101"
+          - "localhost:8102"
 
   # Was pointed at a node-exporter container that was never actually
   # defined anywhere in the compose stack — added the real thing below
@@ -64,4 +68,4 @@ scrape_configs:
   # going forward, not just caught manually once).
   - job_name: "node"
     static_configs:
-      - targets: ["node-exporter:9100"]
+      - targets: ["localhost:9100"]

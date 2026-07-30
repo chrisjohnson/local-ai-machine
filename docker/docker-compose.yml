@@ -649,18 +649,24 @@ services:
       - litellm
 
   # Telemetry & Observability Stack
+  # network_mode: host (matching litellm's own reason for the same thing)
+  # — every model-serving port in this stack is deliberately bound to
+  # 127.0.0.1 only, not exposed on the LAN (see the port-keyed scrape
+  # targets in prometheus.yml). extra_hosts/host.docker.internal reaches
+  # the host via its *bridge* gateway IP, which a 127.0.0.1-only listener
+  # correctly refuses — confirmed directly (connection refused from
+  # host.docker.internal, works fine from the host's own loopback).
+  # Host networking is the only way to reach those ports without loosening
+  # their actual bind address, which would be a real security regression.
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
     restart: unless-stopped
     labels:
       com.local-ai-machine.always-up: "true"
-    ports:
-      - "9090:9090"
+    network_mode: host
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     depends_on:
       - node-exporter
 
@@ -671,6 +677,11 @@ services:
     labels:
       com.local-ai-machine.always-up: "true"
     pid: host
+    # Now-host-networked prometheus can't resolve bridge-network DNS names
+    # ("node-exporter:9100") anymore — needs an actual published port,
+    # loopback-only like every other monitoring/model port in this stack.
+    ports:
+      - "127.0.0.1:9100:9100"
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
