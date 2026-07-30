@@ -1,0 +1,10 @@
+{
+  "_comment": "Deliberately-set Turnstone settings, applied by scripts/turnstone-bootstrap.sh via PUT /v1/api/admin/settings/{key}. Includes some values that already match Turnstone's own defaults (e.g. judge.enabled) - listed explicitly anyway so this file documents actual intent, not just diffs from whatever a given Turnstone version's defaults happen to be.",
+  "judge.enabled": true,
+  "judge.smart_approvals": true,
+  "judge.confidence_threshold": 0.95,
+  "judge.model": "judge",
+  "judge.read_only_tools": true,
+  "judge.output_guard": true,
+  "model.max_tokens": 8192
+}
