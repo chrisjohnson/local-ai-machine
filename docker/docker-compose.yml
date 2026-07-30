@@ -661,6 +661,12 @@ services:
       # so a narrower token wouldn't have bought real isolation anyway).
       # Chris's explicit choice after that was made clear.
       GH_TOKEN: ${GH_TOKEN}
+      # Enables the web_search tool — absent this, it's silently removed
+      # from the model's tool list entirely (no error, just not offered;
+      # confirmed by reading core/web_search.py). No secret involved:
+      # searxng below has no published port and no UI, matching
+      # Turnstone's own bundled reference deployment.
+      TURNSTONE_SEARXNG_URL: http://searxng:8080
     # group_add "131" = the host's docker group GID (confirmed via
     # `getent group docker` — not portable across hosts by name, same
     # numeric-GID pattern this file already uses for /dev/kfd, /dev/dri).
@@ -683,6 +689,30 @@ services:
       - "host.docker.internal:host-gateway"
     depends_on:
       - turnstone-db
+      - searxng
+
+  # web_search backend for turnstone. Config copied verbatim from
+  # Turnstone's own bundled reference deploy (deploy/searxng/settings.yml
+  # inside the image) — internal-network-only, no published port, no UI
+  # exposed to anyone. `search.formats: [html, json]` in that file is the
+  # one setting that actually matters: a stock SearxNG ships html-only and
+  # 403s on format=json, which is the most common new-deployment failure
+  # per Turnstone's own config comments.
+  searxng:
+    image: searxng/searxng:latest
+    container_name: searxng
+    restart: unless-stopped
+    labels:
+      com.local-ai-machine.always-up: "true"
+    volumes:
+      - ./searxng:/etc/searxng:ro
+      - searxng-cache:/var/cache/searxng
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   # turnstone-console — full admin/settings surface (judge.*, memory.*,
   # etc. — anything beyond interface.* prefs, which turnstone-server's own
@@ -800,6 +830,7 @@ services:
 
 volumes:
   turnstone_postgres_data:
+  searxng-cache:
   litellm_postgres_data:
   vllm-qwen3.6-35b-a3b-cache:
   vllm-qwen3.5-4b-cache:
