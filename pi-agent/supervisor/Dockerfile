@@ -29,6 +29,11 @@ ENV PI_CODING_AGENT_DIR=/data/pi-agent-config
 ENV PI_PROVIDER=local-litellm
 ENV PI_MODEL=coder
 ENV LITELLM_BASE_URL=http://127.0.0.1:4000/v1
+# The frontend (M-032, plain static HTML/JS/CSS, no build step) lives at
+# pi-agent/frontend/dist in the repo and is bind-mounted in at this path
+# by docker-compose.yml rather than baked into the image - it's outside
+# this Dockerfile's own build context (pi-agent/supervisor/), and a bind
+# mount means frontend-only edits don't require an image rebuild.
 ENV PI_AGENT_STATIC_DIR=/app/frontend
 
 VOLUME ["/data"]

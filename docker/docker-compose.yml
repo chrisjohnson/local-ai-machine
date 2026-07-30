@@ -863,6 +863,11 @@ services:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
     volumes:
       - pi-agent-data:/data
+      # Bind mount, not baked into the image (M-032): plain static
+      # HTML/JS/CSS with no build step, outside the Dockerfile's own
+      # build context (pi-agent/supervisor/) - mounting means frontend
+      # edits land on a plain `docker compose restart`, no rebuild.
+      - ../pi-agent/frontend/dist:/app/frontend:ro
     depends_on:
       - litellm
 
