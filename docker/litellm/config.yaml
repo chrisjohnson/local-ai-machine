@@ -12,8 +12,8 @@ model_list:
   # Dynamic roles — updated by set-role.sh, starts pointing at defaults.
   - model_name: coder
     litellm_params:
-      model: openai/laguna-s-2.1-118b-q4km
-      api_base: http://127.0.0.1:8101/v1
+      model: openai/gemma-4-26b-a4b-it
+      api_base: http://127.0.0.1:8008/v1
       api_key: "none"
 
   - model_name: judge
