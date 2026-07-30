@@ -29,7 +29,7 @@ export interface RpcProcessOptions {
   sessionFile?: string;
   provider: string;
   model: string;
-  piConfigDir: string;
+  piCodingAgentDir: string;
   piBin: string;
   cwd: string;
 }
@@ -64,7 +64,7 @@ export class RpcProcessInstance {
       cwd: options.cwd,
       env: {
         ...process.env,
-        PI_CONFIG_DIR: options.piConfigDir,
+        PI_CODING_AGENT_DIR: options.piCodingAgentDir,
       },
       stdio: ["pipe", "pipe", "pipe"],
     });

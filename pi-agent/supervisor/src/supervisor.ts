@@ -23,7 +23,7 @@ export interface SupervisorConfig {
   piBin: string;
   piProvider: string;
   piModel: string;
-  piConfigDir: string; // written once at startup (see bootstrap-models-json.ts)
+  piCodingAgentDir: string; // written once at startup (see bootstrap-models-json.ts)
 }
 
 interface LiveSession {
@@ -144,7 +144,7 @@ export class Supervisor {
       sessionFile: record.piSessionFile,
       provider: this.config.piProvider,
       model: this.config.piModel,
-      piConfigDir: this.config.piConfigDir,
+      piCodingAgentDir: this.config.piCodingAgentDir,
       piBin: this.config.piBin,
       cwd: record.sessionDir,
     });

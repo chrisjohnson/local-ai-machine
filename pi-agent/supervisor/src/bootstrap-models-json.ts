@@ -1,16 +1,27 @@
-// Writes ~/.pi/agent/models.json (scoped to this service's own
-// PI_CONFIG_DIR, not the host user's real ~/.pi) declaring litellm as an
-// OpenAI-compatible provider serving the `coder` model. Written at every
-// startup from env vars so the provider wiring is fully reproducible from
-// docker-compose.yml + docker/.env - never a manual one-off edit on the
-// box (see M-030 decision log: the manual ~/.pi/agent/models.json used for
-// the spike was explicitly flagged as NOT reproducible; this closes that
-// gap for the real deployed service).
+// Writes <PI_CODING_AGENT_DIR>/models.json (scoped to this service's own
+// config dir, not the host user's real ~/.pi/agent) declaring litellm as
+// an OpenAI-compatible provider serving the `coder` model. Written at
+// every startup from env vars so the provider wiring is fully
+// reproducible from docker-compose.yml + docker/.env - never a manual
+// one-off edit on the box (see M-030 decision log: the manual
+// ~/.pi/agent/models.json used for the spike was explicitly flagged as
+// NOT reproducible; this closes that gap for the real deployed service).
+//
+// PI_CODING_AGENT_DIR is pi's own env var (confirmed in
+// docs/environment-variables.md) that overrides its config dir directly -
+// it already points AT the "agent" directory (default `~/.pi/agent`), not
+// its parent `~/.pi`. Do not add an extra "agent" path segment here (a
+// real bug hit and fixed during M-031: pi looks for
+// <PI_CODING_AGENT_DIR>/models.json, and writing to
+// <PI_CODING_AGENT_DIR>/agent/models.json silently produced "Unknown
+// provider" errors instead of a "file not found" - it's a config lookup,
+// not a hard failure, so the mistake didn't surface until the first real
+// spawn attempt).
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 export interface BootstrapModelsOptions {
-  piConfigDir: string;
+  piCodingAgentDir: string;
   providerName: string;
   modelId: string;
   baseUrl: string;
@@ -20,7 +31,7 @@ export interface BootstrapModelsOptions {
 }
 
 export function writeModelsJson(options: BootstrapModelsOptions): void {
-  const agentDir = join(options.piConfigDir, "agent");
+  const agentDir = options.piCodingAgentDir;
   mkdirSync(agentDir, { recursive: true });
 
   // contextWindow/maxTokens match the actual live llama.cpp command line

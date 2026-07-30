@@ -22,7 +22,11 @@ const PI_PROVIDER = process.env.PI_PROVIDER ?? "local-litellm";
 const PI_MODEL = process.env.PI_MODEL ?? "coder";
 const LITELLM_BASE_URL = process.env.LITELLM_BASE_URL ?? "http://127.0.0.1:4000/v1";
 const LITELLM_MASTER_KEY = process.env.LITELLM_MASTER_KEY ?? "";
-const PI_CONFIG_DIR = process.env.PI_CONFIG_DIR ?? join(DATA_DIR, "pi-config");
+// PI_CODING_AGENT_DIR is pi's own env var (see environment-variables.md) -
+// it overrides pi's config dir directly (default ~/.pi/agent), so this
+// already points AT the directory models.json lives in, no extra "agent"
+// segment needed (see bootstrap-models-json.ts for the bug this fixed).
+const PI_CODING_AGENT_DIR = process.env.PI_CODING_AGENT_DIR ?? join(DATA_DIR, "pi-agent-config");
 const STATIC_DIR = process.env.PI_AGENT_STATIC_DIR ?? join(__dirname, "..", "..", "frontend", "dist");
 
 async function main() {
@@ -32,7 +36,7 @@ async function main() {
   }
 
   writeModelsJson({
-    piConfigDir: PI_CONFIG_DIR,
+    piCodingAgentDir: PI_CODING_AGENT_DIR,
     providerName: PI_PROVIDER,
     modelId: PI_MODEL,
     baseUrl: LITELLM_BASE_URL,
@@ -44,7 +48,7 @@ async function main() {
     piBin: PI_BIN,
     piProvider: PI_PROVIDER,
     piModel: PI_MODEL,
-    piConfigDir: PI_CONFIG_DIR,
+    piCodingAgentDir: PI_CODING_AGENT_DIR,
   });
   supervisor.recoverAfterRestart();
 
