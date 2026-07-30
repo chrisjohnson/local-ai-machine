@@ -943,6 +943,24 @@ in
   networking.firewall.filterForward = true;
   networking.firewall.allowedTCPPorts = [ 22 4000 8080 3000 3001 9090 11434 ];
 
+  # This box is multi-homed on the same LAN subnet (eno1: 192.168.1.21,
+  # wlp195s0: 192.168.1.221 — both 192.168.1.0/24). NixOS's default strict
+  # reverse-path filter (the generated `rpfilter` chain, policy drop) checks
+  # that an incoming packet's source address routes back out via the exact
+  # interface it arrived on. With two interfaces on one subnet, a client can
+  # send to one interface's IP (e.g. the wired 192.168.1.21) while the reply
+  # path / physical arrival ends up associated with the other (wlp195s0) —
+  # confirmed directly: port 4000 (litellm, network_mode: host, so genuinely
+  # subject to the `input`/rpfilter path unlike Docker-DNAT'd ports which hit
+  # `forward` instead) was silently dropped when addressed to 192.168.1.21
+  # but worked immediately when addressed to 192.168.1.221 instead, from the
+  # same client. "loose" mode accepts a packet if its source is reachable via
+  # *any* interface, not strictly the one it arrived on — the standard fix
+  # for legitimate multi-homed-same-subnet setups like this one. Trade-off:
+  # slightly weaker anti-IP-spoofing protection, acceptable on a private LAN
+  # behind our own router (Chris, 2026-07-29).
+  networking.firewall.checkReversePath = "loose";
+
   # filterForward turned out to be too broad on its own — it filtered ALL
   # forwarded traffic uniformly, including legitimate container-to-container
   # traffic on Docker's own bridge network, not just genuinely external LAN
