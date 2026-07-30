@@ -829,10 +829,48 @@ services:
     depends_on:
       - litellm
 
+  # pi-agent experiment (M-030..M-034): lighter alternative to Turnstone
+  # being evaluated alongside it, same locally-hosted `coder` model via
+  # litellm. Supervisor spawns/tracks `pi --mode rpc` child processes per
+  # user-visible session and exposes them over HTTP+WS so a browser
+  # (including from a phone) can create/track/drive sessions that keep
+  # running server-side across client disconnects - see
+  # pi-agent/supervisor/src/server.ts and the M-031 card's decision log.
+  #
+  # network_mode: host for the same reason litellm/prometheus already use
+  # it in this file: litellm binds 127.0.0.1:4000, and a bridge-networked
+  # container reaching host.docker.internal gets refused by a
+  # loopback-only bind (confirmed as a real bug earlier this session, not
+  # a hypothetical - see the litellm/prometheus comments above). Port 3002
+  # is published directly (no 127.0.0.1: prefix) since this is meant to be
+  # LAN/phone reachable, same as grafana (3000) and open-webui (3001).
+  pi-agent-supervisor:
+    build:
+      context: ../pi-agent/supervisor
+    image: local-ai-machine/pi-agent-supervisor:latest
+    container_name: pi-agent-supervisor
+    restart: unless-stopped
+    labels:
+      com.local-ai-machine.always-up: "true"
+    network_mode: host
+    environment:
+      PORT: "3002"
+      PI_AGENT_DATA_DIR: /data
+      PI_CONFIG_DIR: /data/pi-config
+      PI_PROVIDER: local-litellm
+      PI_MODEL: coder
+      LITELLM_BASE_URL: http://127.0.0.1:4000/v1
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+    volumes:
+      - pi-agent-data:/data
+    depends_on:
+      - litellm
+
 volumes:
   turnstone_postgres_data:
   searxng-cache:
   litellm_postgres_data:
+  pi-agent-data:
   vllm-qwen3.6-35b-a3b-cache:
   vllm-qwen3.5-4b-cache:
   vllm-qwen3.6-27b-cache:
