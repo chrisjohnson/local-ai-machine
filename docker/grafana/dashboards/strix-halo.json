@@ -197,6 +197,49 @@
         { "expr": "rate(node_network_receive_bytes_total{device!=\"lo\"}[1m])", "legendFormat": "{{device}} rx" },
         { "expr": "rate(node_network_transmit_bytes_total{device!=\"lo\"}[1m])", "legendFormat": "{{device}} tx" }
       ]
+    },
+    {
+      "id": 18,
+      "title": "llama.cpp Token Throughput (tok/s)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 72, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        { "expr": "llamacpp:prompt_tokens_seconds", "legendFormat": "{{instance}} prompt" },
+        { "expr": "llamacpp:predicted_tokens_seconds", "legendFormat": "{{instance}} generation" }
+      ]
+    },
+    {
+      "id": 19,
+      "title": "llama.cpp Requests Processing/Deferred",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 72, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        { "expr": "llamacpp:requests_processing", "legendFormat": "{{instance}} processing" },
+        { "expr": "llamacpp:requests_deferred", "legendFormat": "{{instance}} deferred" }
+      ]
+    },
+    {
+      "id": 20,
+      "title": "llama.cpp Decode Calls (rate) & Avg Batch Size",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 80, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        { "expr": "rate(llamacpp:n_decode_total[1m])", "legendFormat": "{{instance}} decode calls/s" },
+        { "expr": "llamacpp:n_busy_slots_per_decode", "legendFormat": "{{instance}} avg tokens/decode" }
+      ]
+    },
+    {
+      "id": 21,
+      "title": "llama.cpp Largest Observed Context (tokens)",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 80, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        { "expr": "llamacpp:n_tokens_max", "legendFormat": "{{instance}}" }
+      ]
     }
   ]
 }
