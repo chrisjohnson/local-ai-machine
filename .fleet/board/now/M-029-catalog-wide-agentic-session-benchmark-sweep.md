@@ -71,6 +71,7 @@ confirm it now correctly shows as `RUN`, not `FAILED`.
 <!-- signal: claude 2026-07-29T20:46Z — sweep running (systemd, real, not dry-run) after a GPU-contention crash on first attempt (laguna recovered, Chris OK'd proceeding). Checking in periodically, not blocking on it. -->
 <!-- signal: claude 2026-07-29T21:20Z — second incident (36x crash loop, real root cause: orchestrator blind to laguna entirely). Sweep stopped. Real fix in PR #9, review in progress, do not restart sweep until merged. -->
 <!-- signal: claude 2026-07-29T21:58Z — PR #9 merged, no data poisoned by prior crashes, fix confirmed working live (laguna correctly stopped, no crash-loop). Sweep running again, 25 builds queued. -->
+<!-- signal: claude 2026-07-29T23:52Z — third incident: full-system hang, hard power-cycle required. Root cause (per-build stop/restore churn) fixed in PR #10, also drops restart:unless-stopped from model services. Sweep stopped, awaiting PR #10 review/merge before restarting. -->
 
 ## Decision log
 <!-- append-only, one line per entry, newest last. Never move this card to done/
@@ -145,15 +146,48 @@ confirm it now correctly shows as `RUN`, not `FAILED`.
   to the first real candidate build (`gemma-4-26b-a4b-it`) cleanly, no
   crash-loop. Watching for stability before stepping back to periodic
   check-ins.
+- 2026-07-29 — **Third incident: full-system hang, hard power-cycle
+  required.** After `gemma-4-26b-a4b-it` and partway into
+  `glm-4.7-flash-awq`, the whole box became unresponsive — Docker health
+  checks timed out across containers, Postgres checkpoints took 66s
+  instead of ~1s, internal DNS resolution broke entirely, kernel logging
+  went completely silent for over an hour. No OOM/panic/GPU-reset message
+  in the kernel log this time (unlike the earlier 21:18:39 OOM, which was
+  part of the *second* incident, already fixed) — consistent with a deep
+  kernel/GPU-driver lockup. Chris hard-power-cycled the box. Verified: no
+  data poisoned (neither build recorded new benchmark_runs before the
+  freeze). Found and fixed a second, compounding problem on reboot:
+  Docker's `restart: unless-stopped` brought back nearly every model
+  container simultaneously (~111GB/124GB memory used) since none were in
+  an explicit "stopped" state at the moment of the crash — stopped
+  everything back to just infra before touching anything else.
+- 2026-07-29 — **Root cause identified and fixed**: the per-build
+  stop/restore cycle (introduced by PR #9) meant laguna got cycled off and
+  back on between *every single build* across the 25+-build sweep — real,
+  unnecessary GPU/driver churn, a very plausible contributor to the hang.
+  Chris's direction: stop everything once at sweep start, restore once at
+  sweep end, not in between. Also removed `restart: unless-stopped` from
+  all 14 model-serving services (kept on the 9 infra services) so a future
+  hard-crash-during-sweep doesn't cause the same reboot pileup; which model
+  should auto-start on boot is explicitly deferred, not decided here. PR:
+  https://github.com/chrisjohnson/local-ai-machine/pull/10 — awaiting
+  Chris's review/merge before deploying and restarting the sweep again.
 
 ## Handoff notes
 <!-- what's half-done, what the next agent picking this up should do first. -->
-PR #9 merged, fix confirmed working live. Sweep is **running** again as of
-2026-07-29T21:57Z (25 builds queued) — check `journalctl -u
-benchmark-orchestrator.service`/`systemctl is-active` for status, don't
-restart if already active. No data was poisoned by the two earlier crash
-attempts (verified: both crashed before any individual build was
-benchmarked). Once complete: steps 4-8 of the original plan still apply
-(verify all builds got sane `benchmark_runs`, confirm `gpt-oss-120b`'s
-long-overdue first run, regenerate the dashboard, revisit M-021 step 10,
-move M-021/M-024 to done/).
+Sweep is currently **stopped** (box hard-power-cycled after a full-system
+hang; all model containers manually stopped back to just infra afterward).
+PR #10 (https://github.com/chrisjohnson/local-ai-machine/pull/10) fixes
+the plausible root cause (per-build stop/restore churn) and removes
+`restart: unless-stopped` from model services — awaiting Chris's
+review/merge. **Do not restart `benchmark-orchestrator.service` until
+PR #10 is merged and deployed** (`git pull` on the box). Once merged:
+sync server checkout, `--dry-run` to re-confirm the plan is unchanged,
+start `benchmark-orchestrator.service`, watch the first couple of builds
+closely given tonight's history before stepping back to periodic
+check-ins. No data was poisoned by any of the three incidents tonight
+(verified each time: crashes happened before new benchmark_runs were
+written). Once the sweep actually completes: steps 4-8 of the original
+plan still apply (verify all builds got sane `benchmark_runs`, confirm
+`gpt-oss-120b`'s long-overdue first run, regenerate the dashboard, revisit
+M-021 step 10, move M-021/M-024 to done/).
