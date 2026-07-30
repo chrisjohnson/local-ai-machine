@@ -642,6 +642,8 @@ services:
       TURNSTONE_DB_URL: postgresql+psycopg://turnstone:${DB_PASSWORD}@turnstone-db:5432/turnstone
       LLM_BASE_URL: http://host.docker.internal:4000/v1
       OPENAI_API_KEY: ${LITELLM_MASTER_KEY}
+    volumes:
+      - ./turnstone/config.toml:/home/turnstone/.config/turnstone/config.toml:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:

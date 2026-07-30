@@ -1,0 +1,23 @@
+# Turnstone model registration — reaches models through LiteLLM's gateway
+# (:4000), same as every other client of this stack (opencode, Open WebUI).
+# api_key uses ${VAR} expansion against the container's own env
+# (OPENAI_API_KEY, set from LITELLM_MASTER_KEY in docker-compose.yml) - not
+# a literal secret committed here.
+#
+# context_window here (131072) matches whatever's currently live as
+# litellm's "coder" role. This is a maintenance caveat, same class of
+# issue as this project's other model-swap-dependent configs: if the
+# coder role gets swapped to a model with a meaningfully different max
+# context, this value should be updated to match, or the judge/session
+# will assume the wrong window size. Not a hard failure either way
+# (litellm's "coder" alias itself stays stable across swaps) - just a
+# soft accuracy concern, worth a glance after big model swaps.
+[models.coder]
+model = "coder"
+provider = "openai-compatible"
+base_url = "http://host.docker.internal:4000/v1"
+api_key = "${OPENAI_API_KEY}"
+context_window = 131072
+
+[model]
+default = "coder"
