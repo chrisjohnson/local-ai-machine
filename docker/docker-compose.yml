@@ -648,6 +648,29 @@ services:
       - "host.docker.internal:host-gateway"
     depends_on:
       - turnstone-db
+
+  # turnstone-console — full admin/settings surface (judge.*, memory.*,
+  # etc. — anything beyond interface.* prefs, which turnstone-server's own
+  # limited settings endpoint handles). Turnstone's own reference compose
+  # deliberately does NOT publish this port directly ("reach it ONLY
+  # through Caddy") since it's more sensitive than the chat server — same
+  # reasoning this project already applies to model-serving ports: bound
+  # to 127.0.0.1 only, not the LAN. Reach via SSH tunnel, not directly.
+  turnstone-console:
+    image: ghcr.io/turnstonelabs/turnstone:latest
+    container_name: turnstone-console
+    restart: unless-stopped
+    labels:
+      com.local-ai-machine.always-up: "true"
+    command: ["turnstone-console", "--host", "0.0.0.0", "--port", "8090"]
+    ports:
+      - "127.0.0.1:8090:8090"
+    environment:
+      TURNSTONE_JWT_SECRET: ${TURNSTONE_JWT_SECRET}
+      TURNSTONE_DB_BACKEND: postgresql
+      TURNSTONE_DB_URL: postgresql+psycopg://turnstone:${DB_PASSWORD}@turnstone-db:5432/turnstone
+    depends_on:
+      - turnstone-db
       - litellm
 
   # Telemetry & Observability Stack
