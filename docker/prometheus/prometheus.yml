@@ -15,16 +15,46 @@ scrape_configs:
     static_configs:
       - targets: ["litellm:4000"]
 
-  # These two didn't exist as scrape targets at all despite both vLLM
-  # servers exposing rich Prometheus metrics (request/token counts, TTFT
-  # and ITL histograms, KV cache usage) the whole time.
-  - job_name: "vllm-primary"
+  # Port-keyed, not container-name-keyed. This project's two-tier design
+  # means the container occupying a given port changes constantly (models
+  # get swapped in/out via `docker compose up -d <service>` + set-role.sh,
+  # sometimes multiple times per session) — a scrape target pinned to a
+  # specific container name goes stale the next time a different model
+  # takes that slot. The old "vllm-primary"/"vllm-judge" targets here
+  # referenced container names that no longer exist anywhere in
+  # docker-compose.yml at all (leftover from an early fixed two-model
+  # setup) — silently scraping nothing real for who knows how long.
+  # Ports are the actually-stable identifier in this design (vLLM:
+  # 8000-8099, llama.cpp-server: 8100-8199), so scrape by port instead —
+  # whichever model currently occupies a given port shows up under that
+  # port's target; unoccupied ports just show as a harmless "down" target.
+  # host.docker.internal (see docker-compose.yml's extra_hosts on this
+  # service) reaches the host's published 127.0.0.1:<port> bindings from
+  # inside the prometheus container.
+  - job_name: "vllm"
     static_configs:
-      - targets: ["vllm-primary:8000"]
+      - targets:
+          - "host.docker.internal:8000"
+          - "host.docker.internal:8001"
+          - "host.docker.internal:8002"
+          - "host.docker.internal:8003"
+          - "host.docker.internal:8004"
+          - "host.docker.internal:8005"
+          - "host.docker.internal:8006"
+          - "host.docker.internal:8007"
+          - "host.docker.internal:8008"
+          - "host.docker.internal:8009"
+          - "host.docker.internal:8010"
+          - "host.docker.internal:8011"
 
-  - job_name: "vllm-judge"
+  # llama.cpp-server builds — requires --metrics on each service's command
+  # (disabled by default). Same port-keyed reasoning as the vllm job above.
+  - job_name: "llamacpp"
     static_configs:
-      - targets: ["vllm-judge:8001"]
+      - targets:
+          - "host.docker.internal:8100"
+          - "host.docker.internal:8101"
+          - "host.docker.internal:8102"
 
   # Was pointed at a node-exporter container that was never actually
   # defined anywhere in the compose stack — added the real thing below
