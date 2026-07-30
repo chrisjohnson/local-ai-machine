@@ -72,6 +72,7 @@ confirm it now correctly shows as `RUN`, not `FAILED`.
 <!-- signal: claude 2026-07-29T21:20Z — second incident (36x crash loop, real root cause: orchestrator blind to laguna entirely). Sweep stopped. Real fix in PR #9, review in progress, do not restart sweep until merged. -->
 <!-- signal: claude 2026-07-29T21:58Z — PR #9 merged, no data poisoned by prior crashes, fix confirmed working live (laguna correctly stopped, no crash-loop). Sweep running again, 25 builds queued. -->
 <!-- signal: claude 2026-07-29T23:52Z — third incident: full-system hang, hard power-cycle required. Root cause (per-build stop/restore churn) fixed in PR #10, also drops restart:unless-stopped from model services. Sweep stopped, awaiting PR #10 review/merge before restarting. -->
+<!-- signal: claude 2026-07-30T01:50Z — PR #10 merged+deployed, recovered 2 unpushed commits of real data (gemma-4-26b-a4b-it/gemma-4-31b-it) plus 24 missing raw files, pushed. Sweep running again, 23 builds remain, fix confirmed working live. -->
 
 ## Decision log
 <!-- append-only, one line per entry, newest last. Never move this card to done/
@@ -172,22 +173,43 @@ confirm it now correctly shows as `RUN`, not `FAILED`.
   should auto-start on boot is explicitly deferred, not decided here. PR:
   https://github.com/chrisjohnson/local-ai-machine/pull/10 — awaiting
   Chris's review/merge before deploying and restarting the sweep again.
+- 2026-07-30 — Chris merged PR #10 (`3e0c113`). Before redeploying,
+  discovered the server had **2 unpushed local commits with real data**:
+  `gemma-4-26b-a4b-it--vllm-therock-gfx1151-v1` and
+  `gemma-4-31b-it--vllm-therock-gfx1151-v1` both fully completed all 4 new
+  agentic-session legs (22:03Z and 22:15Z respectively) before the sweep
+  moved on to `glm-4.7-flash-awq` and hit the hang — this revises the
+  earlier "no data was recorded" read, which only checked pushed history.
+  Also found 24 untracked raw evidence files (transcripts/logs) that never
+  got committed — a real, separate gap in `git_commit_and_push()`'s glob
+  (it only matches the build-start timestamp; individual agentic-task legs
+  finish, and generate their transcript files, at their own later
+  timestamps). Verified all 24 are genuinely referenced by the two builds'
+  `benchmark_runs` entries (none extraneous), committed them, then
+  reconciled: stashed the two pre-existing unrelated local mods (not
+  mine), rebased the 3 commits onto merged `main` (clean, zero conflicts —
+  pure data files, no overlap with PR #10), restored the stashed mods,
+  pushed (`b29e5a3`). Confirmed via `--dry-run`: both gemma vLLM builds now
+  correctly `SKIP` with all 6 benchmark_ids, `gpt-oss-120b` still `RUN`,
+  23 builds remain (down from 25). Restarted the sweep — confirmed the
+  one-time exclusivity stop fired correctly at sweep start ("0 currently
+  running: []", matching reality) with none of the old per-build chatter,
+  then moved straight to `glm-4.7-flash-awq` (correctly resuming, not
+  re-running the two completed builds).
 
 ## Handoff notes
 <!-- what's half-done, what the next agent picking this up should do first. -->
-Sweep is currently **stopped** (box hard-power-cycled after a full-system
-hang; all model containers manually stopped back to just infra afterward).
-PR #10 (https://github.com/chrisjohnson/local-ai-machine/pull/10) fixes
-the plausible root cause (per-build stop/restore churn) and removes
-`restart: unless-stopped` from model services — awaiting Chris's
-review/merge. **Do not restart `benchmark-orchestrator.service` until
-PR #10 is merged and deployed** (`git pull` on the box). Once merged:
-sync server checkout, `--dry-run` to re-confirm the plan is unchanged,
-start `benchmark-orchestrator.service`, watch the first couple of builds
-closely given tonight's history before stepping back to periodic
-check-ins. No data was poisoned by any of the three incidents tonight
-(verified each time: crashes happened before new benchmark_runs were
-written). Once the sweep actually completes: steps 4-8 of the original
-plan still apply (verify all builds got sane `benchmark_runs`, confirm
-`gpt-oss-120b`'s long-overdue first run, regenerate the dashboard, revisit
+PR #10 merged and deployed. Sweep is **running** again as of
+2026-07-30T01:48Z, 23 builds remaining — confirmed the fix works
+correctly live (one-time stop at sweep start, no per-build churn). Real
+data for `gemma-4-26b-a4b-it`/`gemma-4-31b-it` (recovered from unpushed
+server-local commits, see decision log) is safely on `main`. Check
+`journalctl -u benchmark-orchestrator.service`/`systemctl is-active` for
+status, don't restart if already active. **If picking this up after
+another gap**: check for unpushed local commits on the server
+(`git log origin/main..HEAD`) before assuming nothing was recorded — this
+bit us once already tonight. Once the sweep actually completes: steps 4-8
+of the original plan still apply (verify all builds got sane
+`benchmark_runs`, confirm `gpt-oss-120b`'s long-overdue first run,
+regenerate the dashboard, revisit
 M-021 step 10, move M-021/M-024 to done/).
