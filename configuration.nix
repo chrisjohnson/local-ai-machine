@@ -998,6 +998,27 @@ in
   networking.firewall.extraForwardRules = ''
     iifname "br-localai" accept
     oifname "br-localai" ct state established,related accept
+
+    # Egress-only for any Docker-managed bridge network, not just the
+    # trusted br-localai one — confirmed missing 2026-07-30 when a plain
+    # `docker build`/`docker run` container couldn't resolve DNS at all
+    # (real error: "Temporary failure resolving 'deb.debian.org'"), while
+    # the exact same lookup worked fine on br-localai. Root cause: every
+    # OTHER docker network (the default `bridge`, BuildKit's per-build
+    # network, other compose projects' networks) hits this chain's
+    # default-drop for any new outbound connection, since only br-localai
+    # gets accepted above. 172.16.0.0/12 is Docker's entire default
+    # bridge-allocation pool (not the 3 specific /16s seen in use right
+    # now, e.g. 172.17/172.18/172.19 — those are the CURRENT allocations,
+    # not a stable list; a future new docker network would get another
+    # /16 in this same /12 and silently hit the same bug again if pinned
+    # to today's specific subnets instead of the whole pool. Same lesson
+    # as this project's own container-name-vs-port staleness issue
+    # elsewhere). Deliberately egress-only (accept only when the
+    # *source* is a docker subnet) — inbound-initiated connections into
+    # these subnets from outside still hit the default drop, same as
+    # before.
+    ip saddr 172.16.0.0/12 accept comment "docker bridge networks: allow outbound internet access"
   '';
 
   system.stateVersion = "24.11";
