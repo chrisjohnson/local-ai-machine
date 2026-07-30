@@ -159,6 +159,24 @@ pointed at laguna, brought the old vLLM pair up alongside it anyway, and caused 
 GPU-contention crash. The label-driven approach generalizes correctly no matter which
 model currently serves which role.)
 
+**Stop/restore happens once per sweep, not once per build** (fixed 2026-07-29, same day
+as the label fix above): `benchmark_orchestrator.py`'s `main()` stops every exclusive
+service exactly once before the whole sweep starts, and restores whatever was running
+beforehand exactly once after every build in every engine family finishes — not around
+each individual build. Repeatedly cycling a large standing model (e.g. laguna, ~68GB)
+on and off between every single build in a 25+-build sweep is real, unnecessary GPU/
+driver churn, and was implicated in a full-system hang that required a hard power-cycle
+during the first sweep run under the per-build-restore design.
+
+**No `restart: unless-stopped` on model-serving services** (also 2026-07-29): a hard
+reboot that catches the sweep mid-cycle leaves containers in whatever state they were
+in at the moment of the crash — not necessarily "explicitly stopped." Docker's restart
+policy then brings back *every* container that wasn't explicitly stopped, which meant a
+post-reboot pileup of nearly every model service running simultaneously (~111GB/124GB
+memory used). Infra services keep `restart: unless-stopped` — no GPU-contention risk
+there. Which model (if any) should auto-start on boot is an open question, deliberately
+deferred rather than guessed at here.
+
 ### Switching which model serves a role
 
 ```
