@@ -122,6 +122,16 @@ router_settings:
 litellm_settings:
   callbacks: ["prometheus"]
   require_auth_for_metrics_endpoint: false
+  # Turnstone (and likely other OpenAI-SDK clients) sends reasoning_effort
+  # for its per-session "thinking effort" control, which most of this
+  # project's openai-compatible model routes (vLLM/llama.cpp backends)
+  # don't declare support for — litellm hard-errors on unrecognized params
+  # by default rather than dropping them. Real error hit via Turnstone,
+  # 2026-07-30: "UnsupportedParamsError: openai does not support
+  # parameters: ['reasoning_effort']". drop_params silently discards
+  # params the target model doesn't support instead of failing the
+  # request outright.
+  drop_params: true
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
