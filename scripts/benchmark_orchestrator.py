@@ -8,14 +8,19 @@ Design constraints (see knowledge/ / OPERATIONS.md for full rationale):
     be piloted over SSH from the Mac, though nothing stops that for --dry-run
     inspection.
   - Two-tier design (M-001): every verified model+engine build is its own
-    compose service with a fixed port. The orchestrator stops all
-    "exclusive" services (every compose service NOT labeled
-    com.local-ai-machine.always-up: "true" in docker-compose.yml — every
-    model-serving build regardless of engine family, whatever currently
-    occupies the coder/judge roles) to free the full GPU budget, starts the
-    target service, runs benchmarks against its fixed port, then restores
-    exactly whichever exclusive services were running beforehand. New
-    model services default to exclusive/stoppable — only infra (litellm,
+    compose service with a fixed port. Once, at the start of the whole
+    sweep (not per-build), main() stops all "exclusive" services (every
+    compose service NOT labeled com.local-ai-machine.always-up: "true" in
+    docker-compose.yml — every model-serving build regardless of engine
+    family, whatever currently occupies the coder/judge roles) to free the
+    full GPU budget for the entire run. Each build then starts its own
+    target service, runs benchmarks against its fixed port, and stops just
+    that service before the next build starts. Exactly whichever exclusive
+    services were running before the sweep began get restored once, at the
+    very end (not between builds — repeatedly cycling a large standing
+    model like laguna on/off between every build is unnecessary GPU/driver
+    churn, implicated in a full-system hang on 2026-07-29). New model
+    services default to exclusive/stoppable — only infra (litellm,
     databases, monitoring, ollama, ...) needs the always-up label. LiteLLM
     aliases role names to whichever localhost:<port> is the current pick
     for that role.
@@ -1235,19 +1240,17 @@ def process_vllm_build(build_id, build_path, build, dry_run, downloads_paused, k
     except RuntimeError as e:
         raise RuntimeError(f"{build_id}: {e} — cannot benchmark without a compose service definition") from e
 
-    previously_running = find_running_exclusive_services()
-    services_stopped = False
+    service_started = False
 
     try:
-        log(f"[{build_id}] Stopping all exclusive services for full GPU budget, then starting {compose_service} on :{port}.")
+        log(f"[{build_id}] Starting {compose_service} on :{port}. "
+            f"(GPU exclusivity is established once for the whole sweep by main(), not per-build.)")
         if dry_run:
-            log(f"[dry-run] would stop all exclusive services, start {compose_service} on :{port}, benchmark {served_name}")
+            log(f"[dry-run] would start {compose_service} on :{port}, benchmark {served_name}")
             return
 
-        check_no_other_benchmark_activity()
-        stop_all_exclusive_services()
-        services_stopped = True
         start_compose_service(compose_service)
+        service_started = True
         container = compose_service
 
         image_digest, engine_version = vllm_image_digest_and_version(container)
@@ -1385,10 +1388,10 @@ def process_vllm_build(build_id, build_path, build, dry_run, downloads_paused, k
             log(f"[{build_id}] Both benchmarks already recorded — nothing new to commit (shouldn't normally reach here; the plan-level skip should have caught this).")
 
     finally:
-        if services_stopped:
-            log(f"[{build_id}] Stopping {compose_service}, restoring previously-running services.")
+        if service_started:
+            log(f"[{build_id}] Stopping {compose_service} (next build in this batch starts its own service; "
+                f"sweep-wide restore happens once at the very end, in main()).")
             run(["docker", "compose", "stop", compose_service], cwd=str(DOCKER_DIR))
-            restore_previously_running_services(previously_running)
 
 
 def process_llamacpp_build(build_id, build_path, build, dry_run, downloads_paused, kernel, repo_commit, gpu_driver):
@@ -1397,15 +1400,12 @@ def process_llamacpp_build(build_id, build_path, build, dry_run, downloads_pause
     timestamp = utcnow_iso().replace(":", "").replace("-", "")
     window_start = utcnow_iso()
 
-    log(f"[{build_id}] llama.cpp build — stopping all exclusive services for the full GPU budget (mandatory per engine gotchas).")
+    log(f"[{build_id}] llama.cpp build. "
+        f"(GPU exclusivity is established once for the whole sweep by main(), not per-build.)")
     if dry_run:
-        log(f"[dry-run] would stop all exclusive services, run llama-bench, then {'llama-server correctness+concurrency' if is_server_variant else 'llama-server + coding harness'}, then restore stack")
+        log(f"[dry-run] would run llama-bench, then {'llama-server correctness+concurrency' if is_server_variant else 'llama-server + coding harness'}")
         return
 
-    check_no_other_benchmark_activity()
-    previously_running = find_running_exclusive_services()
-    stop_all_exclusive_services()
-    vllm_stopped_for_run = True
     toolbox_digest = toolbox_image_digest()
 
     # Resumability: check what's already recorded BEFORE doing any of the
@@ -1595,9 +1595,10 @@ def process_llamacpp_build(build_id, build_path, build, dry_run, downloads_pause
         # Download resume is intentionally NOT done here — main()'s per-build
         # loop owns pause/resume symmetrically for both engine families (see
         # its own finally block), so there's exactly one resume call per
-        # pause call, never a double-resume.
-        log(f"[{build_id}] Restoring previously-running services.")
-        restore_previously_running_services(previously_running)
+        # pause call, never a double-resume. Sweep-wide exclusivity restore
+        # (bringing back whatever was running before the sweep started)
+        # happens once at the very end, in main(), not per-build.
+        pass
 
 
 # --------------------------------------------------------------------------
@@ -1705,11 +1706,12 @@ def process_ollama_build(build_id, build_path, build, dry_run, downloads_paused,
     timestamp = utcnow_iso().replace(":", "").replace("-", "")
     window_start = utcnow_iso()
 
-    log(f"[{build_id}] Ollama build — stopping all exclusive services for the full GPU budget "
-        f"(same GPU-contention risk as llama.cpp; Ollama itself is labeled always-up and keeps running).")
+    log(f"[{build_id}] Ollama build (same GPU-contention risk as llama.cpp; Ollama itself is labeled "
+        f"always-up and keeps running). GPU exclusivity for everything else is established once for "
+        f"the whole sweep by main(), not per-build.")
     if dry_run:
-        log(f"[dry-run] would stop all exclusive services, run 1 cold + 3 warm /api/generate against "
-            f"{served_name} on the standing ollama container, then restore stack")
+        log(f"[dry-run] would run 1 cold + 3 warm /api/generate against "
+            f"{served_name} on the standing ollama container")
         return
 
     # Per-benchmark-id idempotency (M-023 pattern, matching
@@ -1729,11 +1731,6 @@ def process_ollama_build(build_id, build_path, build, dry_run, downloads_paused,
     pi_already_done = already_has_run(build, AGENTIC_PI_ID)
     orch_opencode_already_done = already_has_run(build, ORCH_OPENCODE_ID)
     orch_pi_already_done = already_has_run(build, ORCH_PI_ID)
-
-    check_no_other_benchmark_activity()
-    previously_running = find_running_exclusive_services()
-    stop_all_exclusive_services()
-    vllm_stopped_for_run = True
 
     try:
         engine_ver = ollama_version()
@@ -1849,9 +1846,10 @@ def process_ollama_build(build_id, build_path, build, dry_run, downloads_paused,
             log(f"[{build_id}] All Ollama benchmarks already recorded — nothing new to commit (shouldn't normally reach here; the plan-level skip should have caught this).")
     finally:
         # Same reasoning as process_llamacpp_build: download resume is owned
-        # by main()'s per-build loop, not here — exactly one resume per pause.
-        log(f"[{build_id}] Restoring previously-running services.")
-        restore_previously_running_services(previously_running)
+        # by main()'s per-build loop, not here — exactly one resume per
+        # pause. Sweep-wide exclusivity restore happens once at the very
+        # end, in main(), not per-build.
+        pass
 
 
 # --------------------------------------------------------------------------
@@ -1910,61 +1908,61 @@ def main():
     kernel, repo_commit = capture_host_fingerprint_common()
     gpu_driver = capture_gpu_driver_via_toolbox() if not args.dry_run else "not-captured-dry-run"
 
-    # Batch by engine family to minimize container churn. Each build's own
-    # process_*_build() snapshots whatever is currently running (via
-    # find_running_exclusive_services()) before stopping it, and restores
-    # exactly that afterward — no assumption here about what's up at batch
-    # start, unlike the old hardcoded-default-services behavior.
+    # Batch by engine family to minimize container churn.
     vllm_builds = [b for b in runnable if b[3] == "vllm"]
     llamacpp_builds = [b for b in runnable if b[3] == "llamacpp"]
     ollama_builds = [b for b in runnable if b[3] == "ollama"]
 
-    for build_id, path, build, family in vllm_builds:
-        log(f"\n=== {build_id} (vllm) ===")
-        downloads_paused = pause_downloads() if not args.dry_run else []
-        try:
-            process_vllm_build(build_id, path, build, args.dry_run, downloads_paused, kernel, repo_commit, gpu_driver)
-        except Exception as e:  # noqa: BLE001
-            log(f"[{build_id}] FAILED: {e}")
-        finally:
-            if not args.dry_run:
-                resume_downloads(downloads_paused)
+    # GPU exclusivity is established exactly ONCE for the whole sweep, not
+    # per-build: snapshot whatever's currently running, stop it all, run
+    # every build across every engine family, then restore exactly that
+    # snapshot at the very end. Repeatedly stopping/restarting a large
+    # standing model (e.g. laguna) between every single build was real,
+    # unnecessary GPU/driver churn — implicated in a full-system hang
+    # during the first sweep run under this design (2026-07-29).
+    previously_running = []
+    if not args.dry_run:
+        check_no_other_benchmark_activity()
+        previously_running = find_running_exclusive_services()
+        log(f"Stopping all exclusive services for the full GPU budget ({len(previously_running)} currently running: {previously_running}).")
+        stop_all_exclusive_services()
 
-    for build_id, path, build, family in llamacpp_builds:
-        log(f"\n=== {build_id} (llamacpp) ===")
-        downloads_paused = pause_downloads() if not args.dry_run else []
-        try:
-            process_llamacpp_build(build_id, path, build, args.dry_run, downloads_paused, kernel, repo_commit, gpu_driver)
-        except Exception as e:  # noqa: BLE001
-            # process_llamacpp_build's own finally already restores
-            # previously-running services unconditionally (success or
-            # failure) once it's past the initial stop_all_exclusive_services()
-            # call — restore here too is a safe no-op in case the exception
-            # fired before that point.
-            log(f"[{build_id}] FAILED: {e}")
-            if not args.dry_run:
-                restore_previously_running_services(find_running_exclusive_services())
-        finally:
-            if not args.dry_run:
-                resume_downloads(downloads_paused)
+    try:
+        for build_id, path, build, family in vllm_builds:
+            log(f"\n=== {build_id} (vllm) ===")
+            downloads_paused = pause_downloads() if not args.dry_run else []
+            try:
+                process_vllm_build(build_id, path, build, args.dry_run, downloads_paused, kernel, repo_commit, gpu_driver)
+            except Exception as e:  # noqa: BLE001
+                log(f"[{build_id}] FAILED: {e}")
+            finally:
+                if not args.dry_run:
+                    resume_downloads(downloads_paused)
 
-    for build_id, path, build, family in ollama_builds:
-        log(f"\n=== {build_id} (ollama) ===")
-        downloads_paused = pause_downloads() if not args.dry_run else []
-        try:
-            process_ollama_build(build_id, path, build, args.dry_run, downloads_paused, kernel, repo_commit, gpu_driver)
-        except Exception as e:  # noqa: BLE001
-            # Same reasoning as the llamacpp branch above: process_ollama_build's
-            # own finally already restores previously-running services
-            # unconditionally once past the initial stop_all_exclusive_services()
-            # call — restore here too is a safe no-op in case the exception
-            # fired before that point.
-            log(f"[{build_id}] FAILED: {e}")
-            if not args.dry_run:
-                restore_previously_running_services(find_running_exclusive_services())
-        finally:
-            if not args.dry_run:
-                resume_downloads(downloads_paused)
+        for build_id, path, build, family in llamacpp_builds:
+            log(f"\n=== {build_id} (llamacpp) ===")
+            downloads_paused = pause_downloads() if not args.dry_run else []
+            try:
+                process_llamacpp_build(build_id, path, build, args.dry_run, downloads_paused, kernel, repo_commit, gpu_driver)
+            except Exception as e:  # noqa: BLE001
+                log(f"[{build_id}] FAILED: {e}")
+            finally:
+                if not args.dry_run:
+                    resume_downloads(downloads_paused)
+
+        for build_id, path, build, family in ollama_builds:
+            log(f"\n=== {build_id} (ollama) ===")
+            downloads_paused = pause_downloads() if not args.dry_run else []
+            try:
+                process_ollama_build(build_id, path, build, args.dry_run, downloads_paused, kernel, repo_commit, gpu_driver)
+            except Exception as e:  # noqa: BLE001
+                log(f"[{build_id}] FAILED: {e}")
+            finally:
+                if not args.dry_run:
+                    resume_downloads(downloads_paused)
+    finally:
+        if not args.dry_run:
+            restore_previously_running_services(previously_running)
 
     log("\n=== Done ===")
 
