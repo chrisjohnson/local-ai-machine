@@ -697,6 +697,15 @@ services:
       - grafana_data:/var/lib/grafana
       - ./grafana/dashboards:/var/lib/grafana/dashboards
       - ./grafana/provisioning:/etc/grafana/provisioning
+    # prometheus moved to network_mode: host (see its own comment) so it
+    # dropped off the bridge network entirely — Grafana (still bridge-
+    # networked) can no longer resolve "prometheus" via Docker's embedded
+    # DNS. Reach it via host.docker.internal instead; unlike the model-
+    # serving ports, prometheus itself isn't restricted to 127.0.0.1, so
+    # this actually works (real difference from the host.docker.internal
+    # attempt that failed for the model ports in the prior PR).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - prometheus
 
