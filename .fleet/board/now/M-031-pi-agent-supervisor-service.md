@@ -2,8 +2,8 @@
 id: M-031
 title: pi-agent experiment — persistent multi-session supervisor service
 initiative_id: null
-claimed_by: null
-claimed_at: null
+claimed_by: claude
+claimed_at: 2026-07-30T21:55:00Z
 blocks: null
 blocked_by: M-030
 status: null
@@ -55,6 +55,7 @@ minimal layer for pi.
    session list + history.
 
 ## Signals
+<!-- signal: claude 2026-07-30T21:55Z — claiming, M-030 confirmed pi RPC + restart-survival works end-to-end -->
 
 ## Decision log
 
