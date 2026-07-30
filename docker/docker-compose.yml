@@ -627,8 +627,18 @@ services:
     volumes:
       - turnstone_postgres_data:/var/lib/postgresql/data
 
+  # Real project + Docker access for Turnstone-orchestrated agents, per
+  # Chris's explicit choice (2026-07-30) — the alternative (running
+  # turnstone-server on his Mac instead, where Docker Desktop and project
+  # checkouts already live) was raised and declined. This grants the
+  # container host-level Docker control via the mounted socket — a real
+  # privilege-escalation vector, not just a config tweak: anything that
+  # can run `docker run --privileged -v /:/host ...` through this socket
+  # can trivially root the host. Accepted deliberately, not a default.
   turnstone:
-    image: ghcr.io/turnstonelabs/turnstone:latest
+    build:
+      context: ./turnstone
+    image: local-ai-machine/turnstone-with-docker:latest
     container_name: turnstone-server
     restart: unless-stopped
     labels:
@@ -642,8 +652,15 @@ services:
       TURNSTONE_DB_URL: postgresql+psycopg://turnstone:${DB_PASSWORD}@turnstone-db:5432/turnstone
       LLM_BASE_URL: http://host.docker.internal:4000/v1
       OPENAI_API_KEY: ${LITELLM_MASTER_KEY}
+    # group_add "131" = the host's docker group GID (confirmed via
+    # `getent group docker` — not portable across hosts by name, same
+    # numeric-GID pattern this file already uses for /dev/kfd, /dev/dri).
+    group_add:
+      - "131"
     volumes:
       - ./turnstone/config.toml:/home/turnstone/.config/turnstone/config.toml:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /home/chris/turnstone-workspace/printer-dashboard:/workspace/printer-dashboard
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
