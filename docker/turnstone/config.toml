@@ -19,5 +19,19 @@ base_url = "http://host.docker.internal:4000/v1"
 api_key = "${OPENAI_API_KEY}"
 context_window = 131072
 
+# litellm's "judge" role (qwen3.5-4b-judge, standing service, port 8001)
+# — small/fast, deliberately capped --gpu-memory-utilization 0.20 so it
+# coexists with whatever's serving "coder". Chose to keep this over
+# building a new llama.cpp serving definition for GLM-4.7-Flash (which
+# scores better on the seven-tier-coding-v2 judge tier, 8/8 vs 7/8, but
+# doesn't have a standing service yet — Chris's explicit call, zero new
+# setup over the stronger-but-not-yet-built option).
+[models.judge]
+model = "judge"
+provider = "openai-compatible"
+base_url = "http://host.docker.internal:4000/v1"
+api_key = "${OPENAI_API_KEY}"
+context_window = 131072
+
 [model]
 default = "coder"
