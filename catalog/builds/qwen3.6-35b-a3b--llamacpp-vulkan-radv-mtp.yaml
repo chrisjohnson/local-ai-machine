@@ -1,0 +1,37 @@
+id: qwen3.6-35b-a3b--llamacpp-vulkan-radv-mtp
+model:
+  display_name: Qwen3.6-35B-A3B
+  family: Qwen3.6
+  hf_repo: unsloth/Qwen3.6-35B-A3B-MTP-GGUF
+  hf_revision: null
+  architecture: moe
+  total_params: 34.66e9
+  active_params: 3e9
+  num_experts: null
+  quantization: GGUF-Q4_K_M
+  context_length_native: null
+  modality: text
+  files:
+  - Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
+  local_path: /var/lib/ai-models/llamacpp-qwen3.6-35b-a3b-mtp
+  size_on_disk_gb: 21.1
+versions:
+- version: v1
+  compose_service_id: qwen3.6-35b-a3b--llamacpp-vulkan-radv-mtp-v1
+  engine_ref: llamacpp-vulkan-radv-mtp-v1
+  role: MTP speculative-decoding comparison tier for qwen3.6-35b-a3b, real production coder candidate
+  notes: 'MTP-tensor-bearing GGUF from a separate unsloth repo (unsloth/Qwen3.6-35B-A3B-MTP-GGUF), not
+    the plain unsloth/Qwen3.6-35B-A3B-GGUF already benchmarked (qwen3.6-35b-a3b--llamacpp-vulkan-radv,
+    tg128 63.43 ± 0.33 tok/s) — this is the untested MTP-enabled counterpart flagged in that build''s own
+    notes. --spec-type draft-mtp --spec-draft-n-max 3 per llama.cpp PR #22673 (the flags themselves were
+    already confirmed real and correctly wired during the earlier dense-27B MTP attempt, which failed only
+    because that model''s GGUF lacked MTP tensors — this file has them). MTP requires -np/--parallel 1
+    (single server slot only). llama-bench does not support --spec-type (checked via --help, no spec/draft/mtp
+    flags present) so speed comparison here is via llama-server request timings, not the standard
+    llamacpp-bench-v1 pp512/tg128 harness — noted explicitly, not blended with that benchmark_id.
+
+    '
+  status: WORKING
+  created: '2026-07-30'
+  last_verified: '2026-07-30'
+  benchmark_runs: []

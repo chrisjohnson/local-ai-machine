@@ -204,6 +204,14 @@ let
     # (unsloth/Qwen3.6-27B-GGUF lacks MTP tensors) - this is the separate,
     # confirmed MTP-bearing repo for the model that actually matters.
     { name = "llamacpp-qwen3.6-35b-a3b-mtp"; repo = "unsloth/Qwen3.6-35B-A3B-MTP-GGUF"; hfFiles = [ "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf" ]; }
+    # Dense-27B MTP variant, added 2026-07-30 per Chris's go-ahead. The
+    # earlier dense-27B MTP attempt (see above) used the wrong repo
+    # (unsloth/Qwen3.6-27B-GGUF, no MTP tensors) — this is the actual
+    # MTP-bearing repo (unsloth/Qwen3.6-27B-MTP-GGUF, confirmed real via HF
+    # API, 200 OK), same Q4_K_M quant already benchmarked plain for this
+    # model (qwen3.6-27b--llamacpp-vulkan-radv, pp512 344.83/tg128 12.77
+    # tok/s) so this is a clean apples-to-apples MTP-vs-plain comparison.
+    { name = "llamacpp-qwen3.6-27b-mtp"; repo = "unsloth/Qwen3.6-27B-MTP-GGUF"; hfFiles = [ "Qwen3.6-27B-Q4_K_M.gguf" ]; }
     # DeepSeek-V4-Flash, IQ2_XXS imatrix GGUF via llama.cpp — Chris's explicit
     # request 2026-07-26. NOT a repeat of the earlier DeepSeek-V4-Flash
     # disqualification (see the "100B+ tier" comment above): that one ruled
