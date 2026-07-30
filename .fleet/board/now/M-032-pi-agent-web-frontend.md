@@ -2,8 +2,8 @@
 id: M-032
 title: pi-agent experiment — web frontend (session list + streaming chat view)
 initiative_id: null
-claimed_by: null
-claimed_at: null
+claimed_by: claude
+claimed_at: 2026-07-30T22:07:00Z
 blocks: null
 blocked_by: M-031
 status: null
@@ -41,6 +41,7 @@ storage model. Prefer working-and-simple over "correctly" reusing pi-web-ui.
 4. [ ] No auth, no login — per explicit user instruction for this experiment.
 
 ## Signals
+<!-- signal: claude 2026-07-30T22:07Z — claiming, M-031 supervisor live on the box with concurrent-session + container-restart survival confirmed -->
 
 ## Decision log
 
