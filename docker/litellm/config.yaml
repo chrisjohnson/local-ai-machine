@@ -10,10 +10,15 @@
 
 model_list:
   # Dynamic roles — updated by set-role.sh, starts pointing at defaults.
+  # coder currently pinned to the live qwen3.6-35b-a3b-mtp assignment
+  # (2026-07-30, Chris's explicit request) so a fresh deploy/redeploy
+  # doesn't silently serve a different model than what's actually in use -
+  # still a runtime-mutable value via set-role.sh, same as always; this
+  # just changes what a *fresh checkout* starts pointing at.
   - model_name: coder
     litellm_params:
-      model: openai/gemma-4-26b-a4b-it
-      api_base: http://127.0.0.1:8008/v1
+      model: openai/qwen3.6-35b-a3b-mtp
+      api_base: http://127.0.0.1:8102/v1
       api_key: "none"
 
   - model_name: judge
@@ -122,6 +127,16 @@ router_settings:
 litellm_settings:
   callbacks: ["prometheus"]
   require_auth_for_metrics_endpoint: false
+  # Turnstone (and likely other OpenAI-SDK clients) sends reasoning_effort
+  # for its per-session "thinking effort" control, which most of this
+  # project's openai-compatible model routes (vLLM/llama.cpp backends)
+  # don't declare support for — litellm hard-errors on unrecognized params
+  # by default rather than dropping them. Real error hit via Turnstone,
+  # 2026-07-30: "UnsupportedParamsError: openai does not support
+  # parameters: ['reasoning_effort']". drop_params silently discards
+  # params the target model doesn't support instead of failing the
+  # request outright.
+  drop_params: true
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
