@@ -10,10 +10,15 @@
 
 model_list:
   # Dynamic roles — updated by set-role.sh, starts pointing at defaults.
+  # coder currently pinned to the live qwen3.6-35b-a3b-mtp assignment
+  # (2026-07-30, Chris's explicit request) so a fresh deploy/redeploy
+  # doesn't silently serve a different model than what's actually in use -
+  # still a runtime-mutable value via set-role.sh, same as always; this
+  # just changes what a *fresh checkout* starts pointing at.
   - model_name: coder
     litellm_params:
-      model: openai/gemma-4-26b-a4b-it
-      api_base: http://127.0.0.1:8008/v1
+      model: openai/qwen3.6-35b-a3b-mtp
+      api_base: http://127.0.0.1:8102/v1
       api_key: "none"
 
   - model_name: judge
