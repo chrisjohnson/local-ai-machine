@@ -27,6 +27,12 @@ model_list:
       api_base: http://127.0.0.1:8001/v1
       api_key: "none"
 
+  - model_name: vision
+    litellm_params:
+      model: openai/qwen2.5-vl-7b-instruct
+      api_base: http://127.0.0.1:8010/v1
+      api_key: "none"
+
   # Static roles — not managed by set-role.sh.
   - model_name: governed_coder
     litellm_params:
