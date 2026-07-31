@@ -951,6 +951,16 @@ services:
       # already deployed for Turnstone rather than a second search stack.
       WEB_SEARCH_PROVIDER: searxng
       SEARXNG_URL: http://127.0.0.1:8091
+      # GH_TOKEN (2026-07-31): same token/scope already used by turnstone
+      # above (Chris's personal gh CLI token, broad "repo" scope - pi-web
+      # has no per-project credential scoping either, so a narrower token
+      # wouldn't buy real isolation here any more than it did there). SSH
+      # push/clone already worked without this - the whole-home-dir mount
+      # below (/home/chris:/home/chris) already exposes
+      # ~/.ssh/github_deploy_key at the same path. This adds the piece SSH
+      # can't cover: GitHub's REST/GraphQL API (gh pr create, etc.) doesn't
+      # accept SSH keys at all.
+      GH_TOKEN: ${GH_TOKEN}
     volumes:
       - pi-web-data:/data
       # Chris's explicit instruction: mount the whole home directory (not
