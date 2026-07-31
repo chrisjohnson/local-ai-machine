@@ -23,31 +23,46 @@
  *   and risk queueing contention with other judge traffic (litellm's
  *   `judge` role).
  *
- *   IMPORTANT, found via real live testing (not assumed): this judge
- *   model (GLM-4.7-Flash) does chain-of-thought reasoning before
- *   answering. Tried disabling that via `chat_template_kwargs:
- *   {enable_thinking: false}` for speed (0.4s response) - it got the
- *   verdict WRONG on a real test case (missed that `rocm-smi --showuse`
- *   and `cat .../gpu_busy_percent` check the same underlying fact).  With
+ *   Found via real live testing (not assumed): this judge model
+ *   (GLM-4.7-Flash) does chain-of-thought reasoning before answering.
+ *   Tried disabling that via `chat_template_kwargs: {enable_thinking:
+ *   false}` for speed (0.4s response) - it got the verdict WRONG on a
+ *   real test case (missed that `rocm-smi --showuse` and `cat
+ *   .../gpu_busy_percent` check the same underlying fact). With
  *   reasoning enabled and enough token budget, it correctly answered
- *   `VERDICT: yes, EARLIER_CALL: 1` on the same case - but took ~7.7s and
- *   ~530 completion tokens. Since correctness on exactly this kind of
- *   case is the whole reason this extension exists over pi-loop-police's
- *   free-but-shallow Jaccard matching, reasoning stays ON and
- *   MAX_TOKENS is budgeted generously - a slow correct check beats a
- *   fast wrong one. The real cost (~8s every 5th call) is an accepted
- *   tradeoff, not an oversight.
- * - On a positive verdict: block the call synchronously with a corrective
- *   `reason`. Blocking is always viable here (the judge call is awaited
- *   inside the tool_call handler before returning), so there's no
- *   scenario in this design where a positive verdict can't be delivered
- *   as a block - a steer fallback specifically for "block wasn't
- *   possible" would be dead code. What CAN fail is the judge call itself
- *   (network/model error) - that's logged and the check is skipped for
- *   this call, not steered, since there's no verdict to act on.
+ *   `VERDICT: yes, EARLIER_CALL: 1` on the same case - ~7-8s and ~500-700
+ *   completion tokens. Since correctness on exactly this kind of case is
+ *   the whole reason this extension exists over pi-loop-police's free-
+ *   but-shallow Jaccard matching, reasoning stays ON and MAX_TOKENS is
+ *   budgeted generously - a slow correct check beats a fast wrong one.
+ *
+ *   Second real bug found via testing, more fundamental: calling the
+ *   judge via `complete()` (the "textbook" API from
+ *   @earendil-works/pi-ai/compat, used exactly per the bundled
+ *   custom-compaction.ts example) silently breaks the OUTER tool_call
+ *   block mechanism - confirmed via a controlled diagnostic (an
+ *   unconditional `{block: true}` returned immediately after a real
+ *   `complete()` call still let the tool execute unblocked, while the
+ *   identical unconditional block after a plain `setTimeout` of the same
+ *   duration worked correctly, and after a raw `fetch()` of the same
+ *   duration also worked correctly). Root cause not fully traced into
+ *   pi-agent-core's internals, but the leading theory: `complete()`
+ *   fires its own nested before_provider_request/after_provider_response
+ *   extension hooks, and that reentrant dispatch into the same extension
+ *   runner - while already inside a tool_call handler - corrupts the
+ *   outer block decision. Worked around by calling litellm's OpenAI-
+ *   compatible endpoint directly via `fetch()` instead of `complete()`
+ *   for this specific side-channel call - confirmed working end-to-end
+ *   afterward. `complete()` remains correct and necessary for its
+ *   documented use case (e.g. custom-compaction's own summarization
+ *   call, which isn't inside a tool_call handler) - this is a narrow,
+ *   confirmed incompatibility with calling it FROM a tool_call handler
+ *   specifically, not a blanket problem with the function.
+ * - On a positive verdict: block the call synchronously with a
+ *   corrective `reason`. Verified working end-to-end after the fetch()
+ *   fix (see decision log for the real test transcript).
  */
 
-import { complete } from "@earendil-works/pi-ai/compat";
 import type { ExtensionAPI, ExtensionContext, ToolCallEvent } from "@earendil-works/pi-coding-agent";
 
 const JUDGE_PROVIDER = "local-litellm";
@@ -123,21 +138,32 @@ EARLIER_CALL: <number, or "none">
 WHY: <one short sentence>`;
 
 	try {
-		// DIAGNOSTIC: raw fetch instead of complete(), to isolate whether
-		// complete()'s own internals (possibly nested extension hooks like
-		// before_provider_request/after_provider_response) are what breaks
-		// the outer block, vs. any real async network I/O of this duration.
-		const res = await fetch("http://127.0.0.1:4000/v1/chat/completions", {
+		// Deliberately raw fetch, not complete() - see module docstring for
+		// the confirmed reason (complete() breaks the outer tool_call block
+		// mechanism when called from inside a tool_call handler).
+		const res = await fetch(`${model.baseUrl}/chat/completions`, {
 			method: "POST",
-			headers: { "Content-Type": "application/json", Authorization: `Bearer ${auth.apiKey}` },
+			headers: {
+				"Content-Type": "application/json",
+				Authorization: `Bearer ${auth.apiKey}`,
+				...(auth.headers ?? {}),
+			},
 			body: JSON.stringify({
 				model: JUDGE_MODEL_ID,
 				max_tokens: JUDGE_MAX_TOKENS,
 				messages: [{ role: "user", content: prompt }],
 			}),
 		});
+		if (!res.ok) {
+			console.error(`${LOG_PREFIX} judge call returned HTTP ${res.status}`);
+			return null;
+		}
 		const data = (await res.json()) as { choices: { message: { content: string } }[] };
-		const text = data.choices[0].message.content;
+		const text = data.choices[0]?.message?.content ?? "";
+		if (!text.trim()) {
+			console.error(`${LOG_PREFIX} judge returned empty content - skipping check`);
+			return null;
+		}
 
 		const isRepeat = /VERDICT:\s*yes/i.test(text);
 		return { isRepeat, explanation: text.trim() };
@@ -186,8 +212,11 @@ export default function (pi: ExtensionAPI) {
 		}
 
 		console.log(`${LOG_PREFIX} session ${sessionId.slice(0, 8)}: judge verdict - ${verdict.explanation.replace(/\n/g, " | ")}`);
-		console.log(`${LOG_PREFIX} DIAGNOSTIC forcing block regardless of verdict`);
-		return { block: true, reason: "DIAGNOSTIC: forced block after real judge call" };
+
+		if (verdict.isRepeat) {
+			const reason = `This looks like a semantic repeat of an earlier tool call in this session (same underlying goal, different wording/arguments). ${verdict.explanation} Stop and either report what you already know, or explain why this call is genuinely different before retrying.`;
+			return { block: true, reason };
+		}
 	});
 
 	pi.on("session_shutdown", async (_event, ctx: ExtensionContext) => {
