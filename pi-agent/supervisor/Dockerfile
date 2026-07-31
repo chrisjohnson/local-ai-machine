@@ -12,18 +12,25 @@ WORKDIR /app
 
 # Tooling agents actually need once they have real project working dirs +
 # creds mounted in (see docker-compose.yml pi-agent-supervisor service):
-# git + openssh-client for clone/push over the mounted SSH key, docker.io +
-# docker-cli for the mounted docker.sock (docker.io alone does NOT pull in
-# the `docker` CLI binary on Debian - it's a separate Recommends-only
-# package - confirmed the hard way in Turnstone's own Dockerfile, same
-# mistake not repeated here), curl/ca-certificates for the gh install step
-# below.
+# git + openssh-client for clone/push over the mounted SSH key, docker.io
+# for the mounted docker.sock, curl/ca-certificates for the gh install
+# step below.
+#
+# NOTE: Turnstone's own Dockerfile (docker/turnstone/Dockerfile) needed a
+# separate `docker-cli` package alongside `docker.io` because ITS base
+# image is Debian trixie, which split the CLI out. This image's base
+# (node:22-slim) is Debian bookworm, which does NOT have a `docker-cli`
+# package at all (confirmed via `apt-cache search docker` inside a real
+# node:22-slim container - `docker.io` on bookworm bundles the CLI
+# already, unlike trixie). Copy-pasting Turnstone's exact package list
+# here failed the build (`E: Unable to locate package docker-cli`) -
+# fixed by dropping it, then verified the `docker` binary actually exists
+# post-install rather than assumed from the successful build alone.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         git \
         openssh-client \
         docker.io \
-        docker-cli \
         curl \
         ca-certificates \
     && rm -rf /var/lib/apt/lists/*
