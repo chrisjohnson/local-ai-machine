@@ -1,7 +1,21 @@
 #!/usr/bin/env bash
-# Updates a LiteLLM role (coder, judge, etc.) to point at a different model
-# service. Reads the port from docker-compose.yml — no manual port lookup
-# needed. Updates the litellm config file and restarts the litellm container.
+# Updates a LiteLLM role (coder, judge, vision, etc.) to point at a
+# different model service. Reads the port from docker-compose.yml — no
+# manual port lookup needed. Changes the role via litellm's Model
+# Management API (POST /model/update) — does NOT edit
+# docker/litellm/config.yaml, and does NOT restart litellm (DB-backed
+# model changes apply live).
+#
+# Why the API instead of editing a file (2026-07-31 redesign): dynamic
+# roles are deliberately NOT tracked in config.yaml at all anymore - see
+# that file's own header comment. The old version of this script
+# sed-edited config.yaml directly, which meant a role's live value and
+# its git-tracked value were the same field, and the first time a
+# genuinely NEW role (vision) needed both a committed block AND a live
+# flip in one session, that collided as a real git pull conflict.
+# Terraform's `lifecycle { ignore_changes }` is the reference model here:
+# git codifies that a role exists, the live value is free to drift on
+# the server without git ever seeing it, by construction.
 #
 # Usage:
 #   set-role.sh <role> <service-name>
@@ -11,27 +25,41 @@
 #   set-role.sh judge qwen3.5-4b--vllm-therock-gfx1151-v1
 #
 # The service name must match a service defined in docker-compose.yml.
-# The script reads:
-#   1. The host port from the service's port mapping
-#   2. The model's public name from the service's command — either vLLM's
-#      --served-model-name or llama.cpp's -a/--alias flag (whichever is
-#      present; --served-model-name is tried first)
-# It then updates the corresponding role entry in the litellm config
-# and restarts the litellm container.
+# The role must already exist in litellm's DB (run
+# scripts/litellm-bootstrap.sh once if this is a brand-new role name).
 #
 # Prerequisites:
 #   - The target service must be running (docker compose up -d <service>)
 #   - yq (YAML processor) must be available
+#   - LITELLM_MASTER_KEY available (env var, or read from docker/.env)
+#   - litellm's general_settings.store_model_in_db must be true (it is,
+#     as of 2026-07-31 - see docker/litellm/config.yaml)
 
 set -euo pipefail
 
 ROLE="${1:?Usage: set-role.sh <role> <service-name>}"
 SERVICE="${2:?Usage: set-role.sh <role> <service-name>}"
 
-DOCKER_DIR="${DOCKER_DIR:-$(dirname "$0")/../docker}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+DOCKER_DIR="${DOCKER_DIR:-${REPO_ROOT}/docker}"
 COMPOSE_FILE="${DOCKER_DIR}/docker-compose.yml"
-LITELLM_CONFIG="${LITELLM_CONFIG:-${DOCKER_DIR}/litellm/config.yaml}"
-LITELLM_CONTAINER="${LITELLM_CONTAINER:-litellm-proxy}"
+LITELLM_URL="${LITELLM_URL:-http://127.0.0.1:4000}"
+ENV_FILE="${LITELLM_ENV_FILE:-${DOCKER_DIR}/.env}"
+
+if [[ -z "${LITELLM_MASTER_KEY:-}" ]]; then
+  if [[ -f "$ENV_FILE" ]]; then
+    LITELLM_MASTER_KEY=$(grep -E '^LITELLM_MASTER_KEY=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || true)
+  fi
+fi
+if [[ -z "${LITELLM_MASTER_KEY:-}" ]]; then
+  echo "ERROR: LITELLM_MASTER_KEY not set and not found in $ENV_FILE" >&2
+  exit 1
+fi
+
+curl_litellm() {
+  curl -s -H "Authorization: Bearer $LITELLM_MASTER_KEY" -H "Content-Type: application/json" "$@"
+}
 
 # --- Parse port from docker-compose.yml ---
 PORT=$(
@@ -46,6 +74,11 @@ if [[ -z "$PORT" ]]; then
   echo "ERROR: Could not find port for service '${SERVICE}' in ${COMPOSE_FILE}" >&2
   echo "Available services:" >&2
   yq -r '.services | keys[]' "$COMPOSE_FILE" 2>/dev/null | grep -v '^\.' >&2
+  exit 1
+fi
+
+if ! [[ "$PORT" =~ ^[0-9]+$ ]]; then
+  echo "ERROR: Invalid port '${PORT}' for service '${SERVICE}'" >&2
   exit 1
 fi
 
@@ -66,103 +99,55 @@ fi
 if [[ -z "$MODEL_NAME" || "$MODEL_NAME" == "null" ]]; then
   echo "ERROR: Could not find --served-model-name (vLLM) or -a/--alias (llama.cpp) in service '${SERVICE}' command" >&2
   echo "This script only supports services with one of those flags." >&2
-  echo "For Ollama or other backends, update the litellm config manually." >&2
-  exit 1
-fi
-
-if ! [[ "$PORT" =~ ^[0-9]+$ ]]; then
-  echo "ERROR: Invalid port '${PORT}' for service '${SERVICE}'" >&2
-  exit 1
-fi
-
-if [[ ! -f "$LITELLM_CONFIG" ]]; then
-  echo "ERROR: LiteLLM config not found at ${LITELLM_CONFIG}" >&2
   exit 1
 fi
 
 echo "Setting ${ROLE} -> ${MODEL_NAME} on port ${PORT}"
 
-# --- Update litellm config ---
-# Uses temp file + mv for GNU/BSD sed portability. Deliberately text-based
-# (sed/awk), not `yq -i` on the whole file: this config.yaml has extensive
-# header/inline comments (two-tier design rationale, per-service GPU notes)
-# that a full YAML-parse-and-reserialize risks reformatting or dropping -
-# minimal targeted line edits only.
+# --- Look up the role's existing DB entry (bootstrap or a prior set-role.sh call) ---
+EXISTING_ID=$(curl_litellm "$LITELLM_URL/model/info" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+for m in d.get('data', []):
+    if m.get('model_name') == '${ROLE}':
+        print(m.get('model_info', {}).get('id') or '')
+        break
+" 2>/dev/null || true)
 
-if grep -qE "^  - model_name: ${ROLE}\$" "$LITELLM_CONFIG"; then
-  # --- Role already exists: update its block in place ---
-  # Two edits within the role's YAML block:
-  #   1. model: openai/<old> → model: openai/${MODEL_NAME}
-  #   2. api_base: http://... → api_base: http://127.0.0.1:${PORT}/v1
-  TMPFILE=$(mktemp)
-  trap 'rm -f "$TMPFILE"' EXIT
+NEW_PARAMS="{\"model\": \"openai/${MODEL_NAME}\", \"api_base\": \"http://127.0.0.1:${PORT}/v1\", \"api_key\": \"none\"}"
 
-  sed "/model_name: ${ROLE}/,/model_name:/{s|model: openai/.*|model: openai/${MODEL_NAME}|}" "$LITELLM_CONFIG" > "$TMPFILE"
-  mv "$TMPFILE" "$LITELLM_CONFIG"
-
-  if sed -n "/model_name: ${ROLE}/,/model_name:/p" "$LITELLM_CONFIG" |
-     grep -q 'api_base:'; then
-    TMPFILE=$(mktemp)
-    sed "/model_name: ${ROLE}/,/model_name:/{s|api_base:.*|api_base: http://127.0.0.1:${PORT}/v1|}" "$LITELLM_CONFIG" > "$TMPFILE"
-    mv "$TMPFILE" "$LITELLM_CONFIG"
-    echo "  Updated model + api_base for ${ROLE} -> ${MODEL_NAME} on :${PORT}"
-  else
-    # Existing block has no api_base line yet - insert one right after
-    # this block's `model:` line. (Bug fixed here: the previous version
-    # used a literal `role` string in the awk pattern instead of the
-    # shell variable's value, so this branch could never actually match
-    # anything - silently did nothing while still printing success.)
-    TMPFILE=$(mktemp)
-    awk -v role="$ROLE" -v port="$PORT" '
-      $0 ~ ("model_name: " role) { found=1 }
-      found && /model: openai/ { print; printf "      api_base: http://127.0.0.1:%s/v1\n", port; found=0; next }
-      { print }
-    ' "$LITELLM_CONFIG" > "$TMPFILE"
-    mv "$TMPFILE" "$LITELLM_CONFIG"
-    echo "  Updated model, added api_base for ${ROLE} -> ${MODEL_NAME} on :${PORT}"
-  fi
+if [[ -n "$EXISTING_ID" ]]; then
+  RESULT=$(curl_litellm -X POST "$LITELLM_URL/model/update" --data-binary "{
+    \"model_info\": {\"id\": \"${EXISTING_ID}\"},
+    \"litellm_params\": ${NEW_PARAMS}
+  }")
+  OK=$(echo "$RESULT" | python3 -c "import json,sys; d=json.load(sys.stdin); print('ok' if not d.get('error') else 'ERROR: ' + str(d))" 2>/dev/null || echo "ERROR: could not parse response: $RESULT")
 else
-  # --- Role doesn't exist yet: create a new block ---
-  # The old version of this script silently did nothing in this case (a
-  # sed range on a non-matching address is a no-op, but the script still
-  # printed "Done" regardless) - confirmed live, 2026-07-31, creating the
-  # `vision` role for the first time. Insert a new block, anchored on the
-  # "Static roles" comment marker if present (keeps new roles grouped
-  # with the other set-role.sh-managed ones), or appended at the end of
-  # model_list otherwise. Error loudly if neither anchor can be found,
-  # rather than silently doing nothing again.
-  if grep -qF '# Static roles — not managed by set-role.sh.' "$LITELLM_CONFIG"; then
-    TMPFILE=$(mktemp)
-    awk -v role="$ROLE" -v model="$MODEL_NAME" -v port="$PORT" '
-      /# Static roles — not managed by set-role\.sh\./ && !inserted {
-        printf "  - model_name: %s\n    litellm_params:\n      model: openai/%s\n      api_base: http://127.0.0.1:%s/v1\n      api_key: \"none\"\n\n", role, model, port
-        inserted=1
-      }
-      { print }
-    ' "$LITELLM_CONFIG" > "$TMPFILE"
-    mv "$TMPFILE" "$LITELLM_CONFIG"
-    echo "  Created new role ${ROLE} -> ${MODEL_NAME} on :${PORT} (before the Static roles marker)"
-  elif grep -qE '^model_list:' "$LITELLM_CONFIG"; then
-    printf '\n  - model_name: %s\n    litellm_params:\n      model: openai/%s\n      api_base: http://127.0.0.1:%s/v1\n      api_key: "none"\n' \
-      "$ROLE" "$MODEL_NAME" "$PORT" >> "$LITELLM_CONFIG"
-    echo "  Created new role ${ROLE} -> ${MODEL_NAME} on :${PORT} (appended to end of file)"
-  else
-    echo "ERROR: Could not find an anchor to insert a new role block (no 'Static roles' marker, no 'model_list:' key found in ${LITELLM_CONFIG})" >&2
-    echo "Add the ${ROLE} block manually." >&2
-    exit 1
-  fi
+  echo "  No existing DB entry for role '${ROLE}' - creating one (did you mean to run scripts/litellm-bootstrap.sh first? proceeding anyway)." >&2
+  RESULT=$(curl_litellm -X POST "$LITELLM_URL/model/new" --data-binary "{
+    \"model_name\": \"${ROLE}\",
+    \"litellm_params\": ${NEW_PARAMS},
+    \"model_info\": {}
+  }")
+  OK=$(echo "$RESULT" | python3 -c "import json,sys; d=json.load(sys.stdin); print('ok' if 'model_name' in d else 'ERROR: ' + str(d))" 2>/dev/null || echo "ERROR: could not parse response: $RESULT")
 fi
 
-# Verify the edit actually landed - the whole point of this fix is to
-# never again print success when nothing changed.
-if ! grep -qE "^  - model_name: ${ROLE}\$" "$LITELLM_CONFIG"; then
-  echo "ERROR: ${ROLE} block still not found in ${LITELLM_CONFIG} after edit - something went wrong, not restarting litellm." >&2
+if [[ "$OK" != "ok" ]]; then
+  echo "ERROR: update/create failed - $OK" >&2
   exit 1
 fi
 
-# --- Restart litellm ---
-echo "Restarting ${LITELLM_CONTAINER}..."
-docker restart "$LITELLM_CONTAINER" >/dev/null
+# Verify the change actually landed and answers real requests, rather
+# than trusting the API's 200 response alone (same discipline this repo
+# applies everywhere else - never call an update "done" without checking).
+sleep 1
+VERIFY=$(curl_litellm "$LITELLM_URL/v1/chat/completions" --data-binary "{\"model\": \"${ROLE}\", \"messages\": [{\"role\": \"user\", \"content\": \"reply with exactly: OK\"}], \"max_tokens\": 300}" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+choice = (d.get('choices') or [{}])[0]
+content = choice.get('message', {}).get('content')
+print('VERIFIED' if content else 'NOT VERIFIED: ' + str(d))
+" 2>/dev/null || echo "NOT VERIFIED: response was not valid JSON")
 
-echo "Done. ${ROLE} now routes to ${MODEL_NAME} on port ${PORT}."
-echo "Verify: curl -sf http://localhost:4000/v1/models | python3 -m json.tool"
+echo "Done. ${ROLE} now routes to ${MODEL_NAME} on port ${PORT} (no restart needed - DB-backed change applies live)."
+echo "Live verification: ${VERIFY}"
