@@ -17,12 +17,14 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends git ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Container runs as root (no USER directive); /home/chris is bind-mounted
-# from the host where it's owned by uid 1000. Confirmed live in the
-# pi-agent-supervisor build (M-031 decision log) that this exact
-# combination makes git refuse the directory ("detected dubious
+# /home/chris is bind-mounted from the host where it's owned by uid 1000.
+# Confirmed live in the pi-agent-supervisor build (M-031 decision log) that
+# a uid mismatch makes git refuse the directory ("detected dubious
 # ownership") until told otherwise - baking the fix in up front here
-# instead of waiting to rediscover the identical bug.
+# instead of waiting to rediscover the identical bug. Left in place even
+# after switching to the matched uid 1000 `node` user below (M-044) -
+# harmless, and cheap insurance against any future mount that isn't
+# uid-1000-owned.
 RUN git config --system --add safe.directory '*'
 
 RUN npm install -g @agegr/pi-web@0.8.5
@@ -48,5 +50,23 @@ EXPOSE 30141
 COPY models.seed.json.tmpl /app/models.seed.json.tmpl
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Run as a matched non-root uid (M-044) rather than inheriting root by
+# default like the rest of this compose file's services do - nothing here
+# actually needs root (no privileged port, /data writes are the only
+# runtime writes). `node:22-slim` already bakes in a `node` user at
+# uid/gid 1000, matching host `chris` (confirmed live: `stat -c '%u %g'
+# /home/chris` -> 1000 100) - same uid-matching approach turnstone already
+# uses, just via the base image's built-in user instead of a fresh
+# useradd. HOME is overridden to /home/chris (node's own image default is
+# /home/node, which is NOT the bind-mounted tree) so git/ssh naturally
+# find the already-mounted /home/chris/.ssh/* without any separate
+# /root/.ssh-style stopgap mount - the whole-home-dir mount this service
+# already had for its project browser now does double duty for SSH auth
+# too, for free, once uid and $HOME both actually line up.
+RUN mkdir -p /data && chown -R node:node /data
+ENV HOME=/home/chris
+USER node
+
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["pi-web", "--hostname", "0.0.0.0", "--port", "30141", "--no-open"]

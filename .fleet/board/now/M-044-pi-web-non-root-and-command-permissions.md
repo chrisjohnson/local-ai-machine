@@ -28,26 +28,49 @@ concerns bundled into one card because they're both "what is pi-web actually
 allowed to do, and is that intentional or just default sprawl."
 
 ## Plan
-1. [ ] Research: does pi-web's Dockerfile/entrypoint (`npm install` into
-   `$PI_CODING_AGENT_DIR/npm` at runtime, port 30141 binding, `/data` volume
-   writes) actually require root, or would a matched non-root uid (1000,
-   mirroring turnstone's own already-working pattern) work? Check file
-   ownership on all mounted volumes (`pi-web-data`, `/home/chris`,
-   `/home/chris/.ssh/*`) against a non-root candidate uid.
-2. [ ] If non-root is viable: switch pi-web to a matched uid/gid, retarget
-   the SSH key mount back to that user's real `$HOME/.ssh` (same fix
-   pattern as M-039, just for the right home dir this time), verify a real
-   `git push`/`gh pr create` end to end from inside a pi-web session.
-3. [ ] Research: what mechanism(s) does pi itself expose for scoping which
-   shell commands / tools a session (or a specific model) can run without
-   asking — allowlist/denylist config, `settings.json` permission fields,
-   per-tool gating (the `pi-claude-bridge` `MODE_DISALLOWED_TOOLS` pattern
-   is one example already in this repo, but that's bridge-specific, not
-   pi-core). Confirm from pi's own source/docs, not assumption.
-4. [ ] Write up what's actually configurable today vs. what would need new
-   work, so Chris can decide whether/how to restrict command access —
-   this card covers research + a design writeup, not necessarily a full
-   implementation (split into a follow-on card if the fix is nontrivial).
+1. [x] Research (sub-agent): no technical blocker to non-root. No
+   privileged port, `/data` writes are the only runtime writes, and
+   `node:22-slim` already bakes in a `node` user at uid/gid 1000 matching
+   host `chris` (confirmed: `stat -c '%u %g' /home/chris` → `1000 100`).
+   Unlike turnstone (whose base image bakes in its non-root user, no
+   Dockerfile change needed there), pi-web needed an explicit `USER node`
+   line since `node:22-slim` defaults to root.
+2. [x] Switched pi-web to `USER node` in `pi-web/Dockerfile`, with
+   `ENV HOME=/home/chris` (overriding node's own image default
+   `/home/node`, which is NOT the bind-mounted tree). Dropped the
+   `/root/.ssh/*` stopgap mounts entirely from `docker-compose.yml` -
+   once uid and `$HOME` both actually line up with the already-mounted
+   `/home/chris`, git/ssh find the key at its real path for free, no
+   separate SSH-specific mount needed (simpler than turnstone's explicit
+   3-file mount, since pi-web already mounts the whole home tree for its
+   project browser).
+3. [x] Research (sub-agent): confirmed zero per-command approval mechanism
+   exists in pi-core at all - not a settings.json flip, a real gap.
+   `settings.json` only has `theme`/`packages`; the only trust-related
+   field anywhere in `@earendil-works/pi-coding-agent` is
+   `defaultProjectTrust` (governs whether to load a *project's* `.pi`
+   config/extensions on open, unrelated to per-command approval).
+   `dist/core/tools/bash.js` spawns commands directly with no allowlist/
+   denylist/approval callback; `BashToolOptions` exposes only `spawnHook`
+   (a code-level hook, not a config field) and `commandPrefix`. Zero
+   matches anywhere in `dist/` for `confirmToolCall`/`toolApproval`/
+   `requestApproval`. Unlike Claude Code (which has a real approval flow
+   that's merely skipped via `--dangerously-skip-permissions` in headless
+   mode), pi never built a per-call approval gate to begin with, in
+   either its CLI or pi-web. `pi-claude-bridge`'s `MODE_DISALLOWED_TOOLS`
+   is the only scoping precedent in this repo, but it only gates its own
+   AskClaude tool, not pi's native bash/edit/write tools.
+4. [ ] Deploy + verify the non-root switch (rebuild image, one-time chown
+   of the existing `docker_pi-web-data` volume from its current root
+   ownership, scoped restart, verify `whoami`/`$HOME` inside the
+   container, verify SSH actually resolves the key by default - Chris's
+   explicit test case: re-run the exact failing scenario from the
+   screenshot, a real pi-web session needing SSH).
+5. [ ] Command-permission gap: no further action planned in this card -
+   confirmed it needs new code (most plausibly a custom extension using
+   `spawnHook` on the bash tool, or patching `bash.js` directly), not a
+   config change. Splitting into a follow-on card if/when Chris wants
+   this actually built; this card's research obligation is satisfied.
 
 ## Signals
 <!-- signal: claude 2026-07-31T18:20Z — claiming, starting with root-requirement research -->

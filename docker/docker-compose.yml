@@ -969,21 +969,14 @@ services:
       # remap, avoids any path mismatch between what a session file says
       # and what's actually on disk in the container).
       - /home/chris:/home/chris
-      # GitHub SSH deploy key (2026-07-31, corrected): the whole-home-dir
-      # mount above puts this key on disk at /home/chris/.ssh/ too, but
-      # that's a red herring - Chris caught it live from a real pi-web
-      # session failing with "SSH isn't available on this machine".
-      # Confirmed why: pi-web runs as root (no USER directive, like every
-      # service in this file) with $HOME=/root, and /root/.ssh didn't even
-      # exist - git/ssh only look at $HOME/.ssh by default, and a file
-      # merely being reachable on disk at some other path doesn't make it
-      # anyone's default identity. Same fix turnstone already uses
-      # (github_deploy_key/known_hosts/config bind-mounted read-only into
-      # the container user's real .ssh dir), just targeted at /root
-      # instead of /home/turnstone since pi-web's real user is root.
-      - /home/chris/.ssh/github_deploy_key:/root/.ssh/github_deploy_key:ro
-      - /home/chris/.ssh/known_hosts:/root/.ssh/known_hosts:ro
-      - /home/chris/.ssh/config:/root/.ssh/config:ro
+      # GitHub SSH deploy key (2026-07-31, M-044 superseding the /root/.ssh
+      # stopgap): pi-web now runs as the `node` user (uid 1000, matching
+      # host chris) with HOME=/home/chris explicitly set in the Dockerfile
+      # - the whole-home-dir mount above already puts
+      # /home/chris/.ssh/github_deploy_key on disk at the SAME path git/ssh
+      # actually look at by default now, so no separate SSH-specific mount
+      # is needed at all (unlike turnstone, which doesn't mount its user's
+      # whole home dir and so still needs the explicit 3-file mount).
       # Same fleet-convention global context file as pi-agent-supervisor -
       # see that service's comment above.
       - ./agentic-fleet-AGENTS.md:/data/pi-agent-config/AGENTS.md:ro
