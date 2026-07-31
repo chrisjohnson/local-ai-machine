@@ -221,7 +221,12 @@ export class Supervisor {
   private handleMessage(sessionId: string, msg: RpcMessage): void {
     this.pushEvent(sessionId, "pi-event", msg);
     if (msg.type === "agent_start") {
-      this.setStatus(sessionId, "running");
+      // A real agent_start means the process is genuinely up and working -
+      // clear any stale lastError from a previous crash/recovery so a
+      // healthy session doesn't keep showing an old error indefinitely
+      // (found live: 6e50d5c1 still showed its original crash message
+      // after successfully recovering and responding).
+      this.setStatus(sessionId, "running", { lastError: undefined });
     } else if (msg.type === TERMINAL_EVENT_TYPE) {
       this.setStatus(sessionId, "idle");
     }
