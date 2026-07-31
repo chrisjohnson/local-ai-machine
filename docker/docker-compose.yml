@@ -909,6 +909,25 @@ services:
       PI_CODING_AGENT_DIR: /data/pi-agent-config
       PORT: "30141"
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      # pi-claude-bridge (M-039): the Claude Agent SDK always spawns
+      # `claude` with --dangerously-skip-permissions (no interactive
+      # approval flow exists in a headless subprocess), which Claude
+      # Code's own CLI refuses to honor when running as root - every
+      # service in this compose file runs as root (no USER directive
+      # anywhere). IS_SANDBOX=1 is Claude Code's own documented escape
+      # hatch for exactly this (containerized/CI, always-root
+      # environments). Confirmed live (M-039 decision log) this is the
+      # sole remaining blocker - reproduced the failure without it,
+      # confirmed success with it, both isolated from the bridge
+      # entirely and through the real provider path. Chris's explicit
+      # go-ahead (2026-07-31) after being walked through what this
+      # actually changes: it doesn't grant NEW tool access beyond what
+      # this container already has for any model (bash/write/docker.sock/
+      # SSH key are already available to whatever model is selected) - it
+      # only lets the claude subprocess start at all as root. Real
+      # tightening lever if wanted later: askClaude.allowFullMode: false
+      # in claude-bridge.json, independent of this setting.
+      IS_SANDBOX: "1"
     volumes:
       - pi-web-data:/data
       # Chris's explicit instruction: mount the whole home directory (not
