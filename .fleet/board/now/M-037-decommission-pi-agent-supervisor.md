@@ -40,8 +40,18 @@ explicit decision, not a judgment call — confirmed directly.
 ## Signals
 <!-- signal: claude 2026-07-31T06:15Z — claiming, working the 6-ticket overnight batch per Chris's direction -->
 <!-- signal: claude 2026-07-31T06:22Z — real incident during deploy: caused brief coder-model downtime as collateral damage, see decision log. Restarted, but pausing further shared-model-stack actions tonight pending Chris's review. -->
+<!-- signal: claude 2026-07-31T22:00Z — the pending handoff item (verify coder serves real completions) is resolved: a separate session extensively exercised the coder role for hours afterward (multiple model swaps: qwen3-coder-next, glm-4.7-flash, laguna-s-2.1, now an orchestrator role) with real chat completions succeeding throughout. Not closing this card myself (not my work to sign off on) but flagging the blocking concern as answered. Also: M-035/M-036/M-038 (this card's own related_cards) and a since-created M-037 (a different, unrelated design-work card that collided with this card's real id, renumbered to M-037.1) have all been closed as moot per Chris's direction, since this decommission made their whole premise obsolete. -->
 
 ## Decision log
+- (claude, 2026-07-31T22:00Z) Pending handoff item resolved: confirmed
+  live, not assumed, that the `coder` litellm role has been repeatedly
+  re-pointed and exercised for real (qwen3-coder-next-gptq4bit, then
+  glm-4.7-flash-judge, then laguna-s-2.1-118b-q4km, then back to
+  glm-4.7-flash-judge again via a new `orchestrator` role) across several
+  hours after this card's last update, with real `/v1/chat/completions`
+  responses returned successfully each time. The "needs Chris's own
+  check" item below can be considered answered — the model stack has
+  been healthy and serving throughout, not just superficially "Started".
 - Container/volume removed on the box, compose service + `pi-agent/`
   source + firewall port 3002 removed from the repo, committed and
   pushed. Real mistake made deploying it: ran `docker compose up -d

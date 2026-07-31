@@ -58,5 +58,13 @@ Every step must be an explicit confirm surfaced to the caller (API/CLI/UI)
 ## Signals
 
 ## Decision log
+- Closed as moot without implementation (2026-07-31, Chris's explicit
+  direction: "Any backlog cards around pi-agent-supervisor can be
+  discarded"). `pi-agent-supervisor` (the service this whole projects
+  design was built for) was fully decommissioned in favor of `pi-web` —
+  see `.fleet/board/done/M-037-decommission-pi-agent-supervisor.md` (the
+  real M-037; a numbering collision with this design work's own now-moot
+  M-037 card was found and resolved separately, see M-037.1's decision
+  log).
 
 ## Handoff notes

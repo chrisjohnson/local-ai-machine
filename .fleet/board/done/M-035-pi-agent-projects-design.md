@@ -190,6 +190,17 @@ implementation cards to resolve, not silently decided here):
   mounts per M-031) into the new registry.
 - The enforced read-only boundary deferred in point 4 above.
 
+**Final closure (2026-07-31, Chris's explicit direction):** "Any backlog
+cards around pi-agent-supervisor can be discarded." `pi-agent-supervisor`
+— the service this entire design was built for — was fully decommissioned
+in favor of `pi-web` (see `.fleet/board/done/M-037-decommission-pi-agent-supervisor.md`,
+the real M-037; this card's own follow-on M-037 collided with that id and
+was renumbered to M-037.1, see its decision log). pi-web already ships
+its own native project/session browser and git-worktree switcher,
+covering the same ground this design was built to fill from scratch. This
+card and its three follow-ons (M-036, M-037.1, M-038) are being closed as
+moot, not implemented.
+
 ## Handoff notes
 Design is final per Chris's direction to stop here and not implement yet.
 Split into three follow-on implementation cards, filed directly to

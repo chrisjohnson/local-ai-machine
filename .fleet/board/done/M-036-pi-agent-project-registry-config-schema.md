@@ -63,5 +63,15 @@ Key facts from M-035 this card must honor:
 ## Signals
 
 ## Decision log
+- Closed as moot without implementation (2026-07-31, Chris's explicit
+  direction: "Any backlog cards around pi-agent-supervisor can be
+  discarded"). `pi-agent-supervisor` (the service this whole projects
+  design was built for) was fully decommissioned in favor of `pi-web` —
+  container removed, volume removed, service block and `pi-agent/` source
+  deleted (per M-037's own docker-compose.yml comment, a different M-037
+  than this card's own now-superseded numbering coincidence). pi-web
+  already ships its own native project/session browser and git-worktree
+  switcher, covering the same ground this card was designed to build from
+  scratch.
 
 ## Handoff notes
