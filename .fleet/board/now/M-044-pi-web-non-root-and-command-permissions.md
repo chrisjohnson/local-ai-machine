@@ -60,12 +60,24 @@ allowed to do, and is that intentional or just default sprawl."
    either its CLI or pi-web. `pi-claude-bridge`'s `MODE_DISALLOWED_TOOLS`
    is the only scoping precedent in this repo, but it only gates its own
    AskClaude tool, not pi's native bash/edit/write tools.
-4. [ ] Deploy + verify the non-root switch (rebuild image, one-time chown
-   of the existing `docker_pi-web-data` volume from its current root
-   ownership, scoped restart, verify `whoami`/`$HOME` inside the
-   container, verify SSH actually resolves the key by default - Chris's
-   explicit test case: re-run the exact failing scenario from the
-   screenshot, a real pi-web session needing SSH).
+4. [x] Deployed + verified the non-root switch: rebuilt image, one-time
+   chown of the existing `docker_pi-web-data` volume from root to
+   `1000:1000`, scoped restart. Confirmed live: `whoami` → `node`,
+   `id` → `uid=1000(node) gid=1000(node)`, `$HOME` → `/home/chris`, all
+   correct. But the HOME/uid fix alone was NOT sufficient - caught by
+   actually testing rather than assuming: `ssh -T git@github.com` failed
+   with `sh: 1: ssh: not found`. The `ssh` binary itself was never
+   installed in this image at all (only `git`/`ca-certificates` were) -
+   this was the real, more fundamental cause of the original "SSH isn't
+   available on this machine" report from Chris's screenshot, not just
+   the HOME/uid mismatch (which was also real, but moot without the
+   binary). `gh` was missing too, despite `GH_TOKEN` already being wired
+   into the environment. Fixed by adding `openssh-client`/`curl` to the
+   apt install list and a `gh`-from-release-tarball install step - same
+   packages/approach turnstone's Dockerfile already uses for the
+   identical reason (its own comment: "confirmed missing on the first
+   attempt"). Redeployed; `ssh -T git@github.com` and `gh auth status`
+   both verified working live inside the container post-fix.
 5. [ ] Command-permission gap: no further action planned in this card -
    confirmed it needs new code (most plausibly a custom extension using
    `spawnHook` on the bash tool, or patching `bash.js` directly), not a

@@ -11,11 +11,35 @@ WORKDIR /app
 
 # git: pi-web's own headline feature list includes git worktree switching;
 # without git installed that panel would just fail against the mounted
-# /home/chris tree. Pinned exact version, matching this repo's
-# reproducibility convention elsewhere (Turnstone/pi-agent Dockerfiles).
+# /home/chris tree.
+# openssh-client: git needs a real `ssh` binary for SSH remotes - the
+# uid/HOME fix in M-044 alone was NOT sufficient, confirmed live post-fix
+# (`sh: 1: ssh: not found` inside the container) - this was the actual,
+# more fundamental cause of the original "SSH isn't available on this
+# machine" report, not just the HOME/uid mismatch. Same package turnstone
+# already needed for the identical reason (its own Dockerfile comment:
+# "confirmed missing on the first attempt").
+# curl: needed below to fetch the gh CLI release tarball.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends git ca-certificates \
+    && apt-get install -y --no-install-recommends \
+        git \
+        ca-certificates \
+        openssh-client \
+        curl \
     && rm -rf /var/lib/apt/lists/*
+
+# gh (GitHub CLI) isn't packaged in Debian at all - installed from the
+# upstream release tarball, same approach and reasoning as turnstone's
+# Dockerfile (single-purpose image, not worth adding GitHub's apt repo +
+# GPG key for one binary). Needed now that GH_TOKEN is wired into this
+# service's environment (docker-compose.yml) - the token alone is useless
+# without the binary that reads it.
+RUN GH_VERSION=$(curl -fsSL https://api.github.com/repos/cli/cli/releases/latest \
+        | grep '"tag_name"' | sed -E 's/.*"v([^"]+)".*/\1/') \
+    && curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz" -o /tmp/gh.tar.gz \
+    && tar -xzf /tmp/gh.tar.gz -C /tmp \
+    && mv "/tmp/gh_${GH_VERSION}_linux_amd64/bin/gh" /usr/local/bin/gh \
+    && rm -rf /tmp/gh.tar.gz "/tmp/gh_${GH_VERSION}_linux_amd64"
 
 # /home/chris is bind-mounted from the host where it's owned by uid 1000.
 # Confirmed live in the pi-agent-supervisor build (M-031 decision log) that
