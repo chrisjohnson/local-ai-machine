@@ -980,6 +980,17 @@ services:
       # Same fleet-convention global context file as pi-agent-supervisor -
       # see that service's comment above.
       - ./agentic-fleet-AGENTS.md:/data/pi-agent-config/AGENTS.md:ro
+      # pi-core's own native Agent Skills mechanism (confirmed from
+      # @earendil-works/pi-coding-agent's core/skills.js: SKILL.md files
+      # under $PI_CODING_AGENT_DIR/skills/<name>/ are loaded into every
+      # session's system prompt automatically). Read-only mount, same
+      # git-is-the-source-of-truth pattern as AGENTS.md above (unlike
+      # models.json, which deliberately allows in-UI edits and is only
+      # seeded once) - a skill should always match what's committed.
+      # First skill (M-044 follow-up, 2026-07-31): adding-tools-to-pi-web,
+      # documents how a pi session itself can request/add a missing
+      # command or extension.
+      - ./pi-web/skills:/data/pi-agent-config/skills:ro
     depends_on:
       - litellm
 

@@ -100,19 +100,31 @@ allowed to do, and is that intentional or just default sprawl."
    config change. Splitting into a follow-on card if/when Chris wants
    this actually built; this card's research obligation is satisfied.
 6. [x] Follow-on: Chris asked for a documented process for adding new
-   tools/packages mid-session (rebuild + relaunch pi-web's own
-   container), and ideally scoped so pi itself could eventually drive it.
-   Written up as `docs/adding-tools-to-pi-web.md` - covers the manual
-   process today (edit Dockerfile, rebuild, scoped redeploy, reconnect to
-   the same session by ID) and what self-service would actually require
-   (docker.sock access, same real privilege-escalation tradeoff already
-   accepted for turnstone - not done automatically without Chris's
-   explicit sign-off, matching this session's established discipline
-   around new capability grants).
+   tools/packages mid-session. First pass was `docs/adding-tools-to-pi-web.md`
+   only - Chris corrected this: he wanted the process reachable *from
+   inside a pi-web chat itself*, not just a doc that only a Claude Code
+   session reads. Found the right hook: pi-core has a native Agent Skills
+   mechanism (`@earendil-works/pi-coding-agent`'s `core/skills.js`) -
+   `SKILL.md` files under `$PI_CODING_AGENT_DIR/skills/<name>/` load into
+   every session's system prompt automatically, invocable by any model or
+   explicitly via `/skill:name`. Added
+   `pi-web/skills/adding-tools-to-pi-web/SKILL.md`, mounted read-only into
+   the container at `/data/pi-agent-config/skills` in
+   `docker-compose.yml` - same git-is-source-of-truth pattern as the
+   existing `AGENTS.md` mount, not the seed-once pattern `models.json`
+   uses. The skill walks a pi session through what it can do itself
+   (edit Dockerfile/entrypoint.sh, commit, push - it already has real git/
+   SSH push access as of this same card's non-root fix) vs. what it
+   can't (rebuild/restart its own container - no docker.sock/CLI, and the
+   skill explicitly says not to grant that silently). `docs/adding-tools-
+   to-pi-web.md` kept as-is alongside it - the fuller version with the
+   self-service-automation tradeoff discussion, which belongs in a doc
+   Chris reads, not repeated into every session's context.
 
 ## Signals
 <!-- signal: claude 2026-07-31T18:20Z — claiming, starting with root-requirement research -->
 <!-- signal: claude 2026-07-31T19:05Z — done, non-root switch verified end-to-end, command-permission gap documented as needing new code -->
+<!-- signal: claude 2026-07-31T19:25Z — added pi-core SKILL.md per Chris's correction, reachable from inside pi-web itself -->
 
 ## Decision log
 - Card created directly from a live root-cause finding (M-039's SSH fix),
