@@ -198,6 +198,16 @@ services:
     ports:
       - "127.0.0.1:8003:8000"
 
+  # Promoted from swap-in comparison tier to the standing `coder` role
+  # (2026-07-31, Chris's direction) — replaces qwen3.6-35b-a3b-mtp
+  # (llamacpp-vulkan-radv-mtp, port 8102, now stopped). Its catalog-benchmark
+  # config used --gpu-memory-utilization 0.70 (~87GB) as the sole GPU
+  # occupant (see catalog/builds/qwen3-coder-next-gptq4bit--...yaml, "not a
+  # standing compose service, swap-in only") — that doesn't fit alongside
+  # the other two standing roles (judge: glm-4.7-flash ~18GB, vision:
+  # qwen2.5-vl-7b-instruct ~22.8GB confirmed via rocm-smi). Trimmed to 0.60
+  # (~74GB) so the three standing roles' combined reservation (~114-115GB)
+  # stays under the box's ~124GB unified GTT pool with a safety margin.
   qwen3-coder-next-gptq4bit--vllm-therock-gfx1151-v1:
     image: docker.io/kyuz0/vllm-therock-gfx1151:latest
     container_name: qwen3-coder-next-gptq4bit--vllm-therock-gfx1151-v1
@@ -219,7 +229,7 @@ services:
       --host 0.0.0.0
       --port 8000
       --tensor-parallel-size 1
-      --gpu-memory-utilization 0.70
+      --gpu-memory-utilization 0.60
       --dtype auto
       --trust-remote-code
       --enable-prefix-caching
