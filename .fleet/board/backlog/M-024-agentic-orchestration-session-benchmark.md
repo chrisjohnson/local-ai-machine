@@ -146,6 +146,7 @@ distinction needs to be structurally unmistakable, not a footnote.
    (see Design section above) — do not ship this tier's data without it.
 
 ## Signals
+<!-- signal: claude 2026-07-31T03:26Z — demoted to backlog per human request, deprioritized for pi-agent projects work (M-035) -->
 <!-- append-only. Leave signals for other agents. Format:
      <!-- signal: <pet-name> <ISO8601-UTC> — <short message> -->
 -->

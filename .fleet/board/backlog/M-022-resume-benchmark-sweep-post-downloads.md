@@ -2,8 +2,8 @@
 id: M-022
 title: Resume benchmark sweep now that all downloads are complete
 initiative_id: null
-claimed_by: claude
-claimed_at: "2026-07-29T17:29:00Z"
+claimed_by: null
+claimed_at: null
 blocks: null
 blocked_by: null
 status: null
@@ -60,6 +60,7 @@ later review (2026-07-27) — same posture as the original weekend sweep.
 5. [ ] Regenerate the comparison dashboard once the new data is in.
 
 ## Signals
+<!-- signal: claude 2026-07-31T03:26Z — demoted to backlog per human request, deprioritized for pi-agent projects work (M-035) -->
 <!-- append-only. Leave signals for other agents. Format:
      <!-- signal: <pet-name> <ISO8601-UTC> — <short message> -->
 -->

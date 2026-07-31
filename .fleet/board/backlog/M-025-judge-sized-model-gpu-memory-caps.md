@@ -70,6 +70,7 @@ real per-model judgment call, not a mechanical grep-and-set pass:
    reads correctly once the systematic pass lands.
 
 ## Signals
+<!-- signal: claude 2026-07-31T03:26Z — demoted to backlog per human request, deprioritized for pi-agent projects work (M-035) -->
 <!-- append-only. Leave signals for other agents. Format:
      <!-- signal: <pet-name> <ISO8601-UTC> — <short message> -->
 -->

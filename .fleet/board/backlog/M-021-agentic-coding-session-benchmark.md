@@ -2,8 +2,8 @@
 id: M-021
 title: Add agentic-coding-session benchmark tier (opencode-driven), emphasize in dashboard
 initiative_id: null
-claimed_by: claude
-claimed_at: 2026-07-29T19:21Z
+claimed_by: null
+claimed_at: null
 blocks: null
 blocked_by: null
 status: null
@@ -207,6 +207,7 @@ task-2 implementation:
     visual treatment still open, revisit once data shape is known.
 
 ## Signals
+<!-- signal: claude 2026-07-31T03:26Z — demoted to backlog per human request, deprioritized for pi-agent projects work (M-035) -->
 <!-- append-only. Leave signals for other agents. Format:
      <!-- signal: <pet-name> <ISO8601-UTC> — <short message> -->
 -->
