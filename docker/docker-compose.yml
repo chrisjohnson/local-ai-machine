@@ -887,12 +887,16 @@ services:
       # Same printer-dashboard host path Turnstone already uses.
       - /home/chris/turnstone-workspace/printer-dashboard:/workspace/printer-dashboard
       - /home/chris/local-ai-machine:/workspace/local-ai-machine
-      # Same SSH key/known_hosts/config Turnstone already uses. Container
-      # runs as root (no USER directive in the Dockerfile), hence
-      # /root/.ssh rather than turnstone's /home/turnstone/.ssh.
-      - /home/chris/.ssh/github_deploy_key:/root/.ssh/github_deploy_key:ro
-      - /home/chris/.ssh/known_hosts:/root/.ssh/known_hosts:ro
-      - /home/chris/.ssh/config:/root/.ssh/config:ro
+      # Same SSH key/known_hosts/config Turnstone already uses. Staged at
+      # /run/ssh-secrets rather than directly into /root/.ssh: the
+      # container runs as root, but these host files are owned by uid
+      # 1000 (chris) - OpenSSH's strict-mode check refused them directly
+      # ("Bad owner or permissions", confirmed live). The entrypoint
+      # script copies them into /root/.ssh with root ownership at
+      # startup - see docker-entrypoint.sh.
+      - /home/chris/.ssh/github_deploy_key:/run/ssh-secrets/github_deploy_key:ro
+      - /home/chris/.ssh/known_hosts:/run/ssh-secrets/known_hosts:ro
+      - /home/chris/.ssh/config:/run/ssh-secrets/config:ro
     depends_on:
       - litellm
 

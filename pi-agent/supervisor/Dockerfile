@@ -58,6 +58,9 @@ COPY package.json package-lock.json* ./
 RUN npm install --omit=dev
 COPY --from=build /app/dist ./dist
 
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 ENV PORT=3002
 ENV PI_AGENT_DATA_DIR=/data
 ENV PI_BIN=pi
@@ -82,4 +85,5 @@ ENV PI_AGENT_WORKDIR=/workspace
 VOLUME ["/data"]
 EXPOSE 3002
 
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["node", "dist/server.js"]
