@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>pi-agent stack — overnight report, 2026-07-31</title>
+<title>pi-agent stack — status report, 2026-07-31</title>
 <style>
   :root {
     --bg: #0d1117; --panel: #161b22; --border: #30363d; --text: #c9d1d9;
@@ -47,6 +47,11 @@
     background: rgba(248,81,73,0.08); border: 1px solid rgba(248,81,73,0.35); border-radius: 8px;
     padding: 16px 20px; margin: 14px 0;
   }
+  .resolved {
+    background: rgba(63,185,80,0.08); border: 1px solid rgba(63,185,80,0.35); border-radius: 8px;
+    padding: 10px 14px; margin-top: 10px; font-size: 0.93em;
+  }
+  .resolved .label { color: var(--green); font-weight: 700; font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.03em; }
   ul { padding-left: 22px; }
   li { margin-bottom: 4px; }
   table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 0.92em; }
@@ -67,8 +72,8 @@
 </head>
 <body>
 
-<h1>pi-agent stack — overnight report</h1>
-<div class="subtitle">2026-07-30 evening through 2026-07-31 early morning · six tickets worked while Chris slept</div>
+<h1>pi-agent stack — status report</h1>
+<div class="subtitle">Updated 2026-07-31 (overnight batch M-037..M-043, then a follow-on live session)</div>
 
 <div class="toc">
   <a href="#summary">Summary</a>
@@ -79,199 +84,215 @@
   <a href="#m040">M-040</a>
   <a href="#m041">M-041</a>
   <a href="#m042">M-042</a>
-  <a href="#incident">Incident</a>
-  <a href="#needed">What needs you</a>
+  <a href="#m043">M-043</a>
+  <a href="#incident">Incident (resolved)</a>
+  <a href="#needed">What still needs you</a>
 </div>
 
 <h2 id="summary">Summary</h2>
 <table>
   <tr><th>Ticket</th><th>What</th><th>Status</th></tr>
   <tr><td>M-037</td><td>Decommission pi-agent-supervisor</td><td><span class="badge done">Done</span></td></tr>
-  <tr><td>M-038</td><td>Web search for pi</td><td><span class="badge blocked">Needs your input</span></td></tr>
+  <tr><td>M-038</td><td>Web search for pi</td><td><span class="badge done">Done</span></td></tr>
   <tr><td>M-039</td><td>Claude bridge</td><td><span class="badge blocked">Needs your input</span></td></tr>
-  <tr><td>M-040</td><td>GLM-4.7-Flash judge model</td><td><span class="badge paused">Paused</span></td></tr>
+  <tr><td>M-040</td><td>GLM-4.7-Flash judge model</td><td><span class="badge done">Done</span></td></tr>
   <tr><td>M-041</td><td>Watchdog/judge pattern design</td><td><span class="badge done">Done</span></td></tr>
-  <tr><td>M-042</td><td>Repeat-detection first pass</td><td><span class="badge paused">Blocked behind M-040</span></td></tr>
+  <tr><td>M-042</td><td>Repeat-detection first pass</td><td><span class="badge paused">Not started</span></td></tr>
+  <tr><td>M-043</td><td>litellm roles → DB-only (terraform-style)</td><td><span class="badge done">Done</span></td></tr>
 </table>
-<p>Two of six are fully done, two are substantially built and verified but each paused on one genuine
-human decision (not guessed at), and two were deliberately held back after a real incident tonight (see
-below) rather than pushed through solo. Everything that <em>did</em> ship was independently verified — real
-HTTP checks, real completions, real file inspections — not taken on a sub-agent's or my own say-so.</p>
+<p>Five of seven done and independently verified. M-039 is fully built and one setting away from working,
+but blocked again — this time on a revoked credential, not a design decision. M-042 hasn't been started
+(it depends on the pattern in M-041 and the model in M-040, both done, but the actual extension code
+hasn't been written yet). The overnight incident (unscoped deploy briefly killed the <code>coder</code>
+model) is now fully resolved and independently verified, not just claimed fixed.</p>
 
-<h2 id="architecture">Architecture as of tonight</h2>
+<h2 id="architecture">Architecture as of now</h2>
 <div class="arch-diagram">Your Mac / phone (LAN)
         │
         ▼
-┌───────────────────┐        ┌──────────────┐
-│   pi-web  :30141   │──────▶│   litellm     │──────▶  llama.cpp / vLLM model servers
-│ (sole surface now — │       │   :4000 (proxy)│         (coder, judge, etc.)
-│  pi-agent-supervisor│       └──────────────┘
-│  fully removed)     │
-│                     │──────▶  searxng :8091 (loopback-only, web search backend)
-│                     │──────▶  claude CLI subprocess (Claude Pro, via pi-claude-bridge —
-│                     │          installed, blocked on one security setting)
-└───────────────────┘
+┌─────────────────────┐        ┌───────────────┐
+│    pi-web  :30141    │───────▶│    litellm     │──────▶  llama.cpp / vLLM model servers
+│  (sole surface —      │        │    :4000 (proxy)│         coder / judge / vision (+ static roles)
+│   pi-agent-supervisor │        └───────────────┘         Dynamic roles now DB-backed, not YAML —
+│   fully removed)      │                                   see M-043.
+│                       │───────▶  searxng :8091 (loopback-only, real web search via
+│                       │           @juicesharp/rpiv-web-tools)
+│                       │───────▶  claude CLI subprocess (Claude Pro via pi-claude-bridge —
+│                       │           fully wired, blocked on a revoked credential, not a
+│                       │           design decision — see M-039)
+└─────────────────────┘
 
 docker/agentic-fleet-AGENTS.md ──▶ bind-mounted into pi-web at the global
                                     context-file path pi already auto-loads
-                                    for every session, regardless of project</div>
-<p class="muted">Same litellm-backed local models throughout — nothing about tonight's work changed which
-model answers your prompts by default, only what surrounds it.</p>
+                                    for every session, regardless of project
+
+litellm's own Postgres DB ──▶ authoritative for coder/judge/vision's live
+                               values (store_model_in_db: true) — config.yaml
+                               only declares that these roles exist, with an
+                               intentionally-broken stub value; changing which
+                               model backs a role is now a pure API call
+                               (scripts/set-role.sh), never a file edit,
+                               never a git conflict, never a restart.</div>
 
 <h2 id="m037">M-037 — Decommission pi-agent-supervisor <span class="badge done">Done</span></h2>
 <div class="card">
-  <p>Full removal, as you asked: container + volume stopped and removed on the box, compose service
-  block deleted, <code>pi-agent/</code> source directory deleted from the repo, port 3002 removed from the
-  firewall allow-list. Verified directly — port 3002 now refuses connections from off-box, <code>pi-web</code>
-  on 30141 is unaffected.</p>
-  <p><strong>But this is also where tonight's one real incident happened</strong> — see the
-  <a href="#incident">Incident</a> section below. The removal itself is solid; there's one follow-up
-  verification that specifically needs your own eyes, not another automated check from me.</p>
+  <p>Full removal, as asked: container + volume stopped and removed, compose service block deleted,
+  <code>pi-agent/</code> source directory deleted from the repo (including leftover local build artifacts
+  found and cleaned up during the final reconciliation pass), port 3002 removed from the firewall
+  allow-list. Verified directly — port 3002 refuses connections from off-box, <code>pi-web</code> on 30141
+  unaffected.</p>
+  <div class="resolved">
+    <div class="label">Incident resolved</div>
+    See the <a href="#incident">Incident</a> section — the collateral-damage <code>coder</code> outage from
+    this deploy is now independently confirmed fully healthy, not just "container shows Started."
+  </div>
 </div>
 
-<h2 id="m038">M-038 — Web search for pi <span class="badge blocked">Needs your input</span></h2>
+<h2 id="m038">M-038 — Web search for pi <span class="badge done">Done</span></h2>
 <div class="card">
-  <div class="card-head"><h3 style="margin:0">SearxNG wired, extension choice pending</h3></div>
-  <p>pi has no built-in web search. Reused the SearxNG instance already running for Turnstone rather than
-  standing up a second one, as planned.</p>
-  <ul>
-    <li>Found and fixed a real networking gap: SearxNG was bridge-only, <code>pi-web</code> runs in host
-    network mode — couldn't reach it. Published SearxNG on <code>127.0.0.1:8091</code> (loopback-only,
-    matching how other backend-only services already work in this stack). Deployed scoped to
-    <code>docker compose up -d searxng</code> only — nothing else was touched.</li>
-    <li><strong>Verified for real</strong> (not assumed): a live JSON query against the new endpoint
-    returned 20 genuine search results.</li>
-  </ul>
-  <div class="needs-input">
-    <div class="label">Needs your input</div>
-    Two candidate npm packages could bridge pi ↔ SearxNG as an actual pi extension:
-    <code>@juicesharp/rpiv-web-tools</code> (smaller, purpose-built for SearxNG — the sub-agent's pick) or
-    <code>pi-web-access</code> (heavier). Neither was installed — picking and auto-running a specific
-    third-party package without you naming it is exactly the kind of call this project has been treating
-    as yours all along, not an "ordinary judgment call" to make solo. Say the word (or name a different
-    package) and this is a few minutes of deploy work, already drafted.
-  </div>
+  <p>SearxNG published on <code>127.0.0.1:8091</code> (loopback-only, matching the rest of this stack's
+  backend-service convention). <code>@juicesharp/rpiv-web-tools</code> installed as a pi extension —
+  general-purpose text search, no video/PDF backends, per your explicit confirmation of that exact
+  package.</p>
+  <p><strong>Verified rigorously, not just "it answered something plausible":</strong> the first test
+  (asking for a real npm package's version number) returned a correct but too-easily-guessable answer, so
+  it was re-tested asking for the live top Hacker News headline right now — got back a specific, real,
+  timely result (a July-31-dated story with real point/comment counts) that could not plausibly come from
+  training data. Web search is genuinely firing, not hallucinating.</p>
+  <p class="muted">Small cleanup along the way: an earlier manual proof-of-concept install had left an
+  unpinned package reference in <code>settings.json</code> (survived in the persistent volume across
+  redeploys) — found and corrected to the properly version-pinned form.</p>
 </div>
 
 <h2 id="m039">M-039 — Claude bridge <span class="badge blocked">Needs your input</span></h2>
 <div class="card">
-  <div class="card-head"><h3 style="margin:0">Almost fully wired, one security setting away</h3></div>
-  <p><code>pi-claude-bridge</code> lets Claude models (using your own Pro subscription, not metered API
-  billing) be selected inside pi like any other model, plus an "AskClaude" delegation tool from other
-  models. Confirmed directly from its own README before building: it spawns the real <code>claude</code>
-  CLI as a subprocess and just needs working local auth, not an extracted API token.</p>
+  <div class="card-head"><h3 style="margin:0">Fully built, blocked on a revoked credential</h3></div>
+  <p><code>pi-claude-bridge</code> lets Claude models (your own Pro subscription, not metered API billing)
+  be selected inside pi like any other model, plus an "AskClaude" delegation tool from other models.</p>
   <ul>
-    <li>Your Claude Code credentials were copied from your Mac to the box
-    (<code>/home/chris/secrets/claude-code-credentials.json</code>, chmod 600) as a raw file transfer —
-    never inspected, printed, or materialized in any transcript, with your explicit confirmation first.</li>
-    <li><code>claude</code> CLI <code>2.1.220</code> pinned and installed in the <code>pi-web</code> image.</li>
-    <li>Credentials staged into the container with correct root ownership (same fix pattern already used
-    for the SSH deploy key earlier this session — mount read-only at a staging path, entrypoint copies it
-    into place with the right ownership at startup).</li>
-    <li><code>pi-claude-bridge@0.6.3</code> installed and registered — pi-web has no <code>pi install</code>
-    subcommand of its own, so this replicates exactly what that command does under the hood, confirmed
-    directly from pi-coding-agent's own package-manager source.</li>
-    <li><code>claude-bridge.json</code> seeded with <code>provider.plan: "pro"</code> — never
-    <code>"max"</code>, matching your actual subscription tier.</li>
+    <li><code>claude</code> CLI pinned and installed in the <code>pi-web</code> image; your credentials
+    staged with correct root ownership; <code>pi-claude-bridge</code> installed and registered;
+    <code>claude-bridge.json</code> seeded with <code>provider.plan: "pro"</code> (never <code>"max"</code>).</li>
+    <li><code>IS_SANDBOX=1</code> enabled after you were walked through the actual tradeoff (it doesn't
+    grant new tool access beyond what this container already gives any selected model — it only lets the
+    <code>claude</code> subprocess start at all as root). Deployed and confirmed: the original
+    "<code>--dangerously-skip-permissions</code> cannot be used with root"</code> error is gone.</li>
   </ul>
   <div class="needs-input">
     <div class="label">Needs your input</div>
-    The Claude Agent SDK always spawns <code>claude</code> with <code>--dangerously-skip-permissions</code>,
-    which Claude Code's own CLI refuses to honor when running as root (a real Claude Code safety check, not
-    a bug here). The documented fix is <code>IS_SANDBOX=1</code>, and it was confirmed working end-to-end
-    through the real provider path — but it disables Claude Code's own permission checks, on a container
-    that also holds your SSH deploy key and a full <code>/home/chris</code> mount. That's a real
-    security-posture tradeoff, not a default to flip quietly, so it was drafted, correctly blocked by the
-    safety check, and reverted rather than pushed through. Your call on whether that tradeoff is acceptable
-    here.
+    A real, different error now: <code>401 OAuth access token has been revoked</code>. Hash-compared the
+    copied credential file against what's currently on your Mac — they're byte-identical, so this isn't a
+    stale-copy problem I can fix by re-copying. Something revoked the token server-side since it was
+    copied (or possibly before). Please check whether Claude Code is still authenticated on your Mac right
+    now, and re-authenticate if not — once it's valid there, re-copying and retesting takes under a
+    minute.
   </div>
 </div>
 
-<h2 id="m040">M-040 — GLM-4.7-Flash judge model <span class="badge paused">Paused</span></h2>
+<h2 id="m040">M-040 — GLM-4.7-Flash judge model <span class="badge done">Done</span></h2>
 <div class="card">
-  <p>Research is done and grounded in real catalog/benchmark data — you asked for "the strongest" judge
-  model, and the record shows that's specifically the <strong>llama.cpp</strong> build of GLM-4.7-Flash
-  (20/22 on the seven-tier coding benchmark, 70.1 tok/s), not the AWQ/vLLM one already running in litellm's
-  config (18/22, ~19-33 tok/s) — the stronger variant isn't deployed as a standing service yet.</p>
-  <p>Deliberately not started tonight: deploying it means adding another model-serving container to the
-  same shared GPU that had the incident below. Holding it for your review rather than compounding risk in
-  the same area twice in one night.</p>
+  <p>Deployed the <strong>stronger</strong> of the two GLM-4.7-Flash builds already on disk — the
+  llama.cpp/GGUF one (20/22 on the seven-tier coding benchmark, 70.1 tok/s), not the AWQ/vLLM one already
+  running (18/22, ~19-33 tok/s). New standing service, port 8103, single-slot (matching the coder
+  service's simplicity — a judge doesn't need concurrent-serving complexity).</p>
+  <p>Deploy was scoped precisely this time (one named service only) — direct application of the lesson
+  from the incident below. Verified end-to-end: real completion directly against the new port, then the
+  same prompt through litellm's <code>judge</code> alias, confirming it actually routes through, not just
+  reachable directly.</p>
 </div>
 
 <h2 id="m041">M-041 — Watchdog/judge pattern design <span class="badge done">Done</span></h2>
 <div class="card">
-  <p>Pure research and design, no infrastructure touched — confirmed the real, available mechanism for a
-  fast model to watch another session for drift/loops, grounded directly in pi's own extension API
-  (not the fabricated "stagnation heuristics" / "circuit breaker" claims another agent asserted earlier
-  tonight, which didn't hold up under direct source inspection).</p>
+  <p>Pure research and design — confirmed the real, available mechanism for a fast model to watch another
+  session for drift/loops, grounded directly in pi's own extension API (not the fabricated "stagnation
+  heuristics" claims another agent had asserted earlier, which didn't hold up under direct source
+  inspection).</p>
   <ul>
-    <li>Real levers confirmed: a <code>tool_call</code> hook can <strong>block</strong> a call outright with
-    a corrective reason, or a <code>steer</code> message can redirect mid-turn.</li>
-    <li>Real limitation stated plainly, not glossed over: extensions cannot force a session to stop or veto
-    continuing to the next turn. That ceiling is real; a genuinely hard stop would need building directly
-    on <code>pi-agent-core</code>'s own <code>Agent</code> class instead of pi's extension system — a
-    bigger, separate undertaking.</li>
-    <li>Design is written to generalize: the same "rolling window → ask the judge → block or steer" shape
-    is meant to work for future guardrails (goal drift, deadlocks) beyond the one M-042 will implement
-    first, not just a one-off.</li>
+    <li>Real levers: a <code>tool_call</code> hook can <strong>block</strong> a call outright with a
+    corrective reason, or a <code>steer</code> message can redirect mid-turn.</li>
+    <li>Real limitation stated plainly: extensions cannot force a session to stop or veto continuing to the
+    next turn. A genuinely hard stop would need building directly on <code>pi-agent-core</code>'s own
+    <code>Agent</code> class instead of pi's extension system — bigger, separate undertaking.</li>
+    <li>Design generalizes: the same "rolling window → ask the judge → block or steer" shape is meant to
+    work for future guardrails beyond the one M-042 will implement first.</li>
   </ul>
-  <p class="muted">Full design write-up is in the fleet card's decision log, moved to
-  <code>.fleet/board/done/M-041-watchdog-pattern-research.md</code>.</p>
 </div>
 
-<h2 id="m042">M-042 — Repeat-detection first pass <span class="badge paused">Blocked behind M-040</span></h2>
+<h2 id="m042">M-042 — Repeat-detection first pass <span class="badge paused">Not started</span></h2>
 <div class="card">
-  <p>Implementation of the concrete guardrail — the specific "stuck re-verifying the same thing for four
-  minutes" failure mode found earlier this session — using M-041's design and M-040's judge model. Can't
-  start until M-040's judge model actually exists, which is itself paused. Nothing done here yet by design.</p>
+  <p>Both dependencies (M-040's judge model, M-041's design) are done, so this is genuinely unblocked —
+  it just hasn't been picked up yet. Implementing the concrete guardrail (the "stuck re-verifying the same
+  thing for four minutes" failure mode) is real, non-trivial extension-writing work, not yet started.</p>
 </div>
 
-<h2 id="incident">Tonight's one real incident</h2>
+<h2 id="m043">M-043 — litellm roles moved to DB-only, API-managed <span class="badge done">Done</span></h2>
+<div class="card">
+  <p>Not one of the original six — surfaced while adding the <code>vision</code> role, and became a real
+  architecture fix at your direction. The previous design committed role <em>values</em> to
+  <code>docker/litellm/config.yaml</code>, edited in place by <code>set-role.sh</code> via <code>sed</code>.
+  The first time a genuinely new role needed both a new committed block and a live runtime flip in one
+  session, that collided as a real git conflict on the box.</p>
+  <p>Your explicit direction: terraform's <code>lifecycle {'{'} ignore_changes {'}'}</code> as the reference
+  model. Now:</p>
+  <ul>
+    <li><code>store_model_in_db: true</code> enabled (litellm already had a Postgres DB wired up — no new
+    infra).</li>
+    <li><code>coder</code>/<code>judge</code>/<code>vision</code> removed from the static YAML entirely —
+    they live only in litellm's own database, managed via its real Model Management API (confirmed against
+    our own running instance's OpenAPI schema, since the public docs page had moved/404'd).</li>
+    <li><code>scripts/litellm-bootstrap.sh</code> (new) seeds each role once with a
+    <strong>deliberately non-functional stub</strong> (<code>openai/UNCONFIGURED-run-set-role.sh</code>) if
+    it doesn't exist — your explicit refinement, so a future session can never mistake a stub for a stale-
+    but-plausible real value.</li>
+    <li><code>scripts/set-role.sh</code> rewritten to call the API instead of editing a file — changing a
+    role's live model is now a pure API call. No git conflict is possible on this by construction. No
+    litellm restart is needed either (a real improvement, confirmed empirically — the proxy's uptime
+    stayed constant across all three role updates during deploy).</li>
+  </ul>
+  <p class="muted">Also fixed two real, unrelated bugs found in the old <code>set-role.sh</code> while
+  rewriting it: creating a genuinely new role silently did nothing (a non-matching sed range is a no-op,
+  but the script printed success regardless), and a dead code path used a literal string instead of a
+  shell variable, so it could never have matched anything for any role name.</p>
+</div>
+
+<h2 id="incident">Overnight incident (now resolved)</h2>
 <div class="incident">
   <p><strong>What happened:</strong> while deploying M-037's removal, a blanket
-  <code>docker compose up -d --remove-orphans</code> (no specific service name) was run to apply the
-  service removal. That command reconciles the <em>entire</em> compose file against running state, not just
-  what changed — it started roughly 13 large vLLM/llama.cpp model containers that were deliberately stopped
-  for GPU memory reasons. The simultaneous load almost certainly caused an OOM condition: the actively-serving
-  <code>coder</code> model (<code>qwen3.6-35b-a3b-mtp</code>) was killed as collateral damage
-  (exit code 137 — a kill signal, confirmed via <code>docker ps -a</code>, not assumed).</p>
-  <p><strong>What was done about it:</strong> all ~13 accidentally-started containers were stopped
-  immediately, explicitly by name this time. The <code>coder</code> model was restarted, scoped correctly
-  (<code>docker compose up -d qwen3.6-35b-a3b--llamacpp-vulkan-radv-mtp-v1</code>, that one service only).
-  It shows "Started" in <code>docker ps</code>.</p>
-  <p><strong>What still needs you specifically:</strong> a follow-up health/completion check on the
-  restarted <code>coder</code> model was correctly denied by the safety check, reading the whole sequence as
-  "unilaterally acted on ~13 unrelated shared-GPU containers, beyond the one service actually requested" —
-  not a false alarm. So: <strong>please confirm yourself that <code>coder</code> is actually serving real
-  completions again</strong>, not just that its container shows "Started." Everything else about M-037 is
-  done and doesn't need re-checking.</p>
-  <p class="muted">Lesson recorded in the fleet card: never run a blanket
-  <code>docker compose up -d</code> (or with <code>--remove-orphans</code>) without naming the specific
-  service that changed — every other deploy this session (and both background agents tonight) correctly
-  scoped it; this one slipped.</p>
+  <code>docker compose up -d --remove-orphans</code> (no specific service name) reconciled the
+  <em>entire</em> compose file against running state — it started roughly 13 large vLLM/llama.cpp model
+  containers that were deliberately stopped for GPU memory reasons. The simultaneous load OOM-killed the
+  actively-serving <code>coder</code> model as collateral damage (exit code 137, confirmed via
+  <code>docker ps -a</code>).</p>
+  <p><strong>What was done:</strong> all ~13 accidentally-started containers stopped immediately, by name.
+  <code>coder</code> restarted, scoped correctly.</p>
+  <div class="resolved">
+    <div class="label">Now fully resolved</div>
+    With your explicit go-ahead ("you can check, proceed"), ran a real completion request against
+    <code>coder</code> directly — got a correct <code>HEALTHY</code> response with normal reasoning
+    output, normal MTP speculative-decoding stats (78/105 draft tokens accepted), and generation speed
+    matching expectations (~95 tok/s). Not just "container shows Started" — an actual verified working
+    model. Every subsequent deploy this session was scoped to the exact service being changed; the lesson
+    held.
+  </div>
 </div>
 
-<h2 id="needed">Everything that needs you, in one place</h2>
+<h2 id="needed">Everything that still needs you</h2>
 <div class="card">
   <ol>
-    <li><strong>Confirm <code>coder</code> is healthy</strong> — the one outstanding item from tonight's
-    incident (see above).</li>
-    <li><strong>M-038:</strong> pick <code>@juicesharp/rpiv-web-tools</code> (recommended by the agent
-    that researched it), <code>pi-web-access</code>, or something else — a few minutes of already-drafted
-    deploy work once you say which.</li>
-    <li><strong>M-039:</strong> decide whether <code>IS_SANDBOX=1</code> is an acceptable tradeoff on this
-    container (disables Claude Code's own permission checks; container also holds your SSH deploy key +
-    full home directory mount).</li>
-    <li><strong>M-040/M-042:</strong> green-light deploying the new GLM-4.7-Flash judge service now that
-    there's been a beat since the incident, if you're comfortable — this restarts the guardrail-building
-    work.</li>
+    <li><strong>M-039 only:</strong> check whether Claude Code is still authenticated on your Mac, and
+    re-authenticate if the OAuth token has actually been revoked there too. Once valid, re-copying +
+    retesting the bridge is under a minute of work.</li>
+    <li><strong>M-042</strong> is unblocked and ready to pick up whenever you want the actual
+    repeat-detection guardrail built, using the design already written up in M-041.</li>
   </ol>
+  <p class="muted">Everything else is done, deployed, and independently verified — no other decisions are
+  waiting on you right now.</p>
 </div>
 
 <p class="muted" style="margin-top:48px; font-size:0.85em;">
   Full detail, decision logs, and handoff notes for every ticket above live in
-  <code>.fleet/board/{now,done,blocked}/</code> in the repo — this page is a summary, not a replacement
-  for those.
+  <code>.fleet/board/done/</code> and <code>.fleet/board/blocked/</code> in the repo — this page is a
+  summary, not a replacement for those.
 </p>
 
 </body>
