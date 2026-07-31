@@ -89,6 +89,16 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 # already had for its project browser now does double duty for SSH auth
 # too, for free, once uid and $HOME both actually line up.
 RUN mkdir -p /data && chown -R node:node /data
+# ENV HOME alone is NOT enough for ssh specifically - confirmed live
+# (verbose ssh debug: `Reading configuration data /etc/ssh/ssh_config`
+# only, never touching any per-user config at all, and `load_hostkeys:
+# fopen /home/node/.ssh/known_hosts: No such file or directory`).
+# OpenSSH resolves the invoking user's home directory via the real
+# /etc/passwd entry (getpwuid), not $HOME, for its own default config/
+# known-hosts/identity path expansion - unlike git, which does honor
+# $HOME directly. usermod actually changes that passwd entry so both
+# mechanisms agree.
+RUN usermod -d /home/chris node
 ENV HOME=/home/chris
 USER node
 
