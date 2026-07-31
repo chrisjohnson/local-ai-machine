@@ -123,31 +123,21 @@ EARLIER_CALL: <number, or "none">
 WHY: <one short sentence>`;
 
 	try {
-		const response = await complete(
-			model,
-			{
-				messages: [
-					{
-						role: "user" as const,
-						content: [{ type: "text" as const, text: prompt }],
-						timestamp: Date.now(),
-					},
-				],
-			},
-			{
-				apiKey: auth.apiKey,
-				headers: auth.headers,
-				env: auth.env,
-				maxTokens: JUDGE_MAX_TOKENS,
-				signal: undefined, // DIAGNOSTIC: test whether reusing ctx.signal breaks the outer dispatch's block check
-				cacheRetention: "none",
-			},
-		);
-
-		const text = response.content
-			.filter((c): c is { type: "text"; text: string } => c.type === "text")
-			.map((c) => c.text)
-			.join("\n");
+		// DIAGNOSTIC: raw fetch instead of complete(), to isolate whether
+		// complete()'s own internals (possibly nested extension hooks like
+		// before_provider_request/after_provider_response) are what breaks
+		// the outer block, vs. any real async network I/O of this duration.
+		const res = await fetch("http://127.0.0.1:4000/v1/chat/completions", {
+			method: "POST",
+			headers: { "Content-Type": "application/json", Authorization: `Bearer ${auth.apiKey}` },
+			body: JSON.stringify({
+				model: JUDGE_MODEL_ID,
+				max_tokens: JUDGE_MAX_TOKENS,
+				messages: [{ role: "user", content: prompt }],
+			}),
+		});
+		const data = (await res.json()) as { choices: { message: { content: string } }[] };
+		const text = data.choices[0].message.content;
 
 		const isRepeat = /VERDICT:\s*yes/i.test(text);
 		return { isRepeat, explanation: text.trim() };
