@@ -19,35 +19,19 @@ if [ ! -f "$PI_CODING_AGENT_DIR/models.json" ]; then
   sed "s/__LITELLM_MASTER_KEY__/$LITELLM_MASTER_KEY/" /app/models.seed.json.tmpl > "$PI_CODING_AGENT_DIR/models.json"
 fi
 
-# --- pi-claude-bridge (M-039) ---
+# --- pi-claude-bridge auth (M-039) ---
 #
-# Stage Chris's Claude Code credentials with root ownership. Container runs
-# as root (no USER directive), but docker-compose.yml mounts the host file
-# read-only at /run/claude-secrets/, owned by uid 1000 (chris) on the host -
-# same "container runs as root, mounted file owned by a different uid"
-# ownership gotcha already hit and fixed twice tonight for the SSH deploy
-# key (pi-agent/supervisor/docker-entrypoint.sh) and git safe.directory
-# (this same Dockerfile, see above). Same known-working fix: stage at a
-# read-only mount path, copy into place with root ownership + tight perms
-# at startup rather than mounting directly where `claude` expects it.
-#
-# $HOME is /root here (root, no HOME override) - the Claude Agent SDK and
-# cc-session-io both resolve Claude Code's state directory as
-# `$CLAUDE_CONFIG_DIR || join(homedir(), ".claude")` (confirmed directly
-# from cc-session-io's own dist/chunk-*.js, not assumed), so this must land
-# at /root/.claude, not /app or anywhere pi-web-specific.
-#
-# Not read-only: pi-claude-bridge's own test docs confirm Claude Code
-# writes session state under ~/.claude/projects/<hash>/*.jsonl on every
-# turn (mkdirSync + writeFileSync, confirmed from cc-session-io source) -
-# mounting/staging this read-only reproduces exactly the "No conversation
-# found with session ID" resume failure its README warns about.
-if [ -f /run/claude-secrets/claude-code-credentials.json ]; then
-  mkdir -p /root/.claude
-  chmod 700 /root/.claude
-  cp /run/claude-secrets/claude-code-credentials.json /root/.claude/.credentials.json
-  chmod 600 /root/.claude/.credentials.json
-fi
+# Previously staged a copied ~/.claude/.credentials.json here (same
+# ownership-fix pattern as the SSH deploy key). Confirmed NOT to work:
+# reproduced live, in isolation, that a bare-credentials-file environment
+# (missing whatever interactive-login-only state the Agent SDK's own
+# auth-profile-fetch step needs) hits "401 OAuth access token has been
+# revoked" even though the identical file works fine through the plain
+# `claude` CLI. Replaced with CLAUDE_CODE_OAUTH_TOKEN (set directly as a
+# container env var in docker-compose.yml - no file staging needed at
+# all) - the actual documented mechanism for headless/CI use of a Claude
+# subscription (`claude setup-token`, 1-year token). Simpler and
+# confirmed working, unlike the file-copy approach.
 
 # Install pi-claude-bridge as a pi extension. pi-web's own CLI (bin/pi-web.js)
 # only ever launches the Next.js server - it has no `pi install` subcommand
