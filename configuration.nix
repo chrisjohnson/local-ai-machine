@@ -183,6 +183,23 @@ let
     # measured 8.14-16.28 tok/s), so this is a real same-model backend
     # comparison, not just a new candidate.
     { name = "llamacpp-qwen3.5-122b-a10b"; repo = "unsloth/Qwen3.5-122B-A10B-GGUF"; hfFiles = [ "UD-Q5_K_XL/Qwen3.5-122B-A10B-UD-Q5_K_XL-00001-of-00003.gguf" "UD-Q5_K_XL/Qwen3.5-122B-A10B-UD-Q5_K_XL-00002-of-00003.gguf" "UD-Q5_K_XL/Qwen3.5-122B-A10B-UD-Q5_K_XL-00003-of-00003.gguf" ]; }
+    # MTP speculative-decoding counterpart of llamacpp-qwen3.5-122b-a10b
+    # above, added 2026-07-31 per Chris's direction. Same UD-Q5_K_XL quant
+    # tier as the already-benchmarked plain entry (22.30 tok/s TG128 via
+    # llama.cpp/Vulkan on this exact box), so this is a clean apples-to-apples
+    # MTP-vs-plain comparison, not confounded by a different quant too — same
+    # reasoning as the llamacpp-qwen3.6-35b-a3b-mtp/llamacpp-qwen3.6-27b-mtp
+    # entries below. Motivated by the qwen3-coder-next-gptq4bit deployment (a
+    # different, GPTQ-quantized 80B-class model, see the "100B+ tier" comment
+    # above) turning out to run at only 2-4 tok/s in practice due to a GPU
+    # kernel fallback — GPTQ MoE layers on this GPU fall back from the fast
+    # Marlin kernel to a much slower generic kernel. This MTP-GGUF path avoids
+    # that failure mode entirely: it's a native llama.cpp/Vulkan GGUF, the
+    # same successful path already proven fast by the production
+    # qwen3.6-35b-a3b-mtp model. File list (3 shards under UD-Q5_K_XL/)
+    # confirmed directly against the HF API tree listing for
+    # unsloth/Qwen3.5-122B-A10B-MTP-GGUF, not guessed.
+    { name = "llamacpp-qwen3.5-122b-a10b-mtp"; repo = "unsloth/Qwen3.5-122B-A10B-MTP-GGUF"; hfFiles = [ "UD-Q5_K_XL/Qwen3.5-122B-A10B-UD-Q5_K_XL-00001-of-00003.gguf" "UD-Q5_K_XL/Qwen3.5-122B-A10B-UD-Q5_K_XL-00002-of-00003.gguf" "UD-Q5_K_XL/Qwen3.5-122B-A10B-UD-Q5_K_XL-00003-of-00003.gguf" ]; }
     # NVIDIA-Nemotron-3-Super-120B-A12B, UD-Q4_K_XL: 14.86 tok/s TG128 -
     # new model, not in the existing lineup. Real hybrid Mamba-2+MoE+
     # attention architecture (confirmed real model, not garbled).
