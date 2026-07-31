@@ -58,6 +58,58 @@ minimal layer for pi.
 <!-- signal: claude 2026-07-30T21:55Z — claiming, M-030 confirmed pi RPC + restart-survival works end-to-end -->
 <!-- signal: claude 2026-07-30T22:05Z — M-031 done, concurrent isolation + container-restart history survival confirmed live on the box, moving to M-032 -->
 <!-- signal: claude 2026-07-31T02:35Z — post-done fix: UI transcript replay after restart/resume was actually blank, see decision log -->
+<!-- signal: claude 2026-07-31T02:55Z — post-done: real creds (SSH/GH_TOKEN/docker.sock) + workspace mounts (printer-dashboard, local-ai-machine) added, two real bugs found+fixed live, see decision log -->
+
+## Post-done: creds + working dirs (2026-07-31, human request)
+Chris asked how to give agents real credentials and working directories -
+until now every session's cwd was its own private `/data/sessions/<id>`
+scratch dir with no project checkouts and no creds beyond
+`LITELLM_MASTER_KEY`. Decoupled `cwd` (now `PI_AGENT_WORKDIR`, default
+`/workspace`) from `--session-dir` (still always under `PI_AGENT_DATA_DIR`)
+in `supervisor.ts`/`server.ts` so this was possible without disturbing
+session bookkeeping. Granted the same secrets/mounts as `turnstone-server`,
+full parity per Chris's explicit choice (including the docker.sock
+privilege-escalation exposure that grant carries): SSH deploy key +
+known_hosts + config, `GH_TOKEN`, `/var/run/docker.sock` + docker group GID
+(131), and both `/workspace/printer-dashboard` and
+`/workspace/local-ai-machine` bind-mounted (same printer-dashboard host
+path Turnstone already uses).
+
+Two real bugs found via live testing, not caught by review:
+1. Copy-pasted Turnstone's Dockerfile package list verbatim
+   (`docker-cli` alongside `docker.io`) - build failed
+   (`E: Unable to locate package docker-cli`). Turnstone's base image is
+   Debian trixie (CLI split into its own package there); this image's
+   base (`node:22-slim`) is bookworm, which has no such package -
+   `docker.io` alone already bundles the CLI. Fixed by dropping the line
+   after confirming via `apt-cache search docker` inside a real
+   `node:22-slim` container, not just removing it and hoping.
+2. SSH refused the mounted key/config outright: `Bad owner or permissions
+   on /root/.ssh/config`. The container runs as root, but the host files
+   are owned by uid 1000 (chris) - OpenSSH's strict-mode check refuses
+   config/key files not owned by the current euid or root. Fixed by
+   mounting them at a staging path (`/run/ssh-secrets`) instead and adding
+   `docker-entrypoint.sh`, which copies them into `/root/.ssh` with root
+   ownership + `chmod 600` before the server starts. Verified with a real
+   `ssh -T git@github.com` (the "successfully authenticated... does not
+   provide shell access" message + exit 1 - the actual expected success
+   case, not a false failure reading).
+3. A third, same-shape issue surfaced through a real agent session rather
+   than my own shell testing: git refused both mounted repos with
+   `fatal: detected dubious ownership` (identical root cause - root
+   process, uid-1000-owned mounted dirs). The agent itself discovered and
+   ran `git config --global --add safe.directory` to recover mid-session -
+   but that writes to root's ephemeral `$HOME/.gitconfig`, not a persisted
+   volume, so every fresh session would've silently re-hit the exact same
+   friction. Fixed properly by baking `git config --system --add
+   safe.directory '*'` into the Dockerfile (`/etc/gitconfig`, part of the
+   image), then verified clean on a fresh container with no self-recovery
+   needed.
+
+All three were caught by actually running real commands (shell-level and,
+for the third, through a genuine end-to-end agent session exercising
+`pwd`/`ls`/`git`/`gh auth status`/`docker ps`) rather than assumed correct
+from a successful `docker compose build`.
 
 ## Post-done fix (2026-07-31, found by human review)
 The restart test above verified the *model's* recall (it correctly quoted
