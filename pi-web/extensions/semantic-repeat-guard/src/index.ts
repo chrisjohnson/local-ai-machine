@@ -18,10 +18,25 @@
  * - Every CHECK_EVERY_N_CALLS-th tool call, only if that burst happened
  *   within BURST_WINDOW_MS, ask the judge model whether the newest call
  *   looks like a semantic repeat of an earlier one in the window. Gated
- *   like this because the judge call has real latency (measured live:
- *   ~1.7s) against a single-slot server - checking every call would both
- *   slow down normal work and risk queueing contention with other judge
- *   traffic (litellm's `judge` role).
+ *   like this because the judge call has real latency against a single-
+ *   slot server - checking every call would both slow down normal work
+ *   and risk queueing contention with other judge traffic (litellm's
+ *   `judge` role).
+ *
+ *   IMPORTANT, found via real live testing (not assumed): this judge
+ *   model (GLM-4.7-Flash) does chain-of-thought reasoning before
+ *   answering. Tried disabling that via `chat_template_kwargs:
+ *   {enable_thinking: false}` for speed (0.4s response) - it got the
+ *   verdict WRONG on a real test case (missed that `rocm-smi --showuse`
+ *   and `cat .../gpu_busy_percent` check the same underlying fact).  With
+ *   reasoning enabled and enough token budget, it correctly answered
+ *   `VERDICT: yes, EARLIER_CALL: 1` on the same case - but took ~7.7s and
+ *   ~530 completion tokens. Since correctness on exactly this kind of
+ *   case is the whole reason this extension exists over pi-loop-police's
+ *   free-but-shallow Jaccard matching, reasoning stays ON and
+ *   MAX_TOKENS is budgeted generously - a slow correct check beats a
+ *   fast wrong one. The real cost (~8s every 5th call) is an accepted
+ *   tradeoff, not an oversight.
  * - On a positive verdict: block the call synchronously with a corrective
  *   `reason`. Blocking is always viable here (the judge call is awaited
  *   inside the tool_call handler before returning), so there's no
@@ -40,6 +55,12 @@ const JUDGE_MODEL_ID = "judge";
 const WINDOW_SIZE = 8;
 const CHECK_EVERY_N_CALLS = 5;
 const BURST_WINDOW_MS = 2 * 60 * 1000;
+// Reasoning models need real headroom to finish their chain-of-thought
+// before they ever reach the actual answer - measured live, 200 tokens
+// was nowhere near enough (truncated mid-reasoning, empty content field,
+// finish_reason "length"). 1500 covers real observed usage (~530-720
+// total tokens) with margin.
+const JUDGE_MAX_TOKENS = 1500;
 const LOG_PREFIX = "[semantic-repeat-guard]";
 
 interface ToolCallRecord {
@@ -117,7 +138,7 @@ WHY: <one short sentence>`;
 				apiKey: auth.apiKey,
 				headers: auth.headers,
 				env: auth.env,
-				maxTokens: 200,
+				maxTokens: JUDGE_MAX_TOKENS,
 				signal: ctx.signal,
 				cacheRetention: "none",
 			},
