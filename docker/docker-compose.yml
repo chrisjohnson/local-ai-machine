@@ -897,6 +897,13 @@ services:
       - /home/chris/.ssh/github_deploy_key:/run/ssh-secrets/github_deploy_key:ro
       - /home/chris/.ssh/known_hosts:/run/ssh-secrets/known_hosts:ro
       - /home/chris/.ssh/config:/run/ssh-secrets/config:ro
+      # Fleet-convention global context file - pi loads
+      # PI_CODING_AGENT_DIR/AGENTS.md automatically for every session
+      # regardless of project (docs/quickstart.md "Context Files"). Direct
+      # read-only bind mount, no entrypoint step needed (no secret
+      # involved, unlike models.json) - edit the committed file, restart
+      # the container, done.
+      - ./agentic-fleet-AGENTS.md:/data/pi-agent-config/AGENTS.md:ro
     depends_on:
       - litellm
 
@@ -935,6 +942,9 @@ services:
       # remap, avoids any path mismatch between what a session file says
       # and what's actually on disk in the container).
       - /home/chris:/home/chris
+      # Same fleet-convention global context file as pi-agent-supervisor -
+      # see that service's comment above.
+      - ./agentic-fleet-AGENTS.md:/data/pi-agent-config/AGENTS.md:ro
     depends_on:
       - litellm
 
