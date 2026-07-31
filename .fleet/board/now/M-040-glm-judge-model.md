@@ -34,6 +34,17 @@ benchmark records (not guessed):
 The llamacpp variant is the one to actually deploy as "judge" - the
 already-running AWQ one is the weaker, slower option, not the target.
 
+**Paused for tonight (2026-07-31T06:25Z).** Deploying this adds another
+model-serving container to the same shared GPU that just had a real
+incident during M-037's deploy (a blanket `docker compose up -d`
+mistake started ~13 stopped models simultaneously, OOM-killed the
+active `coder` model as collateral damage - see M-037's decision log).
+Given the safety classifier explicitly flagged that pattern and asked
+for human eyes before further shared-model-stack action, starting a new
+model service on this same box right now isn't the moment for it, even
+though this card's own plan is scoped and safe in isolation. Holding
+this one for Chris's morning review rather than pushing through solo.
+
 ## Plan
 1. [ ] Add `glm-4.7-flash--llamacpp-vulkan-radv-v1` as a new standing
    docker-compose service, llama.cpp-server port range (8100-8199) -

@@ -20,6 +20,13 @@ re-verifying/re-attempting the same thing via trivially-varied actions,
 the exact failure mode Turnstone's own byte-literal `RepeatDetector`
 missed (found live, this session, in the printer-dashboard workstream).
 
+**Blocked behind M-040, which is itself paused tonight** (real incident
+during M-037's deploy - a blanket compose command briefly took down the
+`coder` model as collateral damage; holding off further shared-model-
+stack changes, including M-040's new judge service, for Chris's morning
+review). M-041's research/design work can still proceed independently -
+it's pure writing, no infra touched.
+
 This is a first pass, not a complete guardrail suite - one working
 extension, real detection, real intervention, honestly scoped.
 
