@@ -57,6 +57,35 @@ minimal layer for pi.
 ## Signals
 <!-- signal: claude 2026-07-30T21:55Z — claiming, M-030 confirmed pi RPC + restart-survival works end-to-end -->
 <!-- signal: claude 2026-07-30T22:05Z — M-031 done, concurrent isolation + container-restart history survival confirmed live on the box, moving to M-032 -->
+<!-- signal: claude 2026-07-31T02:35Z — post-done fix: UI transcript replay after restart/resume was actually blank, see decision log -->
+
+## Post-done fix (2026-07-31, found by human review)
+The restart test above verified the *model's* recall (it correctly quoted
+prior context after a fresh respawn) and correctly concluded the
+manifest+`--session-dir` mechanism preserves real history. What it did NOT
+check — a real gap in this card's own test coverage, not a false claim — is
+whether that history is visible through the *supervisor's own API/UI*.
+
+It wasn't. `live.events` (the buffer the API and frontend actually read from)
+is created empty every time `spawnFor` builds a fresh `live` entry — which
+happens on every supervisor restart, and on resuming any session that's been
+idle since. The model's context recall works independently (pi reloads its
+own `--session-dir` history internally), but nothing replayed that history
+into the buffer the UI reads. Net effect: any session without a *new* message
+since the last restart/resume showed a blank transcript in the browser, even
+though its `.jsonl` file on disk had real turns — confirmed directly (7 real
+lines on disk for `concurrent-A`, 0 events returned by its `/events`
+endpoint) before writing the fix.
+
+Fixed in `pi-agent/supervisor/src/session-history.ts` (new file): parses
+pi's persisted `*.jsonl` message lines and seeds `live.events` with them
+(tagged `history_message`) whenever `spawnFor` creates a fresh entry, before
+any new live events arrive. Frontend (`app.js`) renders `history_message` as
+a static past-turn bubble, separate from the `message_start`/`message_update`
+state machine that only applies to pi's live stdout stream. Rebuilt,
+redeployed (`docker compose up -d --build pi-agent-supervisor`), re-verified
+directly: `concurrent-A`'s `/events` now returns its real "secret word is
+BANANA" / "BANANA" exchange from the original test. Committed as `d3d7b70`.
 
 ## Decision log
 - Built `pi-agent/supervisor/` (Node 22 + TypeScript, Express + `ws`):
