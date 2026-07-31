@@ -990,7 +990,7 @@ services:
       # First skill (M-044 follow-up, 2026-07-31): adding-tools-to-pi-web,
       # documents how a pi session itself can request/add a missing
       # command or extension.
-      - ./pi-web/skills:/data/pi-agent-config/skills:ro
+      - ../pi-web/skills:/data/pi-agent-config/skills:ro
     depends_on:
       - litellm
 
