@@ -125,6 +125,18 @@ allowed to do, and is that intentional or just default sprawl."
 <!-- signal: claude 2026-07-31T18:20Z — claiming, starting with root-requirement research -->
 <!-- signal: claude 2026-07-31T19:05Z — done, non-root switch verified end-to-end, command-permission gap documented as needing new code -->
 <!-- signal: claude 2026-07-31T19:25Z — added pi-core SKILL.md per Chris's correction, reachable from inside pi-web itself -->
+<!-- signal: claude 2026-07-31T19:35Z — skill mount initially silent-failed (wrong relative path), fixed and verified readable inside the container -->
+
+- One more real bug caught by testing, not assuming (fitting, given the
+  skill's own point #5): the first skill mount
+  (`./pi-web/skills:/data/pi-agent-config/skills:ro`) resolved to
+  `docker/pi-web/skills` - compose relative paths resolve against
+  `docker-compose.yml`'s own location, not the repo root - which doesn't
+  exist, so it silently mounted an empty directory. No error, no crash,
+  just a skill that would never have loaded. Fixed to `../pi-web/skills`
+  (same relative-path convention the `pi-web` service's own `build:
+  context: ../pi-web` already uses) and confirmed the file is actually
+  readable inside the container afterward.
 
 ## Decision log
 - Card created directly from a live root-cause finding (M-039's SSH fix),
