@@ -888,6 +888,15 @@ services:
       # Same fleet-convention global context file as pi-agent-supervisor -
       # see that service's comment above.
       - ./agentic-fleet-AGENTS.md:/data/pi-agent-config/AGENTS.md:ro
+      # pi-claude-bridge (M-039): Chris's own Claude Code OAuth credentials,
+      # copied to the host at this path already (raw file transfer, his own
+      # explicit confirmation, never printed/materialized along the way).
+      # Mounted read-only at a staging path rather than directly at
+      # /root/.claude/.credentials.json - same ownership mismatch already
+      # hit twice tonight (container runs as root; this file is owned by
+      # uid 1000 on the host). docker-entrypoint.sh copies it into
+      # /root/.claude with root ownership + chmod 600 at startup.
+      - /home/chris/secrets/claude-code-credentials.json:/run/claude-secrets/claude-code-credentials.json:ro
     depends_on:
       - litellm
 

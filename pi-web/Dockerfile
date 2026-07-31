@@ -27,6 +27,18 @@ RUN git config --system --add safe.directory '*'
 
 RUN npm install -g @agegr/pi-web@0.8.5
 
+# Claude CLI (M-039): pi-claude-bridge spawns this as a subprocess via the
+# Claude Agent SDK to provide a claude-bridge/* model provider + AskClaude
+# tool, using Chris's own Claude Pro subscription rather than metered API
+# billing. Pinned exact version, same reproducibility discipline as
+# pi-web itself above. Distributed as a wrapper package that fetches a
+# native per-platform binary via postinstall (confirmed from its own
+# cli-wrapper.cjs) - this box is linux-x64 (confirmed via `uname -m` +
+# `docker version`), so that postinstall runs at image build time here,
+# baking the real binary into the image layer rather than refetching it
+# at every container start.
+RUN npm install -g @anthropic-ai/claude-code@2.1.220
+
 ENV PI_CODING_AGENT_DIR=/data/pi-agent-config
 ENV PORT=30141
 
