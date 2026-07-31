@@ -240,3 +240,49 @@ service or exposes the credential anywhere new):
   6's second half) not yet done - blocked on the same `IS_SANDBOX` issue
   (AskClaude also shells out to the same `claude` subprocess), so there
   was nothing further to test there tonight.
+
+## Resolution (2026-07-31, follow-on session)
+`IS_SANDBOX=1` (Chris's go-ahead) fixed the original root/permissions
+blocker as predicted, but exposed a second, real one: the copied
+`~/.claude/.credentials.json` hit `401 OAuth access token has been
+revoked` specifically through the Agent SDK's own auth-profile-fetch
+step - confirmed via `CLAUDE_BRIDGE_DEBUG=1`'s detailed log, not
+guessed. Root-caused rigorously, not by trial and error:
+- Same exact credential file worked perfectly via the plain `claude`
+  CLI, both on the box and locally on Chris's Mac - ruled out "token is
+  actually dead."
+- Reproduced the identical failure **locally, in isolation**, using the
+  raw `@anthropic-ai/claude-agent-sdk` package directly (bypassing pi
+  and pi-claude-bridge entirely) with `$HOME` pointed at a bare
+  directory containing only `.credentials.json` - proved this is an
+  SDK-specific auth requirement, not anything box/container/root-
+  specific.
+- Copying the full `~/.claude.json` in too (Chris's hypothesis: maybe
+  something there, like `oauthAccount`, was the missing piece) did NOT
+  fix the isolated repro - ruled that out too.
+- Chris's Keychain hypothesis was directionally right (Claude Code's
+  own `--help` confirms normal auth does consult Keychain) but the
+  isolated test still ran as the same logged-in macOS user with full
+  Keychain access and still failed - so Keychain access alone isn't
+  the differentiator either. Exact missing ingredient never fully
+  identified - moot once the real fix was found.
+
+**Actual fix**: `claude setup-token` - Anthropic's own documented
+mechanism for exactly this (long-lived, subscription-backed OAuth
+token for headless/CI use, `CLAUDE_CODE_OAUTH_TOKEN` env var,
+`sk-ant-oat01-...` format). Simpler than the file-copy approach it
+replaced - no ownership-fix entrypoint logic needed at all, just one
+env var read from `docker/.env`. Note for the record: Chris pasted the
+generated token directly into chat once (asked not to, to avoid exactly
+this) - it's in this conversation's transcript. Not re-printed anywhere
+after that point; stored only in `secrets/claude-code-oauth-token.env`
+(gitignored) and `docker/.env` on the box from then on.
+
+**Verified for real, both halves of the card's original plan**:
+- Provider path: `claude-bridge/claude-sonnet-5` returned a real
+  `BRIDGE-OK` response to a direct prompt.
+- AskClaude delegation path: a `local-litellm`/`coder` session asked to
+  delegate via AskClaude got back a real `ASKCLAUDE-OK` from Claude.
+
+Old non-working credential files cleaned up (box's `secrets/` dir, local
+`/tmp` diagnostic copies).
