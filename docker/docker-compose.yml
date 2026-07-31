@@ -900,11 +900,50 @@ services:
     depends_on:
       - litellm
 
+  # pi-web (github.com/agegr/pi-web): community web UI for the pi coding
+  # agent, deployed alongside (not replacing) pi-agent-supervisor above so
+  # the two can be compared side by side on the exact same underlying
+  # engine (@earendil-works/pi-coding-agent 0.83.0, same as our own
+  # supervisor pins) and the same litellm-backed coder model. Port 30141
+  # is pi-web's own documented default, published directly (no
+  # 127.0.0.1: prefix) for LAN/phone reachability like the rest of this
+  # experiment's stack. No auth (PI_WEB_PASSWORD unset) - same explicit
+  # no-auth choice as everything else in this experiment; pi-web's own
+  # README explicitly warns this is a high-privilege agent surface, so
+  # this stays LAN-only, never exposed past this network boundary.
+  pi-web:
+    build:
+      context: ../pi-web
+    image: local-ai-machine/pi-web:latest
+    container_name: pi-web
+    restart: unless-stopped
+    labels:
+      com.local-ai-machine.always-up: "true"
+    network_mode: host
+    environment:
+      PI_CODING_AGENT_DIR: /data/pi-agent-config
+      PORT: "30141"
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+    volumes:
+      - pi-web-data:/data
+      # Chris's explicit instruction: mount the whole home directory (not
+      # individual project dirs like pi-agent-supervisor's /workspace/*)
+      # so pi-web's own project/session browser and git-worktree switcher
+      # can discover any project under it, matching how it actually
+      # expects to be used (it reads real session files' recorded cwd
+      # paths - mounting at the SAME absolute host path, not a /workspace
+      # remap, avoids any path mismatch between what a session file says
+      # and what's actually on disk in the container).
+      - /home/chris:/home/chris
+    depends_on:
+      - litellm
+
 volumes:
   turnstone_postgres_data:
   searxng-cache:
   litellm_postgres_data:
   pi-agent-data:
+  pi-web-data:
   vllm-qwen3.6-35b-a3b-cache:
   vllm-qwen3.5-4b-cache:
   vllm-qwen3.6-27b-cache:
