@@ -141,6 +141,20 @@ WHY: <one short sentence>`;
 		// Deliberately raw fetch, not complete() - see module docstring for
 		// the confirmed reason (complete() breaks the outer tool_call block
 		// mechanism when called from inside a tool_call handler).
+		//
+		// Explicit timeout (found via real testing, not theoretical): a
+		// window containing ambiguous entries (e.g. a bare `sleep 40` call)
+		// can push the judge's reasoning well past what JUDGE_MAX_TOKENS
+		// covers, taking 20+ real seconds and still not finishing
+		// (finish_reason "length" again, same failure mode as the
+		// insufficient-token-budget bug, just triggered by different window
+		// content). That's already handled safely on the content side (no
+        // text -> no verdict -> no block, fails open) - but the fetch()
+		// call itself had no ceiling, so a genuinely stuck/contended judge
+		// server could stall the whole tool_call indefinitely. 30s is
+		// generous over the ~7-8s typical case while still bounding the
+		// worst case.
+		const timeoutSignal = AbortSignal.timeout(30_000);
 		const res = await fetch(`${model.baseUrl}/chat/completions`, {
 			method: "POST",
 			headers: {
@@ -153,6 +167,7 @@ WHY: <one short sentence>`;
 				max_tokens: JUDGE_MAX_TOKENS,
 				messages: [{ role: "user", content: prompt }],
 			}),
+			signal: timeoutSignal,
 		});
 		if (!res.ok) {
 			console.error(`${LOG_PREFIX} judge call returned HTTP ${res.status}`);
