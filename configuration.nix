@@ -311,6 +311,34 @@ let
         "UD-Q4_K_M/Laguna-S-2.1-UD-Q4_K_M-00002-of-00003.gguf"
         "UD-Q4_K_M/Laguna-S-2.1-UD-Q4_K_M-00003-of-00003.gguf"
       ]; }
+    # DwarfStar (ds4) — NOT a generic llama.cpp GGUF, a standalone
+    # purpose-built inference engine (antirez, github.com/antirez/ds4) for
+    # DeepSeek V4 Flash (284B total / 13B active MoE). Has a dedicated,
+    # named Strix Halo ROCm build target (`make strix-halo`) per its own
+    # docs — a first-class target, not generic/unconfirmed ROCm support —
+    # and kyuz0 (same trusted author as this box's existing vLLM/llama.cpp
+    # toolbox images) maintains a matching gfx1151 toolbox
+    # (github.com/kyuz0/strix-halo-ds4-toolbox), so this isn't an
+    # unsupported DIY integration. Chris's explicit go-ahead 2026-07-31 to
+    # try it as a genuinely new experiment, not a proven-fast addition —
+    # no confirmed real tok/s number exists yet for this exact engine +
+    # model + Strix Halo combination.
+    #
+    # q2/IQ2XXS is the file this repo's own README explicitly recommends
+    # for ~128GB machines (the larger Q4KExperts variant is 153.3GB, too
+    # big for this box's 124GB pool by itself). Confirmed exact filenames
+    # + sizes directly via the HF API tree listing, not guessed: main
+    # weights 86,720,111,200 bytes (~80.76 GiB), MTP add-on
+    # 3,807,602,400 bytes (~3.55 GiB) — MTP is an optional paired file
+    # (`./download_model.sh mtp` in ds4's own tooling), not a separate
+    # model; included here since Chris wants to try MTP-accelerated
+    # decoding, but per ds4's own docs speculative decoding is "currently
+    # experimental and explicitly opt-in," not a mature/default feature
+    # the way the unsloth Qwen3.6 MTP GGUFs already proven on this box are.
+    { name = "ds4-deepseek-v4-flash-iq2xxs"; repo = "antirez/deepseek-v4-gguf"; hfFiles = [
+        "DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2.gguf"
+        "DeepSeek-V4-Flash-MTP-Q4K-Q8_0-F32.gguf"
+      ]; }
   ];
 in
 {
