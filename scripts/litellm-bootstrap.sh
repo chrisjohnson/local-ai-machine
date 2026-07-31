@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Seeds litellm's dynamic roles (coder, judge, vision) in its own database
+# Seeds litellm's dynamic roles (coder, judge, vision, orchestrator) in its own database
 # via the Model Management API (POST /model/new), if they don't already
 # exist there. Idempotent - safe to re-run any time (fresh deploy, DB
 # volume recreated, etc.).
@@ -37,7 +37,7 @@ ENV_FILE="${LITELLM_ENV_FILE:-$REPO_ROOT/docker/.env}"
 # Add new role names here when a new one is introduced (e.g. by an
 # M-0xx card) - this is the one place that needs a git commit when a
 # genuinely new role category is added; which model backs it never does.
-ROLES=(coder judge vision)
+ROLES=(coder judge vision orchestrator)
 
 STUB_MODEL="UNCONFIGURED-run-set-role.sh"
 STUB_API_BASE="http://unconfigured.invalid/v1"
