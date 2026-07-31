@@ -35,6 +35,17 @@ RUN apt-get update \
         ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
+# Container runs as root; mounted project dirs (docker-compose.yml
+# /workspace/*) are owned by the host uid (1000, chris) - git's ownership
+# check refuses to operate in them ("detected dubious ownership") until
+# told otherwise. Confirmed live: an agent hit this on first git command
+# in a real session, self-recovered by running `git config --global --add
+# safe.directory` itself - but that writes to root's $HOME/.gitconfig,
+# which isn't on a persisted volume, so every fresh session would
+# otherwise rediscover the same friction. --system writes /etc/gitconfig,
+# baked into the image, so it's already in place at container start.
+RUN git config --system --add safe.directory '*'
+
 # gh CLI (PR creation, issue comments - GH_TOKEN covers GitHub's API, which
 # doesn't accept SSH keys at all; SSH key covers git push/clone only).
 # Same latest-release install approach as Turnstone's Dockerfile, for the
