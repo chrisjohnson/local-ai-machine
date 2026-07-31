@@ -692,19 +692,38 @@ services:
       - turnstone-db
       - searxng
 
-  # web_search backend for turnstone. Config copied verbatim from
-  # Turnstone's own bundled reference deploy (deploy/searxng/settings.yml
-  # inside the image) — internal-network-only, no published port, no UI
-  # exposed to anyone. `search.formats: [html, json]` in that file is the
-  # one setting that actually matters: a stock SearxNG ships html-only and
-  # 403s on format=json, which is the most common new-deployment failure
+  # web_search backend for turnstone (and, per M-038, pi-web). Config copied
+  # verbatim from Turnstone's own bundled reference deploy
+  # (deploy/searxng/settings.yml inside the image) — internal-network-only,
+  # no UI exposed to anyone. `search.formats: [html, json]` in that file is
+  # the one setting that actually matters: a stock SearxNG ships html-only
+  # and 403s on format=json, which is the most common new-deployment failure
   # per Turnstone's own config comments.
+  #
+  # 127.0.0.1:8091 publish (M-038, 2026-07-31): Turnstone reaches this
+  # container by its bridge DNS name (`searxng`) since it's bridge-networked
+  # itself. pi-web is `network_mode: host` though, so it has no bridge DNS at
+  # all — same class of problem the litellm/prometheus host-networking fix
+  # solved earlier this session, but the mirror-image direction: there, the
+  # *caller* needed host networking to reach a 127.0.0.1-bound *target*; here
+  # the *caller* (pi-web) is already host-networked and the *target*
+  # (searxng) needs a loopback-bound publish so the host namespace can see
+  # it. Confirmed before adding this: the host can already reach searxng
+  # directly via its bridge IP (`docker network inspect docker_default`),
+  # but that IP isn't guaranteed stable across container recreation, so
+  # publishing to a fixed 127.0.0.1 port (matching every other backend
+  # service in this file) is the durable fix rather than hardcoding the
+  # bridge IP. 8091 chosen as the next free loopback port outside the
+  # 8000-8012 (vLLM) / 8100-8199 (llama.cpp) ranges and clear of 8090
+  # (turnstone-console).
   searxng:
     image: searxng/searxng:latest
     container_name: searxng
     restart: unless-stopped
     labels:
       com.local-ai-machine.always-up: "true"
+    ports:
+      - "127.0.0.1:8091:8080"
     volumes:
       - ./searxng:/etc/searxng:ro
       - searxng-cache:/var/cache/searxng
