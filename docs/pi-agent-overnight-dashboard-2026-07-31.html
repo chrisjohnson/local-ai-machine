@@ -94,17 +94,18 @@
   <tr><th>Ticket</th><th>What</th><th>Status</th></tr>
   <tr><td>M-037</td><td>Decommission pi-agent-supervisor</td><td><span class="badge done">Done</span></td></tr>
   <tr><td>M-038</td><td>Web search for pi</td><td><span class="badge done">Done</span></td></tr>
-  <tr><td>M-039</td><td>Claude bridge</td><td><span class="badge blocked">Needs your input</span></td></tr>
+  <tr><td>M-039</td><td>Claude bridge</td><td><span class="badge done">Done</span></td></tr>
   <tr><td>M-040</td><td>GLM-4.7-Flash judge model</td><td><span class="badge done">Done</span></td></tr>
   <tr><td>M-041</td><td>Watchdog/judge pattern design</td><td><span class="badge done">Done</span></td></tr>
   <tr><td>M-042</td><td>Repeat-detection first pass</td><td><span class="badge paused">Not started</span></td></tr>
   <tr><td>M-043</td><td>litellm roles → DB-only (terraform-style)</td><td><span class="badge done">Done</span></td></tr>
 </table>
-<p>Five of seven done and independently verified. M-039 is fully built and one setting away from working,
-but blocked again — this time on a revoked credential, not a design decision. M-042 hasn't been started
-(it depends on the pattern in M-041 and the model in M-040, both done, but the actual extension code
-hasn't been written yet). The overnight incident (unscoped deploy briefly killed the <code>coder</code>
-model) is now fully resolved and independently verified, not just claimed fixed.</p>
+<p>Six of seven done and independently verified. M-042 hasn't been started (it depends on the pattern in
+M-041 and the model in M-040, both done, but the actual extension code hasn't been written yet). The
+overnight incident (unscoped deploy briefly killed the <code>coder</code> model) is fully resolved. M-039's
+credential problem took real diagnostic work to run down — see that section below, it's a genuinely
+interesting root-cause story — but is now fully working, both the model-provider path and the delegation
+tool.</p>
 
 <h2 id="architecture">Architecture as of now</h2>
 <div class="arch-diagram">Your Mac / phone (LAN)
@@ -164,28 +165,46 @@ litellm's own Postgres DB ──▶ authoritative for coder/judge/vision's live
   redeploys) — found and corrected to the properly version-pinned form.</p>
 </div>
 
-<h2 id="m039">M-039 — Claude bridge <span class="badge blocked">Needs your input</span></h2>
+<h2 id="m039">M-039 — Claude bridge <span class="badge done">Done</span></h2>
 <div class="card">
-  <div class="card-head"><h3 style="margin:0">Fully built, blocked on a revoked credential</h3></div>
+  <div class="card-head"><h3 style="margin:0">Built, verified, both paths working</h3></div>
   <p><code>pi-claude-bridge</code> lets Claude models (your own Pro subscription, not metered API billing)
   be selected inside pi like any other model, plus an "AskClaude" delegation tool from other models.</p>
   <ul>
-    <li><code>claude</code> CLI pinned and installed in the <code>pi-web</code> image; your credentials
-    staged with correct root ownership; <code>pi-claude-bridge</code> installed and registered;
-    <code>claude-bridge.json</code> seeded with <code>provider.plan: "pro"</code> (never <code>"max"</code>).</li>
+    <li><code>claude</code> CLI pinned and installed in the <code>pi-web</code> image;
+    <code>pi-claude-bridge</code> installed and registered; <code>claude-bridge.json</code> seeded with
+    <code>provider.plan: "pro"</code> (never <code>"max"</code>).</li>
     <li><code>IS_SANDBOX=1</code> enabled after you were walked through the actual tradeoff (it doesn't
     grant new tool access beyond what this container already gives any selected model — it only lets the
     <code>claude</code> subprocess start at all as root). Deployed and confirmed: the original
     "<code>--dangerously-skip-permissions</code> cannot be used with root"</code> error is gone.</li>
+    <li>Auth is via <code>CLAUDE_CODE_OAUTH_TOKEN</code> (see resolution below) — no credential file
+    staged in the container at all anymore.</li>
   </ul>
-  <div class="needs-input">
-    <div class="label">Needs your input</div>
-    A real, different error now: <code>401 OAuth access token has been revoked</code>. Hash-compared the
-    copied credential file against what's currently on your Mac — they're byte-identical, so this isn't a
-    stale-copy problem I can fix by re-copying. Something revoked the token server-side since it was
-    copied (or possibly before). Please check whether Claude Code is still authenticated on your Mac right
-    now, and re-authenticate if not — once it's valid there, re-copying and retesting takes under a
-    minute.
+  <div class="resolved">
+    <div class="label">Now fully resolved</div>
+    <p style="margin-top:0">The <code>401 OAuth access token has been revoked</code> error turned out not
+    to be a stale or corrupted copy — hash-compared the credential file against your Mac's and they were
+    byte-identical. Root-caused it properly rather than just re-copying and hoping: wrote a minimal script
+    hitting the Claude Agent SDK directly, reproduced the exact same 401 <em>locally on your Mac</em> by
+    running it against a fresh, isolated <code>$HOME</code>. That proved it wasn't box-specific, container-
+    specific, or a dead token — the Agent SDK's own "fetch OAuth profile" step is stricter than the plain
+    <code>claude</code> CLI's auth path, and rejects a bare copied credentials file even though the
+    identical file authenticates fine through <code>claude -p</code>. Ruled out along the way: account-
+    level SDK restriction, <code>IS_SANDBOX=1</code> itself, a missing <code>oauthAccount</code> field in
+    <code>~/.claude.json</code>, and pure macOS Keychain access (the isolated local test ran as the same
+    logged-in user with full Keychain access and still failed).</p>
+    <p>The actual fix: <code>claude setup-token</code>, Anthropic's own documented mechanism for headless/
+    CI-safe, subscription-backed auth. Produces a 1-year <code>sk-ant-oat01-...</code> token, read via the
+    <code>CLAUDE_CODE_OAUTH_TOKEN</code> env var — no file staging or ownership-fixing needed at all,
+    simpler than the credential-copy approach it replaced. Set directly in
+    <code>docker/docker-compose.yml</code>'s <code>pi-web</code> environment; the old credential-file
+    volume mount was removed as obsolete.</p>
+    <p style="margin-bottom:0">Verified independently, both paths: the provider path (selecting
+    <code>claude-bridge/claude-sonnet-5</code> as the active model) returned a correct
+    <code>BRIDGE-OK</code> test response, and the AskClaude delegation tool (calling Claude from another
+    model) independently returned <code>ASKCLAUDE-OK</code>. Both real, live completions through your own
+    Claude Pro subscription, not metered API billing.</p>
   </div>
 </div>
 
@@ -279,14 +298,11 @@ litellm's own Postgres DB ──▶ authoritative for coder/judge/vision's live
 <h2 id="needed">Everything that still needs you</h2>
 <div class="card">
   <ol>
-    <li><strong>M-039 only:</strong> check whether Claude Code is still authenticated on your Mac, and
-    re-authenticate if the OAuth token has actually been revoked there too. Once valid, re-copying +
-    retesting the bridge is under a minute of work.</li>
-    <li><strong>M-042</strong> is unblocked and ready to pick up whenever you want the actual
-    repeat-detection guardrail built, using the design already written up in M-041.</li>
+    <li><strong>M-042</strong> is the only thing left — unblocked and ready to pick up whenever you want
+    the actual repeat-detection guardrail built, using the design already written up in M-041.</li>
   </ol>
-  <p class="muted">Everything else is done, deployed, and independently verified — no other decisions are
-  waiting on you right now.</p>
+  <p class="muted">Everything else, including M-039, is done, deployed, and independently verified — no
+  other decisions are waiting on you right now.</p>
 </div>
 
 <p class="muted" style="margin-top:48px; font-size:0.85em;">
