@@ -2,8 +2,8 @@
 id: M-038
 title: Wire up web search capability for pi (pi-web)
 initiative_id: null
-claimed_by: null
-claimed_at: null
+claimed_by: claude
+claimed_at: 2026-07-31T06:26:44Z
 blocks: null
 blocked_by: null
 status: null
