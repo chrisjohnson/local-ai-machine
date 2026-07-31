@@ -339,6 +339,24 @@ let
         "DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2.gguf"
         "DeepSeek-V4-Flash-MTP-Q4K-Q8_0-F32.gguf"
       ]; }
+    # Laguna XS 2.1 (poolside), released 2026-07-02 - a newer, smaller
+    # sibling of laguna-s-2.1-118b-q4km above, not the same model at a
+    # different quant. 33B total / 3B active MoE (the same fast
+    # active-param class as the current worker model and GLM, unlike
+    # laguna-s-2.1's 8B-active), 256K native context, KV cache quantized
+    # to FP8. Official first-party GGUF conversion from poolside
+    # themselves (not a community/experimental conversion racing a
+    # just-merged llama.cpp PR the way laguna-s-2.1's was) - meaningfully
+    # lower risk of hitting that model's EOS/EOG tokenizer bug, though
+    # unverified on this specific hardware until actually run. Added
+    # 2026-07-31 per Chris's direction, specifically sized to fit
+    # alongside ds4-deepseek-v4-flash-iq2xxs at 128k context (~36GB
+    # estimated headroom in the 124GB pool at that point) - confirmed
+    # exact file via the HF API tree listing, not guessed: single file,
+    # 20,274,300,032 bytes (~18.88 GiB).
+    { name = "laguna-xs-2.1-33b-q4km"; repo = "poolside/Laguna-XS-2.1-GGUF"; hfFiles = [
+        "Laguna-XS-2.1-Q4_K_M.gguf"
+      ]; }
   ];
 in
 {
