@@ -25,6 +25,11 @@ export interface SupervisorConfig {
   piProvider: string;
   piModel: string;
   piCodingAgentDir: string; // written once at startup (see bootstrap-models-json.ts)
+  // Working directory for spawned `pi` processes - deliberately separate
+  // from `record.sessionDir` (which is only ever --session-dir, pi's own
+  // state). Sessions cd between mounted project dirs themselves; the
+  // supervisor doesn't pick one per session (yet).
+  workDir: string;
 }
 
 interface LiveSession {
@@ -159,7 +164,7 @@ export class Supervisor {
       model: this.config.piModel,
       piCodingAgentDir: this.config.piCodingAgentDir,
       piBin: this.config.piBin,
-      cwd: record.sessionDir,
+      cwd: this.config.workDir,
     });
     live.rpc = rpc;
 

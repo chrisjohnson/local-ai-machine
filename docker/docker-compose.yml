@@ -861,6 +861,17 @@ services:
       PI_MODEL: coder
       LITELLM_BASE_URL: http://127.0.0.1:4000/v1
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      # Same secrets grant as turnstone-server, same reasoning (see that
+      # service's comments above): SSH key covers git push/clone, GH_TOKEN
+      # covers GitHub's API (gh CLI - PRs, issue comments), which doesn't
+      # accept SSH keys at all. Chris's explicit choice, full parity with
+      # Turnstone including its docker.sock exposure (see group_add below).
+      GH_TOKEN: ${GH_TOKEN}
+    # group_add "131" = the host's docker group GID (see turnstone-server's
+    # own comment above - same box, same GID, confirmed via `getent group
+    # docker`, not assumed to match by convention alone).
+    group_add:
+      - "131"
     volumes:
       - pi-agent-data:/data
       # Bind mount, not baked into the image (M-032): plain static
@@ -868,6 +879,20 @@ services:
       # build context (pi-agent/supervisor/) - mounting means frontend
       # edits land on a plain `docker compose restart`, no rebuild.
       - ../pi-agent/frontend/dist:/app/frontend:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Real project working dirs, mounted under PI_AGENT_WORKDIR
+      # (/workspace - see Dockerfile). Sessions cd between them via their
+      # own bash tool; the supervisor doesn't pick one per session (yet -
+      # Chris is layering that in via a pi skill/prompt separately).
+      # Same printer-dashboard host path Turnstone already uses.
+      - /home/chris/turnstone-workspace/printer-dashboard:/workspace/printer-dashboard
+      - /home/chris/local-ai-machine:/workspace/local-ai-machine
+      # Same SSH key/known_hosts/config Turnstone already uses. Container
+      # runs as root (no USER directive in the Dockerfile), hence
+      # /root/.ssh rather than turnstone's /home/turnstone/.ssh.
+      - /home/chris/.ssh/github_deploy_key:/root/.ssh/github_deploy_key:ro
+      - /home/chris/.ssh/known_hosts:/root/.ssh/known_hosts:ro
+      - /home/chris/.ssh/config:/root/.ssh/config:ro
     depends_on:
       - litellm
 

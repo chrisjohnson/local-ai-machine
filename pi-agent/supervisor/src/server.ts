@@ -28,6 +28,11 @@ const LITELLM_MASTER_KEY = process.env.LITELLM_MASTER_KEY ?? "";
 // segment needed (see bootstrap-models-json.ts for the bug this fixed).
 const PI_CODING_AGENT_DIR = process.env.PI_CODING_AGENT_DIR ?? join(DATA_DIR, "pi-agent-config");
 const STATIC_DIR = process.env.PI_AGENT_STATIC_DIR ?? join(__dirname, "..", "..", "frontend", "dist");
+// Working directory for spawned pi processes - separate from --session-dir
+// (always under DATA_DIR). docker-compose.yml bind-mounts real project
+// checkouts under here; sessions cd between them via the agent's own bash
+// tool, not via supervisor-side selection (yet).
+const PI_AGENT_WORKDIR = process.env.PI_AGENT_WORKDIR ?? "/workspace";
 
 async function main() {
   if (!LITELLM_MASTER_KEY) {
@@ -49,6 +54,7 @@ async function main() {
     piProvider: PI_PROVIDER,
     piModel: PI_MODEL,
     piCodingAgentDir: PI_CODING_AGENT_DIR,
+    workDir: PI_AGENT_WORKDIR,
   });
   supervisor.recoverAfterRestart();
 

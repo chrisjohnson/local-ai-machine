@@ -10,6 +10,35 @@ RUN npm run build
 FROM node:22-slim
 WORKDIR /app
 
+# Tooling agents actually need once they have real project working dirs +
+# creds mounted in (see docker-compose.yml pi-agent-supervisor service):
+# git + openssh-client for clone/push over the mounted SSH key, docker.io +
+# docker-cli for the mounted docker.sock (docker.io alone does NOT pull in
+# the `docker` CLI binary on Debian - it's a separate Recommends-only
+# package - confirmed the hard way in Turnstone's own Dockerfile, same
+# mistake not repeated here), curl/ca-certificates for the gh install step
+# below.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        git \
+        openssh-client \
+        docker.io \
+        docker-cli \
+        curl \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# gh CLI (PR creation, issue comments - GH_TOKEN covers GitHub's API, which
+# doesn't accept SSH keys at all; SSH key covers git push/clone only).
+# Same latest-release install approach as Turnstone's Dockerfile, for the
+# same reason: no reliably-current `gh` in Debian's apt repos.
+RUN GH_VERSION=$(curl -fsSL https://api.github.com/repos/cli/cli/releases/latest \
+        | grep '"tag_name"' | sed -E 's/.*"v([^"]+)".*/\1/') \
+    && curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz" -o /tmp/gh.tar.gz \
+    && tar -xzf /tmp/gh.tar.gz -C /tmp \
+    && mv "/tmp/gh_${GH_VERSION}_linux_amd64/bin/gh" /usr/local/bin/gh \
+    && rm -rf /tmp/gh.tar.gz "/tmp/gh_${GH_VERSION}_linux_amd64"
+
 # pi (the coding-agent CLI) is what the supervisor actually spawns as
 # --mode rpc child processes - installed globally in the image so the
 # exact version is pinned by this Dockerfile (reproducible), not by
@@ -35,6 +64,13 @@ ENV LITELLM_BASE_URL=http://127.0.0.1:4000/v1
 # this Dockerfile's own build context (pi-agent/supervisor/), and a bind
 # mount means frontend-only edits don't require an image rebuild.
 ENV PI_AGENT_STATIC_DIR=/app/frontend
+# Default cwd for spawned `pi --mode rpc` processes - deliberately NOT
+# the same as --session-dir (which stays under PI_AGENT_DATA_DIR for
+# supervisor bookkeeping regardless of this value). /workspace is where
+# docker-compose.yml bind-mounts real project checkouts; a session's
+# agent cd's between them itself (per a future skill/prompt layer Chris
+# is iterating on separately) rather than the supervisor picking one.
+ENV PI_AGENT_WORKDIR=/workspace
 
 VOLUME ["/data"]
 EXPOSE 3002
