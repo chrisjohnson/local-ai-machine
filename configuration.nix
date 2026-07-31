@@ -801,10 +801,15 @@ in
     # hwmon values, so node-exporter's built-in hwmon collector (which
     # already surfaces GPU temp/power/frequency for free, zero config
     # needed - confirmed directly via its /metrics output) doesn't pick
-    # them up. They live under /sys/class/drm/card0/device/ instead,
-    # amdgpu-driver-specific DRM sysfs attributes. Written as a
-    # node-exporter textfile-collector file instead of a dedicated
-    # exporter container - simplest option for values this cheap to read.
+    # them up. They live under /sys/class/drm/card*/device/ instead,
+    # amdgpu-driver-specific DRM sysfs attributes - the script itself
+    # finds the right card index at runtime rather than assuming one (see
+    # its own comment: caught live 2026-07-31, Grafana silently showing 0%
+    # GPU while the box was actually at ~99% busy, because a hardcoded
+    # card0 no longer matched this box's card1 and failed silently rather
+    # than erroring). Written as a node-exporter textfile-collector file
+    # instead of a dedicated exporter container - simplest option for
+    # values this cheap to read.
     amdgpu-metrics = {
       description = "Write amdgpu-specific metrics for node-exporter's textfile collector";
       serviceConfig.Type = "oneshot";

@@ -3,11 +3,30 @@
 # node-exporter textfile-collector file. These aren't standard hwmon
 # values, so node-exporter's built-in hwmon collector (which already
 # gives us GPU temp/power/frequency for free, no config needed) doesn't
-# pick them up - they live under /sys/class/drm/card0/device/ instead,
+# pick them up - they live under /sys/class/drm/card*/device/ instead,
 # amdgpu-driver-specific DRM sysfs attributes.
 set -euo pipefail
 
-CARD=/sys/class/drm/card0/device
+# Card index is NOT stable across boots/driver reloads - this box has been
+# observed as card0 previously and card1 later with no config change on
+# our end. A hardcoded card0 doesn't error when wrong; read_val's `cat
+# ... || echo 0` fallback below silently reports 0 for every metric
+# instead, which is exactly what happened here: Grafana showed 0% GPU
+# for who knows how long while rocm-smi/real workloads were fine. Find
+# whichever card actually has gpu_busy_percent instead of assuming an
+# index.
+CARD=""
+for candidate in /sys/class/drm/card*/device; do
+  if [ -f "$candidate/gpu_busy_percent" ]; then
+    CARD="$candidate"
+    break
+  fi
+done
+if [ -z "$CARD" ]; then
+  echo "amdgpu-metrics.sh: no /sys/class/drm/card*/device with gpu_busy_percent found - GPU metrics will not be updated" >&2
+  exit 1
+fi
+
 OUT=/var/lib/node-exporter-textfile/amdgpu.prom
 TMP="${OUT}.tmp"
 
