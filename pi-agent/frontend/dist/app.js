@@ -187,6 +187,16 @@ function handleEvent(event) {
   if (event.source === "supervisor") {
     if (data.type === "process_exit") {
       appendBubble("system", `process exited (code=${data.code}, signal=${data.signal})`);
+    } else if (data.type === "history_message") {
+      // Replayed from pi's own persisted session file (see
+      // session-history.ts) - a past turn from before this live buffer
+      // existed (supervisor restart, or resuming an idle session), not a
+      // live streaming event. Render as a plain static bubble; it never
+      // goes through the message_start/message_update state machine below,
+      // which only applies to pi's live RPC stdout.
+      const role = data.role === "user" ? "user" : data.role === "assistant" ? "assistant" : "system";
+      const text = extractText(data.content);
+      if (text) appendBubble(role, text);
     }
     return;
   }

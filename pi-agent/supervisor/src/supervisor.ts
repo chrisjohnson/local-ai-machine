@@ -14,6 +14,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { Manifest } from "./manifest.js";
 import { RpcProcessInstance, TERMINAL_EVENT_TYPE, type RpcMessage } from "./rpc-process.js";
+import { historyToBufferedEvents, loadHistoryMessages } from "./session-history.js";
 import type { BufferedEvent, SendMessageRequest, SessionRecord, SessionStatus } from "./types.js";
 
 const MAX_BUFFERED_EVENTS_PER_SESSION = 2000;
@@ -134,7 +135,19 @@ export class Supervisor {
   private spawnFor(record: SessionRecord): void {
     let live = this.live.get(record.id);
     if (!live) {
-      live = { record, events: [], nextSeq: 1, subscribers: new Set() };
+      // Fresh in-memory entry - either a brand-new session, or an existing
+      // one whose live state was wiped by a supervisor restart (the `live`
+      // map is memory-only; manifest.json survives, the event buffer
+      // doesn't). Seed from pi's own persisted *.jsonl transcript before
+      // any new events arrive, so the UI shows real prior history instead
+      // of appearing blank until the next message is sent.
+      const history = historyToBufferedEvents(loadHistoryMessages(record.sessionDir), 1);
+      live = {
+        record,
+        events: history,
+        nextSeq: history.length + 1,
+        subscribers: new Set(),
+      };
       this.live.set(record.id, live);
     }
     this.setStatus(record.id, "starting");
