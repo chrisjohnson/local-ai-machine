@@ -1,0 +1,10 @@
+{
+  "name": "semantic-repeat-guard",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Judge-model-based semantic repeat/loop detector for pi sessions - complements pi-loop-police's statistical detectors by catching repeats phrased with different vocabulary that Jaccard similarity can't see.",
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  }
+}

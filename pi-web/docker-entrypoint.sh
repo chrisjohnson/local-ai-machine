@@ -139,4 +139,76 @@ if (!alreadyPresent) {
 }
 "
 
+# --- pi-loop-police (M-042) ---
+#
+# Real, published, actively-maintained pi extension
+# (github.com/sebaxzero/pi-loop-police) found via community research
+# before building anything custom - Chris's explicit direction, don't
+# reinvent what already exists. Ten statistical loop/stagnation detectors
+# (Jaccard cross-turn similarity, tool-call-sequence hashing, redundant-
+# re-read tracking, etc.) - zero external model calls, zero added latency,
+# unlike the judge-based semantic-repeat-guard extension below which
+# exists specifically for the one gap this can't cover (repeats phrased
+# with different vocabulary). Shipped with default config - live-tunable
+# via `/loop-police set KEY=VAL` inside any session, no redeploy needed.
+# Same idempotent, version-pinned, additive-to-settings.json pattern as
+# the extensions above.
+LOOP_POLICE_VERSION="1.14.0"
+LOOP_POLICE_DIR="$PI_CODING_AGENT_DIR/npm/node_modules/pi-loop-police"
+LOOP_POLICE_INSTALLED_VERSION=""
+if [ -f "$LOOP_POLICE_DIR/package.json" ]; then
+  LOOP_POLICE_INSTALLED_VERSION=$(node -e "console.log(require('$LOOP_POLICE_DIR/package.json').version)" 2>/dev/null || echo "")
+fi
+if [ "$LOOP_POLICE_INSTALLED_VERSION" != "$LOOP_POLICE_VERSION" ]; then
+  mkdir -p "$PI_CODING_AGENT_DIR/npm"
+  if [ ! -f "$PI_CODING_AGENT_DIR/npm/package.json" ]; then
+    printf '{\n  "name": "pi-extensions",\n  "private": true\n}\n' > "$PI_CODING_AGENT_DIR/npm/package.json"
+  fi
+  npm install "pi-loop-police@$LOOP_POLICE_VERSION" --prefix "$PI_CODING_AGENT_DIR/npm" --legacy-peer-deps
+fi
+
+node -e "
+const fs = require('fs');
+const path = '$PI_CODING_AGENT_DIR/settings.json';
+let settings = {};
+try { settings = JSON.parse(fs.readFileSync(path, 'utf-8')); } catch {}
+settings.packages = settings.packages || [];
+const spec = 'npm:pi-loop-police@$LOOP_POLICE_VERSION';
+const alreadyPresent = settings.packages.some((p) => {
+  const s = typeof p === 'string' ? p : p.source;
+  return typeof s === 'string' && s.startsWith('npm:pi-loop-police');
+});
+if (!alreadyPresent) {
+  settings.packages.push(spec);
+  fs.writeFileSync(path, JSON.stringify(settings, null, 2) + '\n');
+}
+"
+
+# --- semantic-repeat-guard (M-042 follow-on) ---
+#
+# Local (non-npm) extension living in this repo at
+# pi-web/extensions/semantic-repeat-guard - already visible inside this
+# container at the same absolute path via the whole-home-dir mount
+# (docker-compose.yml's `/home/chris:/home/chris`), so no separate mount
+# or npm install is needed, just registration in settings.json's
+# `packages` array. Confirmed pi supports bare filesystem path sources
+# (not just npm:/git:), from package-manager.js's parseSource.
+SEMANTIC_REPEAT_GUARD_PATH="/home/chris/local-ai-machine/pi-web/extensions/semantic-repeat-guard"
+node -e "
+const fs = require('fs');
+const path = '$PI_CODING_AGENT_DIR/settings.json';
+let settings = {};
+try { settings = JSON.parse(fs.readFileSync(path, 'utf-8')); } catch {}
+settings.packages = settings.packages || [];
+const spec = '$SEMANTIC_REPEAT_GUARD_PATH';
+const alreadyPresent = settings.packages.some((p) => {
+  const s = typeof p === 'string' ? p : p.source;
+  return s === spec;
+});
+if (!alreadyPresent) {
+  settings.packages.push(spec);
+  fs.writeFileSync(path, JSON.stringify(settings, null, 2) + '\n');
+}
+"
+
 exec "$@"
