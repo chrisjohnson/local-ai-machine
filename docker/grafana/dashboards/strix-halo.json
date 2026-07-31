@@ -7,89 +7,130 @@
   "refresh": "15s",
   "panels": [
     {
-      "id": 1,
-      "title": "Requests Running",
-      "type": "timeseries",
-      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "id": 90,
+      "type": "text",
+      "title": "",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 2 },
+      "options": {
+        "mode": "markdown",
+        "content": "## Roles — at a glance\nSourced from litellm's own metrics (`requested_model` = the role alias you actually pick with `set-role.sh` — `coder`/`judge`/`vision` — regardless of which engine or port backs it right now). Start here; the engine-specific sections below are for when you need to dig into vLLM- or llama.cpp-only detail."
+      }
+    },
+    {
+      "id": 91,
+      "title": "Active model per role (recently used)",
+      "type": "table",
+      "description": "Only shows a role once it's actually received at least one request since litellm last restarted — this is activity-derived, not litellm's static config. If a role you know is set doesn't show up here, it just hasn't been called yet.",
+      "gridPos": { "x": 0, "y": 2, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "targets": [
-        { "expr": "vllm:num_requests_running", "legendFormat": "{{model_name}} running" }
+        {
+          "expr": "max by (requested_model, litellm_model_name, api_base) (litellm_deployment_total_requests_total)",
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        { "id": "organize", "options": {
+          "excludeByName": { "Time": true, "Value": true },
+          "renameByName": {
+            "requested_model": "Role",
+            "litellm_model_name": "Model",
+            "api_base": "Backend"
+          },
+          "indexByName": { "requested_model": 0, "litellm_model_name": 1, "api_base": 2 }
+        } }
       ]
     },
     {
-      "id": 2,
-      "title": "Requests Waiting",
-      "type": "timeseries",
-      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "id": 92,
+      "title": "Deployment health",
+      "type": "table",
+      "description": "All configured deployments (unlike the activity table, this is always complete regardless of recent traffic). State 0 = healthy; anything else means litellm has it in cooldown after failures.",
+      "gridPos": { "x": 12, "y": 2, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "targets": [
-        { "expr": "vllm:num_requests_waiting", "legendFormat": "{{model_name}} waiting" }
+        {
+          "expr": "litellm_deployment_state",
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        { "id": "organize", "options": {
+          "excludeByName": { "Time": true, "model_id": true, "api_provider": true },
+          "renameByName": {
+            "litellm_model_name": "Model",
+            "api_base": "Backend",
+            "Value": "State"
+          },
+          "indexByName": { "litellm_model_name": 0, "api_base": 1, "Value": 2 }
+        } }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "Healthy", "color": "green" } } },
+            { "type": "special", "options": { "match": "null+nan", "result": { "text": "Healthy", "color": "green" } } }
+          ],
+          "custom": { "cellOptions": { "type": "color-text" } },
+          "thresholds": { "steps": [ { "value": 0, "color": "green" }, { "value": 0.01, "color": "red" } ] }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "State" }, "properties": [
+            { "id": "custom.cellOptions", "value": { "type": "color-background" } },
+            { "id": "color", "value": { "mode": "thresholds" } }
+          ] }
+        ]
+      }
+    },
+    {
+      "id": 93,
+      "title": "Request rate by role",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 10, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "reqps" } },
+      "targets": [
+        { "expr": "sum by (requested_model) (rate(litellm_requests_metric_total[1m]))", "legendFormat": "{{requested_model}}" }
       ]
     },
     {
-      "id": 3,
-      "title": "Token Throughput (tok/s)",
+      "id": 94,
+      "title": "P95 latency by role",
       "type": "timeseries",
-      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "Prometheus" },
-      "targets": [
-        { "expr": "rate(vllm:prompt_tokens_total[1m])", "legendFormat": "{{model_name}} prompt" },
-        { "expr": "rate(vllm:generation_tokens_total[1m])", "legendFormat": "{{model_name}} generation" }
-      ]
-    },
-    {
-      "id": 4,
-      "title": "KV Cache Usage",
-      "type": "timeseries",
-      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "Prometheus" },
-      "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1, "min": 0 } },
-      "targets": [
-        { "expr": "vllm:kv_cache_usage_perc", "legendFormat": "{{model_name}}" }
-      ]
-    },
-    {
-      "id": 5,
-      "title": "Time to First Token (p50/p95/p99)",
-      "type": "timeseries",
-      "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
+      "gridPos": { "x": 8, "y": 10, "w": 8, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "fieldConfig": { "defaults": { "unit": "s" } },
       "targets": [
-        { "expr": "histogram_quantile(0.50, sum(rate(vllm:time_to_first_token_seconds_bucket[5m])) by (le, model_name))", "legendFormat": "{{model_name}} p50" },
-        { "expr": "histogram_quantile(0.95, sum(rate(vllm:time_to_first_token_seconds_bucket[5m])) by (le, model_name))", "legendFormat": "{{model_name}} p95" },
-        { "expr": "histogram_quantile(0.99, sum(rate(vllm:time_to_first_token_seconds_bucket[5m])) by (le, model_name))", "legendFormat": "{{model_name}} p99" }
+        { "expr": "histogram_quantile(0.95, sum(rate(litellm_llm_api_latency_metric_bucket[5m])) by (le, requested_model))", "legendFormat": "{{requested_model}} p95" }
       ]
     },
     {
-      "id": 6,
-      "title": "Inter-Token Latency (p50/p95/p99)",
+      "id": 95,
+      "title": "Output token throughput by role",
       "type": "timeseries",
-      "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
+      "gridPos": { "x": 16, "y": 10, "w": 8, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
-      "fieldConfig": { "defaults": { "unit": "s" } },
       "targets": [
-        { "expr": "histogram_quantile(0.50, sum(rate(vllm:inter_token_latency_seconds_bucket[5m])) by (le, model_name))", "legendFormat": "{{model_name}} p50" },
-        { "expr": "histogram_quantile(0.95, sum(rate(vllm:inter_token_latency_seconds_bucket[5m])) by (le, model_name))", "legendFormat": "{{model_name}} p95" },
-        { "expr": "histogram_quantile(0.99, sum(rate(vllm:inter_token_latency_seconds_bucket[5m])) by (le, model_name))", "legendFormat": "{{model_name}} p99" }
+        { "expr": "sum by (requested_model) (rate(litellm_output_tokens_metric_total[1m]))", "legendFormat": "{{requested_model}} tok/s" }
       ]
     },
     {
-      "id": 7,
-      "title": "Prefix Cache Hit Rate",
-      "type": "timeseries",
-      "gridPos": { "x": 0, "y": 24, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "Prometheus" },
-      "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1, "min": 0 } },
-      "targets": [
-        { "expr": "rate(vllm:prefix_cache_hits_total[5m]) / rate(vllm:prefix_cache_queries_total[5m])", "legendFormat": "{{model_name}}" }
-      ]
+      "id": 96,
+      "type": "text",
+      "title": "",
+      "gridPos": { "x": 0, "y": 18, "w": 24, "h": 2 },
+      "options": {
+        "mode": "markdown",
+        "content": "## Host & GPU\nAlways relevant regardless of which role/engine is active."
+      }
     },
     {
       "id": 8,
       "title": "Host CPU Usage",
       "type": "timeseries",
-      "gridPos": { "x": 12, "y": 24, "w": 12, "h": 8 },
+      "gridPos": { "x": 0, "y": 20, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "fieldConfig": { "defaults": { "unit": "percent", "max": 100, "min": 0 } },
       "targets": [
@@ -100,7 +141,7 @@
       "id": 9,
       "title": "Host Memory Usage",
       "type": "timeseries",
-      "gridPos": { "x": 0, "y": 32, "w": 12, "h": 8 },
+      "gridPos": { "x": 12, "y": 20, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "fieldConfig": { "defaults": { "unit": "percent", "max": 100, "min": 0 } },
       "targets": [
@@ -108,20 +149,10 @@
       ]
     },
     {
-      "id": 10,
-      "title": "Successful Requests (rate)",
-      "type": "timeseries",
-      "gridPos": { "x": 12, "y": 32, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "Prometheus" },
-      "targets": [
-        { "expr": "rate(vllm:request_success_total[1m])", "legendFormat": "{{model_name}}" }
-      ]
-    },
-    {
       "id": 11,
       "title": "GPU Activity (%)",
       "type": "timeseries",
-      "gridPos": { "x": 0, "y": 40, "w": 12, "h": 8 },
+      "gridPos": { "x": 0, "y": 28, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "fieldConfig": { "defaults": { "unit": "percent", "max": 100, "min": 0 } },
       "targets": [
@@ -132,7 +163,7 @@
       "id": 12,
       "title": "GPU Memory — GTT & VRAM",
       "type": "timeseries",
-      "gridPos": { "x": 12, "y": 40, "w": 12, "h": 8 },
+      "gridPos": { "x": 12, "y": 28, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "fieldConfig": { "defaults": { "unit": "bytes" } },
       "targets": [
@@ -146,7 +177,7 @@
       "id": 13,
       "title": "GPU Temperature & Power",
       "type": "timeseries",
-      "gridPos": { "x": 0, "y": 48, "w": 12, "h": 8 },
+      "gridPos": { "x": 0, "y": 36, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "targets": [
         { "expr": "node_hwmon_temp_celsius{chip=~\".*08_1_0000.*\"}", "legendFormat": "Temp (°C)" },
@@ -157,7 +188,7 @@
       "id": 14,
       "title": "GPU Clock Frequency (MHz)",
       "type": "timeseries",
-      "gridPos": { "x": 12, "y": 48, "w": 12, "h": 8 },
+      "gridPos": { "x": 12, "y": 36, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "targets": [
         { "expr": "node_hwmon_freq_freq_mhz{chip=~\".*08_1_0000.*\"}", "legendFormat": "GPU clock (sclk)" }
@@ -167,7 +198,7 @@
       "id": 15,
       "title": "Disk I/O",
       "type": "timeseries",
-      "gridPos": { "x": 0, "y": 56, "w": 12, "h": 8 },
+      "gridPos": { "x": 0, "y": 44, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "fieldConfig": { "defaults": { "unit": "Bps" } },
       "targets": [
@@ -179,7 +210,7 @@
       "id": 16,
       "title": "Disk Space Available",
       "type": "timeseries",
-      "gridPos": { "x": 12, "y": 56, "w": 12, "h": 8 },
+      "gridPos": { "x": 12, "y": 44, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "fieldConfig": { "defaults": { "unit": "bytes" } },
       "targets": [
@@ -190,7 +221,7 @@
       "id": 17,
       "title": "Network Throughput",
       "type": "timeseries",
-      "gridPos": { "x": 0, "y": 64, "w": 24, "h": 8 },
+      "gridPos": { "x": 0, "y": 52, "w": 24, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "fieldConfig": { "defaults": { "unit": "Bps" } },
       "targets": [
@@ -199,46 +230,153 @@
       ]
     },
     {
-      "id": 18,
-      "title": "llama.cpp Token Throughput (tok/s)",
-      "type": "timeseries",
-      "gridPos": { "x": 0, "y": 72, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "Prometheus" },
-      "targets": [
-        { "expr": "llamacpp:prompt_tokens_seconds", "legendFormat": "{{instance}} prompt" },
-        { "expr": "llamacpp:predicted_tokens_seconds", "legendFormat": "{{instance}} generation" }
+      "id": 30,
+      "type": "row",
+      "title": "vLLM engine detail (expand when your active role is vLLM-backed)",
+      "collapsed": true,
+      "gridPos": { "x": 0, "y": 60, "w": 24, "h": 1 },
+      "panels": [
+        {
+          "id": 1,
+          "title": "Requests Running",
+          "type": "timeseries",
+          "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "Prometheus" },
+          "targets": [
+            { "expr": "vllm:num_requests_running", "legendFormat": "{{model_name}} running" }
+          ]
+        },
+        {
+          "id": 2,
+          "title": "Requests Waiting",
+          "type": "timeseries",
+          "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "Prometheus" },
+          "targets": [
+            { "expr": "vllm:num_requests_waiting", "legendFormat": "{{model_name}} waiting" }
+          ]
+        },
+        {
+          "id": 3,
+          "title": "Token Throughput (tok/s)",
+          "type": "timeseries",
+          "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "Prometheus" },
+          "targets": [
+            { "expr": "rate(vllm:prompt_tokens_total[1m])", "legendFormat": "{{model_name}} prompt" },
+            { "expr": "rate(vllm:generation_tokens_total[1m])", "legendFormat": "{{model_name}} generation" }
+          ]
+        },
+        {
+          "id": 4,
+          "title": "KV Cache Usage",
+          "type": "timeseries",
+          "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "Prometheus" },
+          "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1, "min": 0 } },
+          "targets": [
+            { "expr": "vllm:kv_cache_usage_perc", "legendFormat": "{{model_name}}" }
+          ]
+        },
+        {
+          "id": 5,
+          "title": "Time to First Token (p50/p95/p99)",
+          "type": "timeseries",
+          "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "Prometheus" },
+          "fieldConfig": { "defaults": { "unit": "s" } },
+          "targets": [
+            { "expr": "histogram_quantile(0.50, sum(rate(vllm:time_to_first_token_seconds_bucket[5m])) by (le, model_name))", "legendFormat": "{{model_name}} p50" },
+            { "expr": "histogram_quantile(0.95, sum(rate(vllm:time_to_first_token_seconds_bucket[5m])) by (le, model_name))", "legendFormat": "{{model_name}} p95" },
+            { "expr": "histogram_quantile(0.99, sum(rate(vllm:time_to_first_token_seconds_bucket[5m])) by (le, model_name))", "legendFormat": "{{model_name}} p99" }
+          ]
+        },
+        {
+          "id": 6,
+          "title": "Inter-Token Latency (p50/p95/p99)",
+          "type": "timeseries",
+          "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "Prometheus" },
+          "fieldConfig": { "defaults": { "unit": "s" } },
+          "targets": [
+            { "expr": "histogram_quantile(0.50, sum(rate(vllm:inter_token_latency_seconds_bucket[5m])) by (le, model_name))", "legendFormat": "{{model_name}} p50" },
+            { "expr": "histogram_quantile(0.95, sum(rate(vllm:inter_token_latency_seconds_bucket[5m])) by (le, model_name))", "legendFormat": "{{model_name}} p95" },
+            { "expr": "histogram_quantile(0.99, sum(rate(vllm:inter_token_latency_seconds_bucket[5m])) by (le, model_name))", "legendFormat": "{{model_name}} p99" }
+          ]
+        },
+        {
+          "id": 7,
+          "title": "Prefix Cache Hit Rate",
+          "type": "timeseries",
+          "gridPos": { "x": 0, "y": 24, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "Prometheus" },
+          "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1, "min": 0 } },
+          "targets": [
+            { "expr": "rate(vllm:prefix_cache_hits_total[5m]) / rate(vllm:prefix_cache_queries_total[5m])", "legendFormat": "{{model_name}}" }
+          ]
+        },
+        {
+          "id": 10,
+          "title": "Successful Requests (rate)",
+          "type": "timeseries",
+          "gridPos": { "x": 12, "y": 24, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "Prometheus" },
+          "targets": [
+            { "expr": "rate(vllm:request_success_total[1m])", "legendFormat": "{{model_name}}" }
+          ]
+        }
       ]
     },
     {
-      "id": 19,
-      "title": "llama.cpp Requests Processing/Deferred",
-      "type": "timeseries",
-      "gridPos": { "x": 12, "y": 72, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "Prometheus" },
-      "targets": [
-        { "expr": "llamacpp:requests_processing", "legendFormat": "{{instance}} processing" },
-        { "expr": "llamacpp:requests_deferred", "legendFormat": "{{instance}} deferred" }
-      ]
-    },
-    {
-      "id": 20,
-      "title": "llama.cpp Decode Calls (rate) & Avg Batch Size",
-      "type": "timeseries",
-      "gridPos": { "x": 0, "y": 80, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "Prometheus" },
-      "targets": [
-        { "expr": "rate(llamacpp:n_decode_total[1m])", "legendFormat": "{{instance}} decode calls/s" },
-        { "expr": "llamacpp:n_busy_slots_per_decode", "legendFormat": "{{instance}} avg tokens/decode" }
-      ]
-    },
-    {
-      "id": 21,
-      "title": "llama.cpp Largest Observed Context (tokens)",
-      "type": "timeseries",
-      "gridPos": { "x": 12, "y": 80, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "Prometheus" },
-      "targets": [
-        { "expr": "llamacpp:n_tokens_max", "legendFormat": "{{instance}}" }
+      "id": 31,
+      "type": "row",
+      "title": "llama.cpp engine detail (expand when your active role is llama.cpp-backed)",
+      "collapsed": true,
+      "gridPos": { "x": 0, "y": 61, "w": 24, "h": 1 },
+      "panels": [
+        {
+          "id": 18,
+          "title": "llama.cpp Token Throughput (tok/s)",
+          "type": "timeseries",
+          "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "Prometheus" },
+          "targets": [
+            { "expr": "llamacpp:prompt_tokens_seconds", "legendFormat": "{{instance}} prompt" },
+            { "expr": "llamacpp:predicted_tokens_seconds", "legendFormat": "{{instance}} generation" }
+          ]
+        },
+        {
+          "id": 19,
+          "title": "llama.cpp Requests Processing/Deferred",
+          "type": "timeseries",
+          "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "Prometheus" },
+          "targets": [
+            { "expr": "llamacpp:requests_processing", "legendFormat": "{{instance}} processing" },
+            { "expr": "llamacpp:requests_deferred", "legendFormat": "{{instance}} deferred" }
+          ]
+        },
+        {
+          "id": 20,
+          "title": "llama.cpp Decode Calls (rate) & Avg Batch Size",
+          "type": "timeseries",
+          "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "Prometheus" },
+          "targets": [
+            { "expr": "rate(llamacpp:n_decode_total[1m])", "legendFormat": "{{instance}} decode calls/s" },
+            { "expr": "llamacpp:n_busy_slots_per_decode", "legendFormat": "{{instance}} avg tokens/decode" }
+          ]
+        },
+        {
+          "id": 21,
+          "title": "llama.cpp Largest Observed Context (tokens)",
+          "type": "timeseries",
+          "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "Prometheus" },
+          "targets": [
+            { "expr": "llamacpp:n_tokens_max", "legendFormat": "{{instance}}" }
+          ]
+        }
       ]
     }
   ]
