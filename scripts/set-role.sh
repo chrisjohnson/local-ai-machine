@@ -83,36 +83,81 @@ fi
 echo "Setting ${ROLE} -> ${MODEL_NAME} on port ${PORT}"
 
 # --- Update litellm config ---
-# Update the role's block (model_name: ${ROLE}) to point at the new model.
-# Two edits within the role's YAML block:
-#   1. model: openai/<old> → model: openai/${MODEL_NAME}
-#   2. api_base: http://... → api_base: http://127.0.0.1:${PORT}/v1
-# Uses temp file + mv for GNU/BSD sed portability.
+# Uses temp file + mv for GNU/BSD sed portability. Deliberately text-based
+# (sed/awk), not `yq -i` on the whole file: this config.yaml has extensive
+# header/inline comments (two-tier design rationale, per-service GPU notes)
+# that a full YAML-parse-and-reserialize risks reformatting or dropping -
+# minimal targeted line edits only.
 
-TMPFILE=$(mktemp)
-trap 'rm -f "$TMPFILE"' EXIT
-
-# Replace model: line within the role's block
-sed "/model_name: ${ROLE}/,/model_name:/{s|model: openai/.*|model: openai/${MODEL_NAME}|}" "$LITELLM_CONFIG" > "$TMPFILE"
-mv "$TMPFILE" "$LITELLM_CONFIG"
-
-# Replace or add api_base: line within the role's block
-if sed -n "/model_name: ${ROLE}/,/model_name:/p" "$LITELLM_CONFIG" |
-   grep -q 'api_base:'; then
+if grep -qE "^  - model_name: ${ROLE}\$" "$LITELLM_CONFIG"; then
+  # --- Role already exists: update its block in place ---
+  # Two edits within the role's YAML block:
+  #   1. model: openai/<old> → model: openai/${MODEL_NAME}
+  #   2. api_base: http://... → api_base: http://127.0.0.1:${PORT}/v1
   TMPFILE=$(mktemp)
-  sed "/model_name: ${ROLE}/,/model_name:/{s|api_base:.*|api_base: http://127.0.0.1:${PORT}/v1|}" "$LITELLM_CONFIG" > "$TMPFILE"
+  trap 'rm -f "$TMPFILE"' EXIT
+
+  sed "/model_name: ${ROLE}/,/model_name:/{s|model: openai/.*|model: openai/${MODEL_NAME}|}" "$LITELLM_CONFIG" > "$TMPFILE"
   mv "$TMPFILE" "$LITELLM_CONFIG"
-  echo "  Updated model + api_base for ${ROLE} -> ${MODEL_NAME} on :${PORT}"
+
+  if sed -n "/model_name: ${ROLE}/,/model_name:/p" "$LITELLM_CONFIG" |
+     grep -q 'api_base:'; then
+    TMPFILE=$(mktemp)
+    sed "/model_name: ${ROLE}/,/model_name:/{s|api_base:.*|api_base: http://127.0.0.1:${PORT}/v1|}" "$LITELLM_CONFIG" > "$TMPFILE"
+    mv "$TMPFILE" "$LITELLM_CONFIG"
+    echo "  Updated model + api_base for ${ROLE} -> ${MODEL_NAME} on :${PORT}"
+  else
+    # Existing block has no api_base line yet - insert one right after
+    # this block's `model:` line. (Bug fixed here: the previous version
+    # used a literal `role` string in the awk pattern instead of the
+    # shell variable's value, so this branch could never actually match
+    # anything - silently did nothing while still printing success.)
+    TMPFILE=$(mktemp)
+    awk -v role="$ROLE" -v port="$PORT" '
+      $0 ~ ("model_name: " role) { found=1 }
+      found && /model: openai/ { print; printf "      api_base: http://127.0.0.1:%s/v1\n", port; found=0; next }
+      { print }
+    ' "$LITELLM_CONFIG" > "$TMPFILE"
+    mv "$TMPFILE" "$LITELLM_CONFIG"
+    echo "  Updated model, added api_base for ${ROLE} -> ${MODEL_NAME} on :${PORT}"
+  fi
 else
-  # Insert api_base after model: line — use awk for portability
-  TMPFILE=$(mktemp)
-  awk -v role="$ROLE" -v port="$PORT" '
-    /model_name: role/ { found=1 }
-    found && /model: openai/ { print;   printf "        api_base: http://127.0.0.1:%s/v1\n", port; found=0; next }
-    { print }
-  ' "$LITELLM_CONFIG" > "$TMPFILE"
-  mv "$TMPFILE" "$LITELLM_CONFIG"
-  echo "  Updated model, added api_base for ${ROLE} -> ${MODEL_NAME} on :${PORT}"
+  # --- Role doesn't exist yet: create a new block ---
+  # The old version of this script silently did nothing in this case (a
+  # sed range on a non-matching address is a no-op, but the script still
+  # printed "Done" regardless) - confirmed live, 2026-07-31, creating the
+  # `vision` role for the first time. Insert a new block, anchored on the
+  # "Static roles" comment marker if present (keeps new roles grouped
+  # with the other set-role.sh-managed ones), or appended at the end of
+  # model_list otherwise. Error loudly if neither anchor can be found,
+  # rather than silently doing nothing again.
+  if grep -qF '# Static roles — not managed by set-role.sh.' "$LITELLM_CONFIG"; then
+    TMPFILE=$(mktemp)
+    awk -v role="$ROLE" -v model="$MODEL_NAME" -v port="$PORT" '
+      /# Static roles — not managed by set-role\.sh\./ && !inserted {
+        printf "  - model_name: %s\n    litellm_params:\n      model: openai/%s\n      api_base: http://127.0.0.1:%s/v1\n      api_key: \"none\"\n\n", role, model, port
+        inserted=1
+      }
+      { print }
+    ' "$LITELLM_CONFIG" > "$TMPFILE"
+    mv "$TMPFILE" "$LITELLM_CONFIG"
+    echo "  Created new role ${ROLE} -> ${MODEL_NAME} on :${PORT} (before the Static roles marker)"
+  elif grep -qE '^model_list:' "$LITELLM_CONFIG"; then
+    printf '\n  - model_name: %s\n    litellm_params:\n      model: openai/%s\n      api_base: http://127.0.0.1:%s/v1\n      api_key: "none"\n' \
+      "$ROLE" "$MODEL_NAME" "$PORT" >> "$LITELLM_CONFIG"
+    echo "  Created new role ${ROLE} -> ${MODEL_NAME} on :${PORT} (appended to end of file)"
+  else
+    echo "ERROR: Could not find an anchor to insert a new role block (no 'Static roles' marker, no 'model_list:' key found in ${LITELLM_CONFIG})" >&2
+    echo "Add the ${ROLE} block manually." >&2
+    exit 1
+  fi
+fi
+
+# Verify the edit actually landed - the whole point of this fix is to
+# never again print success when nothing changed.
+if ! grep -qE "^  - model_name: ${ROLE}\$" "$LITELLM_CONFIG"; then
+  echo "ERROR: ${ROLE} block still not found in ${LITELLM_CONFIG} after edit - something went wrong, not restarting litellm." >&2
+  exit 1
 fi
 
 # --- Restart litellm ---
