@@ -928,6 +928,10 @@ services:
       # tightening lever if wanted later: askClaude.allowFullMode: false
       # in claude-bridge.json, independent of this setting.
       IS_SANDBOX: "1"
+      # @juicesharp/rpiv-web-tools (M-038): reuses the SearxNG instance
+      # already deployed for Turnstone rather than a second search stack.
+      WEB_SEARCH_PROVIDER: searxng
+      SEARXNG_URL: http://127.0.0.1:8091
     volumes:
       - pi-web-data:/data
       # Chris's explicit instruction: mount the whole home directory (not

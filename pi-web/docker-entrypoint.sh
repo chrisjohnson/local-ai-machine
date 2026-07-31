@@ -114,4 +114,45 @@ if [ ! -f "$PI_CODING_AGENT_DIR/claude-bridge.json" ]; then
   printf '{\n  "provider": {\n    "plan": "pro"\n  }\n}\n' > "$PI_CODING_AGENT_DIR/claude-bridge.json"
 fi
 
+# --- @juicesharp/rpiv-web-tools (M-038) ---
+#
+# Web search for pi, backed by the SearxNG instance already running for
+# Turnstone (docker/docker-compose.yml `searxng` service, published on
+# 127.0.0.1:8091). Chris's explicit, named confirmation of this exact
+# package (2026-07-31) - general-purpose text search is all that's
+# needed, no video/PDF backends, over the heavier pi-web-access; see
+# M-038's decision log for the full comparison. Same idempotent,
+# version-pinned, additive-to-settings.json pattern as pi-claude-bridge
+# above.
+RPIV_VERSION="2.2.0"
+RPIV_DIR="$PI_CODING_AGENT_DIR/npm/node_modules/@juicesharp/rpiv-web-tools"
+RPIV_INSTALLED_VERSION=""
+if [ -f "$RPIV_DIR/package.json" ]; then
+  RPIV_INSTALLED_VERSION=$(node -e "console.log(require('$RPIV_DIR/package.json').version)" 2>/dev/null || echo "")
+fi
+if [ "$RPIV_INSTALLED_VERSION" != "$RPIV_VERSION" ]; then
+  mkdir -p "$PI_CODING_AGENT_DIR/npm"
+  if [ ! -f "$PI_CODING_AGENT_DIR/npm/package.json" ]; then
+    printf '{\n  "name": "pi-extensions",\n  "private": true\n}\n' > "$PI_CODING_AGENT_DIR/npm/package.json"
+  fi
+  npm install "@juicesharp/rpiv-web-tools@$RPIV_VERSION" --prefix "$PI_CODING_AGENT_DIR/npm" --legacy-peer-deps
+fi
+
+node -e "
+const fs = require('fs');
+const path = '$PI_CODING_AGENT_DIR/settings.json';
+let settings = {};
+try { settings = JSON.parse(fs.readFileSync(path, 'utf-8')); } catch {}
+settings.packages = settings.packages || [];
+const spec = 'npm:@juicesharp/rpiv-web-tools@$RPIV_VERSION';
+const alreadyPresent = settings.packages.some((p) => {
+  const s = typeof p === 'string' ? p : p.source;
+  return typeof s === 'string' && s.startsWith('npm:@juicesharp/rpiv-web-tools');
+});
+if (!alreadyPresent) {
+  settings.packages.push(spec);
+  fs.writeFileSync(path, JSON.stringify(settings, null, 2) + '\n');
+}
+"
+
 exec "$@"
