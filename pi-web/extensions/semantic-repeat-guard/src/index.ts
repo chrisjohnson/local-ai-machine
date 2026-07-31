@@ -196,11 +196,8 @@ export default function (pi: ExtensionAPI) {
 		}
 
 		console.log(`${LOG_PREFIX} session ${sessionId.slice(0, 8)}: judge verdict - ${verdict.explanation.replace(/\n/g, " | ")}`);
-
-		if (verdict.isRepeat) {
-			const reason = `This looks like a semantic repeat of an earlier tool call in this session (same underlying goal, different wording/arguments). ${verdict.explanation} Stop and either report what you already know, or explain why this call is genuinely different before retrying.`;
-			return { block: true, reason };
-		}
+		console.log(`${LOG_PREFIX} DIAGNOSTIC forcing block regardless of verdict`);
+		return { block: true, reason: "DIAGNOSTIC: forced block after real judge call" };
 	});
 
 	pi.on("session_shutdown", async (_event, ctx: ExtensionContext) => {
