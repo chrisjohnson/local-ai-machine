@@ -139,7 +139,7 @@ WHY: <one short sentence>`;
 				headers: auth.headers,
 				env: auth.env,
 				maxTokens: JUDGE_MAX_TOKENS,
-				signal: ctx.signal,
+				signal: undefined, // DIAGNOSTIC: test whether reusing ctx.signal breaks the outer dispatch's block check
 				cacheRetention: "none",
 			},
 		);
