@@ -15,13 +15,26 @@
  *   this session in pi-claude-bridge's own `sharedSession` variable
  *   (silently shared across every concurrent pi-web session in the same
  *   container process).
- * - Every CHECK_EVERY_N_CALLS-th tool call, only if that burst happened
- *   within BURST_WINDOW_MS, ask the judge model whether the newest call
- *   looks like a semantic repeat of an earlier one in the window. Gated
- *   like this because the judge call has real latency against a single-
- *   slot server - checking every call would both slow down normal work
- *   and risk queueing contention with other judge traffic (litellm's
- *   `judge` role).
+ * - Every CHECK_EVERY_N_CALLS-th tool call, ask the judge model whether
+ *   the newest call looks like a semantic repeat of an earlier one in the
+ *   window. Gated on call count (not wall-clock time) because the judge
+ *   call has real latency against a single-slot server - checking every
+ *   call would both slow down normal work and risk queueing contention
+ *   with other judge traffic (litellm's `judge` role).
+ *
+ *   Originally also gated on a 2-minute "burst window" (skip the check
+ *   if the last 5 calls were too spread out in time) - removed after real
+ *   testing showed it was actively harmful: a live test with completely
+ *   normal pacing (~33s between calls, not even unusually slow) had the
+ *   5-call window span 163s, over the 2-minute threshold, and the check
+ *   was silently skipped entirely - missing the exact repeat it exists to
+ *   catch. The gate's original justification (avoid false-firing on
+ *   genuinely unrelated spread-out work) turned out to be redundant: the
+ *   judge already does this correctly on its own (confirmed twice in real
+ *   testing - it answered "no" when the newest call in a window spanning
+ *   many minutes of unrelated prior activity genuinely wasn't a repeat).
+ *   A time-based gate only added a way to silently disable detection for
+ *   any realistically-paced session, which is most of them.
  *
  *   Found via real live testing (not assumed): this judge model
  *   (GLM-4.7-Flash) does chain-of-thought reasoning before answering.
@@ -69,7 +82,6 @@ const JUDGE_PROVIDER = "local-litellm";
 const JUDGE_MODEL_ID = "judge";
 const WINDOW_SIZE = 8;
 const CHECK_EVERY_N_CALLS = 5;
-const BURST_WINDOW_MS = 2 * 60 * 1000;
 // Reasoning models need real headroom to finish their chain-of-thought
 // before they ever reach the actual answer - measured live, 200 tokens
 // was nowhere near enough (truncated mid-reasoning, empty content field,
@@ -208,15 +220,6 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 		if (state.window.length < CHECK_EVERY_N_CALLS) {
-			return;
-		}
-
-		const recentBurst = state.window.slice(-CHECK_EVERY_N_CALLS);
-		const spanMs = recentBurst[recentBurst.length - 1].timestamp - recentBurst[0].timestamp;
-		if (spanMs > BURST_WINDOW_MS) {
-			console.log(
-				`${LOG_PREFIX} session ${sessionId.slice(0, 8)}: skipping check, last ${CHECK_EVERY_N_CALLS} calls span ${Math.round(spanMs / 1000)}s (over ${BURST_WINDOW_MS / 1000}s burst threshold)`,
-			);
 			return;
 		}
 
