@@ -35,14 +35,16 @@ don't stand up a second search stack (Chris confirmed this explicitly).
    backend services, following the same reasoning as the earlier
    Prometheus/litellm bridge-vs-host fix this session already worked
    through once - don't re-learn that the hard way).
-3. [ ] Install/configure as a pi extension in `pi-web`'s shared extensions
-   location (see M-036's AGENTS.md bind-mount for the pattern - same
-   `PI_CODING_AGENT_DIR/extensions/` idea, add it if not already wired).
-   BLOCKED pending human confirmation of the package choice - see decision
-   log and handoff notes.
-4. [ ] Verify for real: a live pi-web session asked something requiring
-   current information it can't already know, confirm it actually
-   searched (not hallucinated) and cited something real.
+3. [x] Installed via `pi-web/docker-entrypoint.sh`, same idempotent
+   version-pinned pattern as pi-claude-bridge. Chris's explicit named
+   confirmation of `@juicesharp/rpiv-web-tools` obtained before this
+   landed. Deployed scoped to `pi-web` only.
+4. [x] Verified for real, and rigorously: first test's answer (npm
+   package version) was too plausibly-guessable to trust alone, so
+   re-tested asking for the live top Hacker News headline - got back a
+   real, specific, timely result ("DeepSeek V4 Flash 0731...", 321
+   points, 154 comments) that could not plausibly come from training
+   data. Web search is genuinely working, not hallucinated.
 
 ## Signals
 <!-- signal: claude 2026-07-31T06:26:44Z — claiming -->
@@ -148,3 +150,13 @@ don't stand up a second search stack (Chris confirmed this explicitly).
     since `WEB_SEARCH_PROVIDER`/`SEARXNG_URL` env vars aren't set yet,
     so `web_search` would just throw "not set" if invoked) and saves a
     re-download step once confirmed.
+
+## Post-confirmation completion (2026-07-31)
+Chris confirmed `rpiv-web-tools` explicitly by name. Installed via
+`docker-entrypoint.sh` (idempotent, version-pinned 2.2.0), env vars added
+to `docker-compose.yml`, deployed scoped to `pi-web`. Found and fixed a
+small leftover inconsistency from the earlier manual proof-of-concept
+install: `settings.json`'s `packages` array had an unpinned
+`"npm:@juicesharp/rpiv-web-tools"` entry (no version) from that manual
+test, surviving in the `pi-web-data` volume across the redeploy - fixed
+to the pinned form directly. Verified end-to-end per plan item 4.
