@@ -137,7 +137,18 @@ export class Supervisor {
     return record;
   }
 
-  private spawnFor(record: SessionRecord): void {
+  // `forceFreshSessionFile`: skip `record.piSessionFile` even if one is
+  // recorded, so pi starts a brand-new session file in the same
+  // `sessionDir` instead of trying to resume the old one. Used by
+  // `sendMessage`'s recovery path when resuming the existing file itself
+  // fails (e.g. a file left corrupt/truncated by a hard supervisor kill
+  // mid-write - confirmed live: pi rejected one with "Session file is not
+  // a valid pi session" and every subsequent resume attempt repeated the
+  // exact same failure forever, since it kept pointing at the same broken
+  // file). Not exposed as a general spawnFor param beyond this call site -
+  // a session's own record still tracks whatever piSessionFile pi reports
+  // back after a successful spawn either way.
+  private spawnFor(record: SessionRecord, options?: { forceFreshSessionFile?: boolean }): void {
     let live = this.live.get(record.id);
     if (!live) {
       // Fresh in-memory entry - either a brand-new session, or an existing
@@ -159,7 +170,7 @@ export class Supervisor {
 
     const rpc = new RpcProcessInstance({
       sessionDir: record.sessionDir,
-      sessionFile: record.piSessionFile,
+      sessionFile: options?.forceFreshSessionFile ? undefined : record.piSessionFile,
       provider: this.config.piProvider,
       model: this.config.piModel,
       piCodingAgentDir: this.config.piCodingAgentDir,
@@ -220,13 +231,45 @@ export class Supervisor {
     const live = this.live.get(sessionId);
     if (!live || !live.rpc || live.rpc.exited) {
       // Session exists in the manifest but has no live process (e.g. after
-      // a supervisor restart) - resume it transparently so sending a
-      // message to a "stopped" session just works rather than erroring.
+      // a supervisor restart, or a crash) - resume it transparently so
+      // sending a message to a stopped/crashed session just works rather
+      // than erroring: this IS the mechanism, not a fallback for it.
       await this.resumeSession(sessionId);
     }
+    const result = await this.trySendToLive(sessionId, body);
+    if (result.accepted || !result.retryWithFreshSession) return result;
+
+    // The resumed process itself failed before responding - most likely
+    // its session file is unloadable (confirmed live: a file left
+    // truncated/corrupt by a hard supervisor kill mid-write made pi
+    // reject it with "not a valid pi session", and every retry against
+    // that same file failed identically forever). One recovery attempt:
+    // start a brand-new session file in the same sessionDir (dropping the
+    // broken --session reference) so the record keeps working going
+    // forward, rather than being permanently stuck. The old transcript
+    // isn't recovered by this - it's already unreadable - but the session
+    // itself is, and the user's message actually gets delivered.
+    const record = this.manifest.get(sessionId);
+    if (!record) return result;
+    this.pushEvent(sessionId, "supervisor", {
+      type: "session_recovered",
+      reason: result.error ?? "resume failed",
+    });
+    this.spawnFor(record, { forceFreshSessionFile: true });
+    return this.trySendToLive(sessionId, body);
+  }
+
+  // Sends to whatever's currently live for `sessionId`. `retryWithFreshSession`
+  // is set when the failure looks like a dead/never-responded process (vs.
+  // e.g. pi itself rejecting the prompt) - the caller decides whether to
+  // retry from there.
+  private async trySendToLive(
+    sessionId: string,
+    body: SendMessageRequest,
+  ): Promise<{ accepted: boolean; error?: string; retryWithFreshSession?: boolean }> {
     const current = this.live.get(sessionId);
     if (!current?.rpc) {
-      return { accepted: false, error: "session has no live pi process" };
+      return { accepted: false, error: "session has no live pi process", retryWithFreshSession: true };
     }
     const command: Record<string, unknown> = { type: "prompt", message: body.message };
     if (body.streamingBehavior) command.streamingBehavior = body.streamingBehavior;
@@ -234,7 +277,11 @@ export class Supervisor {
       const response = await current.rpc.request(command);
       return { accepted: response.success, error: response.success ? undefined : response.error };
     } catch (error) {
-      return { accepted: false, error: error instanceof Error ? error.message : String(error) };
+      return {
+        accepted: false,
+        error: error instanceof Error ? error.message : String(error),
+        retryWithFreshSession: current.rpc.exited,
+      };
     }
   }
 

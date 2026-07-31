@@ -187,6 +187,12 @@ function handleEvent(event) {
   if (event.source === "supervisor") {
     if (data.type === "process_exit") {
       appendBubble("system", `process exited (code=${data.code}, signal=${data.signal})`);
+    } else if (data.type === "session_recovered") {
+      // The resumed process failed again (see supervisor.ts sendMessage) -
+      // the supervisor started a fresh session file in the same directory
+      // rather than staying stuck. The old transcript above this point is
+      // real; anything after is the new file.
+      appendBubble("system", `session recovered after resume failure (${data.reason}) - starting fresh from here`);
     } else if (data.type === "history_message") {
       // Replayed from pi's own persisted session file (see
       // session-history.ts) - a past turn from before this live buffer
