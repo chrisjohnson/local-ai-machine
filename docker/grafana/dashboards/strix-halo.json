@@ -85,21 +85,34 @@
       }
     },
     {
+      "id": 97,
+      "title": "Requests in flight",
+      "type": "stat",
+      "description": "Truly live (not windowed/averaged like the panels to the right) - litellm's own current in-flight count. Not broken out by role: litellm doesn't label this one. Use this to confirm \"is anything happening right now\" the same instant GPU% moves; use the panels to the right to see which role it was.",
+      "gridPos": { "x": 0, "y": 10, "w": 6, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        { "expr": "litellm_in_flight_requests", "instant": true, "legendFormat": "in flight" }
+      ],
+      "fieldConfig": { "defaults": { "thresholds": { "steps": [ { "value": 0, "color": "green" }, { "value": 1, "color": "blue" } ] } } }
+    },
+    {
       "id": 93,
-      "title": "Request rate by role",
+      "title": "Request rate by role (5m avg)",
       "type": "timeseries",
-      "gridPos": { "x": 0, "y": 10, "w": 8, "h": 8 },
+      "description": "Windowed average (rate over 5m), not instant - a single quick request shows up as a small, brief bump rather than a sharp spike. That's expected: rate() smooths bursts over its window by design. Use the \"Requests in flight\" panel for truly instant confirmation.",
+      "gridPos": { "x": 6, "y": 10, "w": 6, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "fieldConfig": { "defaults": { "unit": "reqps" } },
       "targets": [
-        { "expr": "sum by (requested_model) (rate(litellm_requests_metric_total[1m]))", "legendFormat": "{{requested_model}}" }
+        { "expr": "sum by (requested_model) (rate(litellm_requests_metric_total[5m]))", "legendFormat": "{{requested_model}}" }
       ]
     },
     {
       "id": 94,
       "title": "P95 latency by role",
       "type": "timeseries",
-      "gridPos": { "x": 8, "y": 10, "w": 8, "h": 8 },
+      "gridPos": { "x": 12, "y": 10, "w": 6, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "fieldConfig": { "defaults": { "unit": "s" } },
       "targets": [
@@ -108,12 +121,14 @@
     },
     {
       "id": 95,
-      "title": "Output token throughput by role",
+      "title": "Token throughput by role (prompt vs output)",
       "type": "timeseries",
-      "gridPos": { "x": 16, "y": 10, "w": 8, "h": 8 },
+      "description": "Same 5m-window caveat as request rate - a short exchange shows as a small bump, not a sharp spike.",
+      "gridPos": { "x": 18, "y": 10, "w": 6, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "targets": [
-        { "expr": "sum by (requested_model) (rate(litellm_output_tokens_metric_total[1m]))", "legendFormat": "{{requested_model}} tok/s" }
+        { "expr": "sum by (requested_model) (rate(litellm_input_tokens_metric_total[5m]))", "legendFormat": "{{requested_model}} prompt" },
+        { "expr": "sum by (requested_model) (rate(litellm_output_tokens_metric_total[5m]))", "legendFormat": "{{requested_model}} output" }
       ]
     },
     {
