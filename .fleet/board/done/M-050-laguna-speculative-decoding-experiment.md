@@ -160,7 +160,90 @@ M-047 still in progress.)
 
 ## Signals
 <!-- signal: claude 2026-08-01T10:00Z — claiming, blocked on M-047/M-049 finishing first -->
+<!-- signal: claude 2026-08-01T21:15Z — done, option 2 tested and negative -->
 
 ## Decision log
 
+- 2026-08-01: Explicit scope from Chris for this session's work: option 1 (poolside's
+  `laguna` fork, custom Vulkan build) is OFF LIMITS per a safety review denial —
+  "building and running arbitrary external compiled code" without his sign-off. Did
+  NOT clone, build, or attempt option 1 in any form. Worked option 2 only (Laguna XS
+  2.1 as a classic `-md` draft on stock/trusted llama.cpp), per explicit instruction.
+- 2026-08-01: Preflight confirmed clean before touching anything — `docker ps` showed
+  no exclusive model-serving containers running, litellm `/model/info` showed all
+  roles pointing at their existing targets (`coder`->qwen3.6-35b-a3b-mtp,
+  `worker`->qwen3.5-122b-a10b-mtp, `judge`/`orchestrator`->glm-4.7-flash-judge,
+  `vision`->qwen2.5-vl-7b-instruct, `laguna-s-2.1-118b-q4km` role pointing at its own
+  service), no active downloads, no other benchmark/harness activity in flight. Host
+  repo checkout had stale uncommitted drift (a redundant copy of the already-merged
+  M-049 compose-service diff) — discarded it and fast-forward-pulled to sync with
+  origin/main (11 commits behind) before doing any new work, per this repo's
+  convention of working directly against the repo-root checkout.
+- 2026-08-01: **Tokenizer/vocab compatibility between Laguna-S-2.1 and Laguna-XS-2.1
+  is CONFIRMED COMPATIBLE** — the card's central open question. `-md
+  <laguna-xs-2.1.gguf>` never produced a vocab-mismatch rejection across 5 separate
+  container runs at 4 different context sizes. This rules out the "clean fast no"
+  the card anticipated for a tokenizer mismatch.
+- 2026-08-01: Real finding not anticipated by the card: `-md <draft.gguf>` alone does
+  NOT engage speculative decoding on this llama.cpp build (`0e4a03622 (10154)`) —
+  `--spec-type draft-simple` must also be passed explicitly (`--spec-type` defaults
+  to `none`). First attempt silently loaded the draft model into memory without ever
+  using it (no `draft_n`/`draft_n_accepted` in response timings, no "draft
+  acceptance" log lines) — caught by comparing a misconfigured run against a
+  correctly-configured one side by side.
+- 2026-08-01: The base flags specified in the task (matching Laguna-S-2.1's existing
+  compose service exactly, including `-c 131072`) do NOT fit in memory with a second
+  full model added. At `-c 131072`: both GGUFs loaded, then KV-cache buffer
+  allocation failed (`radv/amdgpu: Failed to allocate a buffer`, repeated 3x, domain
+  4 / 1GiB size) and the container was SIGKILLed (exit 137) — consistent with OOM,
+  not a driver bug. At `-c 16384`: harder crash (`vk::DeviceLostError`, exit 139)
+  during load, before either KV cache finished initializing. This host's
+  `mem_info_vram_total` sysfs value is a fixed 1GiB (Strix Halo APU convention; bulk
+  GPU memory instead comes from the 126GB GTT pool carved from system RAM) — the
+  plain single-model Laguna-S-2.1 baseline fits fine in this scheme; a second full
+  (non-tiny) 33B/3B-active model plus its own KV cache does not, at full context.
+  No `--ctx-size-draft`-equivalent flag exists on this build to give the draft model
+  a smaller independent context (checked via `--help`) — `-c` is shared. `-c 8192`
+  was the highest value that loaded and served requests stably in this session (not
+  exhaustively bisected between 8192 and 16384).
+- 2026-08-01: **Real benchmark result, negative.** Even at the reduced `-c 8192`
+  context (already a real handicap vs. the 131072-context plain baseline), measured
+  generation throughput was 16.9-28.1 tok/s across 4 fresh (non-cache-hit) prompts —
+  short-context avg ~23.3 tok/s (samples: 28.12, 20.85, 21.02), long-context
+  (7090 prompt tokens) 16.88 tok/s. **This is below the existing plain Laguna-S-2.1
+  baseline of 30.0 tok/s at every point measured**, despite draft acceptance rates
+  of 40.8-72.4% (not low in absolute terms). Laguna XS 2.1 (33B total/3B active) is
+  too heavy a draft model to pay for itself against this target — consistent with
+  the card's own stated risk going in ("XS is a full capable model, not a
+  purpose-built tiny draft"). Full methodology, fingerprints, and per-sample data
+  recorded in `catalog/builds/laguna-s-2.1-118b-q4km--llamacpp-vulkan-radv-speculative-xs.yaml`
+  (status: `TESTED_NOT_VIABLE`).
+- 2026-08-01: **Why moving to done**: Option 2 (the only in-scope option for this
+  session) was tested hands-on end to end — tokenizer compatibility confirmed real,
+  speculative decoding confirmed actually engaged (not just configured), real
+  generation throughput measured at multiple context depths, and the result is an
+  honest, well-evidenced negative (slower than the plain baseline despite decent
+  draft acceptance, plus a hard memory ceiling forcing a much smaller context than
+  the baseline uses). Recommend continuing to serve Laguna-S-2.1 plain. Options 1
+  and 3 remain untried (1 is explicitly off-limits without further sign-off from
+  Chris; 3 was never reached and per its own description in this card is a
+  long-shot). Host confirmed restored to pre-task state: all 5 ad-hoc test
+  containers stopped and removed, no stray containers, litellm role targets
+  unchanged, no compose/docker-compose.yml changes made (this build was
+  intentionally kept out of compose entirely, given the negative result).
+
 ## Handoff notes
+
+- If option 1 (poolside's `laguna` fork + real DFlash draft, Vulkan build) is ever
+  authorized, it remains untried and is the most promising remaining candidate per
+  this card's own prior research — see the Context section above.
+- Option 3 (Laguna-S-2.1-DFlash checkpoint as a plain classic `-md` draft) remains
+  untried; per its own description, unlikely to work given its custom
+  `DFlashLagunaForCausalLM` architecture, but was never actually attempted.
+- If a genuinely tiny (not full-capability) draft model for Laguna-S-2.1 ever
+  becomes available (e.g. a purpose-built <1B draft, or an MTP-tensor build like
+  the qwen3.6-35b-a3b/qwen3.5-122b-a10b sibling builds in this repo), classic
+  speculative decoding is worth revisiting — the mechanism itself works correctly
+  on this box/image (`--spec-type draft-simple`, confirmed both models' tokenizers
+  compatible); it's specifically Laguna-XS-2.1's weight/size class that made it a
+  net loss here, not the speculative-decoding mechanism itself.

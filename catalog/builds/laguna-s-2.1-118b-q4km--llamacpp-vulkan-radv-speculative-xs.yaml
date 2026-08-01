@@ -1,0 +1,185 @@
+id: laguna-s-2.1-118b-q4km--llamacpp-vulkan-radv-speculative-xs
+model:
+  display_name: Laguna-S-2.1 (UD-Q4_K_M GGUF) + Laguna-XS-2.1 (Q4_K_M GGUF) classic speculative decoding
+  family: poolside
+  hf_repo: unsloth/Laguna-S-2.1-GGUF
+  hf_revision: null
+  architecture: moe
+  total_params: 118e9
+  active_params: 8e9
+  num_experts: null
+  quantization: GGUF-Q4_K_M (UD, imatrix-calibrated) target + GGUF-Q4_K_M draft
+  context_length_native: null
+  modality: text
+  files:
+  - UD-Q4_K_M/Laguna-S-2.1-UD-Q4_K_M-00001-of-00003.gguf
+  - UD-Q4_K_M/Laguna-S-2.1-UD-Q4_K_M-00002-of-00003.gguf
+  - UD-Q4_K_M/Laguna-S-2.1-UD-Q4_K_M-00003-of-00003.gguf
+  local_path: /var/lib/ai-models/laguna-s-2.1-118b-q4km
+  size_on_disk_gb: 68.1
+versions:
+- version: v1
+  compose_service_id: null
+  engine_ref: llamacpp-vulkan-radv-server-v1
+  role: 'M-050 experiment only, NOT deployed as a standing compose service. Laguna-XS-2.1
+    (33B/3B-active, already on disk from M-049) tested as a classic llama.cpp `-md`/
+    `--spec-type draft-simple` speculative-decoding draft model for Laguna-S-2.1
+    (118B/8B-active). Net result: NEGATIVE -- tokenizer/vocab is compatible (both
+    models loaded and speculative decoding actively engaged, confirmed via real
+    draft-acceptance telemetry), but real generation throughput came in BELOW the
+    existing 30.0 tok/s plain Laguna-S-2.1 baseline at every context length tested.
+    Do not deploy; kept as a documented negative result per M-050''s own framing
+    (a clean "no" is exactly as valuable as a "yes" here).'
+  notes: 'Ad-hoc `docker run` only (manual container, not added to docker-compose.yml)
+    -- this was purely an experiment to answer M-050''s option-2 question, not a
+    candidate for standing deployment given the negative result below. Same trusted
+    image every other llama.cpp service in this repo uses
+    (docker.io/kyuz0/amd-strix-halo-toolboxes:vulkan-radv), stock llama.cpp, no
+    custom build, no new download -- both Laguna-S-2.1 and Laguna-XS-2.1 were
+    already fully present on disk before this experiment (/var/lib/ai-models/laguna-s-2.1-118b-q4km,
+    /var/lib/ai-models/laguna-xs-2.1-33b-q4km).
+
+    Tokenizer/vocab compatibility: CONFIRMED COMPATIBLE, contrary to the card''s
+    open question. Both target and draft loaded cleanly with `-md
+    /models-xs/Laguna-XS-2.1-Q4_K_M.gguf` and no rejection at any point -- no
+    vocab-mismatch error of any kind was ever raised by llama.cpp across five
+    separate container runs at four different context sizes. This rules out the
+    "clean fast no" outcome the card anticipated for a tokenizer mismatch; the
+    real result is a throughput/memory-budget negative instead.
+
+    First real finding, not in the card: passing `-md <draft.gguf>` ALONE is not
+    sufficient to actually engage speculative decoding on this llama.cpp build
+    (`b10154 / 0e4a03622 (10154)`, matches the image build used for the plain
+    Laguna-S-2.1 and Laguna-XS-2.1 catalog entries exactly) -- `--spec-type
+    draft-simple` must also be passed explicitly (`--spec-type` defaults to
+    `none`). Without it, the draft model loads into memory (consuming VRAM/GTT
+    for nothing) but is never invoked -- no `draft_n`/`draft_n_accepted` fields
+    appear in `/v1/chat/completions` response timings, and no `draft acceptance
+    = ...` log lines appear at all. Confirmed both misconfigured (no
+    `--spec-type`) and correctly configured (`--spec-type draft-simple`) runs
+    side by side to isolate this.
+
+    Second real finding: this box cannot fit BOTH models'' full KV caches at the
+    baseline''s `-c 131072` context. At `-c 131072` (exactly matching the plain
+    Laguna-S-2.1 compose service''s flags, per the card''s own base-flags
+    instruction), both GGUFs loaded fully into memory but then failed at KV-cache
+    buffer allocation (`radv/amdgpu: Failed to allocate a buffer: size:
+    1073741824 bytes ... domains: 4`, repeated 3x) and the container was
+    SIGKILLed (exit 137) shortly after -- consistent with an OOM condition, not a
+    driver crash. At `-c 16384` the failure became a harder crash
+    (`vk::DeviceLostError`/`ErrorDeviceLost`, exit 139) during model load itself,
+    before either model finished initializing its KV cache. This build''s host is
+    a Strix Halo APU (unified memory) -- `mem_info_vram_total` reports a fixed
+    1GiB dedicated-VRAM heap (`/sys/class/drm/card1/device/mem_info_vram_total`
+    = 1073741824 bytes, matching the exact failed-allocation size above) with the
+    much larger 126GB GTT pool (carved from the 124GB system RAM pool via
+    `amdgpu.gttsize=126976` in configuration.nix) used for the bulk of GPU
+    allocations -- the plain single-model Laguna-S-2.1 baseline fits fine within
+    this scheme at `-c 131072`; adding a second full model (33B/3B-active, not a
+    purpose-built tiny draft) plus its own KV cache pushed some specific
+    allocation class over the small fixed-VRAM-heap ceiling. No
+    `--ctx-size-draft`/`-cd`-equivalent flag exists on this llama-server build to
+    give the draft model a smaller independent context (checked via `--help`) --
+    the `-c` value applies to both models. Reduced context was the only lever
+    available; `-c 8192` was the highest tested value that loaded and ran stably
+    across all benchmark requests (confirmed via `n_ctx_slot = 8192` in server
+    logs and multiple successful generations, including one long-context request
+    using the full slot).
+
+    Real benchmark (see benchmark_runs below): even at the smaller `-c 8192`
+    context -- itself already a real handicap relative to the 131072-context
+    plain baseline, since a fair comparison would ideally use the same context
+    size -- generation throughput measured 16.9-28.1 tok/s across four fresh
+    (non-cache-hit) prompts, averaging ~21.7 tok/s across the three short-prompt
+    samples and dropping further to 16.9 tok/s at ~7.1k prompt tokens. This is
+    BELOW the existing plain Laguna-S-2.1 baseline of 30.0 tok/s at every point
+    measured, despite draft acceptance rates of 40.8-72.4% (not low in absolute
+    terms -- more than half of drafted tokens were typically accepted). The
+    draft model (33B total / 3B active) is simply too heavy to draft fast enough
+    to pay for itself against this specific target -- consistent with the
+    card''s own stated risk ("XS is a full capable model, not a purpose-built
+    tiny draft"). This matches the qualitative shape of the community-reported
+    DFlash numbers cited in the card''s Context section (~19-26 tok/s,
+    also below this box''s own 30.0 tok/s plain baseline) even though the
+    mechanism here (classic autoregressive `-md` draft-simple) is unrelated to
+    DFlash''s diffusion-based approach.
+
+    Conclusion: Laguna-XS-2.1 is not a viable classic speculative-decoding draft
+    for Laguna-S-2.1 on this box. Tokenizer compatibility is real and confirmed,
+    but that alone isn''t sufficient -- the draft model is too slow/heavy
+    relative to the verification savings it provides, and the combined
+    memory footprint additionally forces a much smaller context window than the
+    proven single-model baseline. Recommend continuing to serve Laguna-S-2.1
+    plain (existing 30.0 tok/s baseline, full 131072 context) rather than paired
+    with this draft model. All test containers were ad-hoc `docker run`
+    instances, stopped and removed after the benchmark; no compose service or
+    standing deployment was created for this build.
+
+    '
+  status: TESTED_NOT_VIABLE
+  created: '2026-08-01'
+  last_verified: '2026-08-01'
+  benchmark_runs:
+  - timestamp: '2026-08-01T21:10:00Z'
+    benchmark_id: llamacpp-server-live-timing-v1
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: f7819a82eaed800b87e671b27848b262be71d585
+      host_gpu_driver: Mesa 25.3.6
+      concurrent_load:
+        downloads_paused: null
+        vllm_co_resident_or_stopped: no_exclusive_model_services_running_at_time_of_run
+      host_metrics_window:
+        start: '2026-08-01T21:03:00Z'
+        end: '2026-08-01T21:12:00Z'
+      image_digest: '[kyuz0/amd-strix-halo-toolboxes@sha256:1648e4195154aef5dc975253d962e1e1b8358af26b0e54b4faf89a156131c320]'
+      engine_version: 0e4a03622 (10154)
+    result:
+      note: Measured via real /v1/chat/completions request timings against a manually
+        run (non-compose) llama-server container, invocation `llama-server -m
+        <laguna-s-2.1 shard 1 of 3> -md <laguna-xs-2.1 gguf> --spec-type
+        draft-simple -ngl 999 -fa 1 --reasoning-format deepseek -n 512 -c 8192`
+        (context reduced from the plain baseline's 131072 -- see notes above for
+        why). Not the standalone llama-bench pp512/tg128 harness (no --spec-type
+        support in llama-bench, same caveat as the MTP-family builds in this
+        catalog).
+      context_used_tokens: 8192
+      baseline_comparison_note: Plain Laguna-S-2.1 baseline (laguna-s-2.1-118b-q4km--llamacpp-vulkan-radv,
+        v1) measured 30.0 tok/s generation at the FULL 131072 context -- this
+        speculative build could not run at that context at all (OOM/device-lost,
+        see notes) and still underperforms even at the reduced 8192 context used
+        here.
+      short_context_tg_tok_s_samples:
+      - 28.12
+      - 20.85
+      - 21.02
+      short_context_tg_tok_s_avg: 23.33
+      short_context_draft_acceptance_samples:
+      - accepted: 273
+        generated: 377
+        rate: 0.72414
+      - accepted: 231
+        generated: 501
+        rate: 0.46108
+      - accepted: 236
+        generated: 489
+        rate: 0.48262
+      long_context_prompt_tokens: 7090
+      long_context_pp_tok_s: 267.72
+      long_context_tg_tok_s: 16.88
+      long_context_draft_acceptance:
+        accepted: 49
+        generated: 120
+        rate: 0.40833
+      raw_stdout_file: null
+    known_issues_encountered:
+    - 'OOM at full baseline context (-c 131072): radv/amdgpu buffer allocation
+      failure x3 (1073741824 bytes, domains 4), container SIGKILLed (exit 137).'
+    - 'Hard crash at -c 16384: vk::DeviceLostError / ErrorDeviceLost during
+      model/KV-cache init (exit 139), before serving any requests.'
+    - '-c 8192 was the highest tested context that loaded and served requests
+      stably; not exhaustively bisected between 8192 and 16384.'
+    - 'Passing -md without --spec-type draft-simple silently loads the draft
+      model into memory without ever engaging speculative decoding -- confirmed
+      via absence of draft_n/draft_n_accepted timing fields and absence of
+      "draft acceptance" log lines in that configuration.'
