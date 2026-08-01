@@ -1,0 +1,81 @@
+id: laguna-xs-2.1-33b-q4km--llamacpp-vulkan-radv
+model:
+  display_name: Laguna-XS-2.1 (Q4_K_M GGUF)
+  family: poolside
+  hf_repo: poolside/Laguna-XS-2.1-GGUF
+  hf_revision: null
+  architecture: moe
+  total_params: 33.44e9
+  active_params: 3e9
+  num_experts: null
+  quantization: GGUF-Q4_K_M
+  context_length_native: 262144
+  modality: text
+  files:
+  - Laguna-XS-2.1-Q4_K_M.gguf
+  local_path: /var/lib/ai-models/laguna-xs-2.1-33b-q4km
+  size_on_disk_gb: 18.88
+versions:
+- version: v1
+  compose_service_id: laguna-xs-2.1-33b-q4km--llamacpp-vulkan-radv-v1
+  engine_ref: llamacpp-vulkan-radv-v1
+  role: 33B/3B-active MoE, poolside's smaller Laguna XS 2.1 sibling — same active-param class as
+    qwen3.6-35b-a3b-mtp, real production coder candidate
+  notes: 'poolside/Laguna-XS-2.1-GGUF, single-file Q4_K_M GGUF (20,274,300,032 bytes / ~18.88 GiB).
+    33B total / 3B active MoE, 256K native context (n_ctx_train = 262144, confirmed via /v1/models
+    metadata: n_params = 33,442,617,088). Official first-party GGUF from poolside (unlike Laguna-S-2.1''s
+    community/just-merged-PR support) — no known MTP-tensor build exists for this model, so this
+    service uses plain llama-server with no --spec-type flags. -c 262144 matches the model''s native
+    context (not 131072 like the Qwen builds). No docker-compose service or catalog entry existed
+    prior to this card (M-049); this is the first deploy + real benchmark.
+
+    Startup logs DID show the same `special_eos_id is not in special_eog_ids` tokenizer warning
+    (plus a companion `special_eot_id is not in special_eog_ids`) that was a confirmed real bug
+    on the older Laguna-S-2.1 sibling (causing runaway generation there, mitigated with a hard
+    `-n 8192` cap + `--reasoning-format deepseek`). Verified from real logs, not assumed clean just
+    because this model has more mature first-party support. However, unlike Laguna-S-2.1, this
+    model does NOT exhibit runaway generation in practice: three separate real generation requests
+    (short factual question, a "list primes" prompt that ran to an explicit 800-token max_tokens
+    cap, and a ~5.2k-token long-context summarization prompt) all completed with `finish_reason:
+    stop` well short of large token budgets (a 4096-token-budget trial stopped naturally at 121
+    tokens; the 2000-token-budget coding prompt stopped naturally at 1074 tokens), producing coherent,
+    on-topic, correct output every time. The warning appears to be a cosmetic tokenizer-config mismatch
+    for this build, not a generation-loop bug — no `-n` cap or `--reasoning-format` override was
+    added to the compose service as a result; this conclusion is based on real observed behavior
+    across multiple prompts/token budgets, not on the model''s official-support status alone.
+
+    Real measured speed (llama-server request timings, not the standalone llama-bench pp512/tg128
+    harness — matches the same benchmark_id caveat as the qwen3.6-35b-a3b MTP build, since MTP/plain
+    comparison here is also via live server timings):
+    - Short prompt (~50-tokens system+question, well within a single KV block): generation 90.5-92.4
+      tok/s across 3 samples (avg ~91.2 tok/s, peak 92.4 tok/s), prompt processing 142-308 tok/s
+      (varies with cache-hit state).
+    - Long-context prompt (5236 prompt tokens, ~4100-word filler + a summarization question):
+      generation 80.7 tok/s, prompt processing 974 tok/s (5236 tokens in ~5.4s). Generation degraded
+      ~13% from short-context peak (92.4 -> 80.7 tok/s) at ~5.2k context — holds up well, not a cliff.
+
+    Comparison to the two most relevant prior benchmarks on this box:
+    - vs. Laguna-S-2.1 (118B total / ~8B active, same poolside family, already benchmarked at 30.0
+      tok/s generation / 80.4 tok/s prompt processing): Laguna-XS-2.1 generates ~3x faster (91.2 vs
+      30.0 tok/s avg short-context) — expected, since it has roughly 1/3 the total params and a
+      smaller expert size, and importantly does NOT need the S-2.1 EOS-bug workarounds in practice.
+    - vs. qwen3.6-35b-a3b-mtp (the proven-fast 3B-active baseline, ~62.9 tok/s avg / 76.9 tok/s peak
+      per that build''s own record, using MTP speculative decoding): Laguna-XS-2.1 (no MTP) is
+      *faster* than the Qwen MTP build''s own measured numbers at both short and long context (91.2
+      vs 62.9 tok/s avg, 92.4 vs 76.9 tok/s peak) despite having no speculative-decoding assist —
+      notable given they''re both nominally ~3B-active MoE. Worth flagging for a future card: an
+      apples-to-apples comparison against the *plain* (non-MTP) qwen3.6-35b-a3b build, and/or a
+      speculative check of whether Laguna-XS-2.1 could gain further from an MTP-tensor build if one
+      ever appears upstream, since it currently beats Qwen''s MTP-assisted numbers without any
+      assist of its own.
+
+    Attended benchmark run performed 2026-08-01: model loaded cleanly in ~16s, container healthy,
+    no crash, no errors in logs across all test requests, memory stable at ~35GB used system-wide
+    with the ~19GB model resident. Container stopped after the benchmark per standard procedure
+    (not part of the standing/always-on serving set at time of this build).
+
+    '
+  status: WORKING
+  created: '2026-08-01'
+  last_verified: '2026-08-01'
+  benchmark_runs: []

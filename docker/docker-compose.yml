@@ -555,6 +555,36 @@ services:
     ports:
       - "127.0.0.1:8102:8080"
 
+  # M-049: Laguna XS 2.1, poolside's smaller MoE sibling of Laguna-S-2.1 —
+  # 33B total / 3B active (same active-param class as qwen3.6-35b-a3b-mtp
+  # above), 256K native context, official first-party GGUF from poolside
+  # (unlike Laguna-S-2.1's community/just-merged-PR support). No MTP build
+  # exists for this model, so no --spec-type flags here. -c 262144 matches
+  # this model's native 256K context (not 131072 like the Qwen builds).
+  laguna-xs-2.1-33b-q4km--llamacpp-vulkan-radv-v1:
+    image: docker.io/kyuz0/amd-strix-halo-toolboxes:vulkan-radv
+    container_name: laguna-xs-2.1-33b-q4km--llamacpp-vulkan-radv-v1
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - "26"
+      - "303"
+    volumes:
+      - /var/lib/ai-models/laguna-xs-2.1-33b-q4km:/models:ro
+    command: >
+      llama-server
+      -m /models/Laguna-XS-2.1-Q4_K_M.gguf
+      -ngl 999
+      -fa 1
+      -c 262144
+      --host 0.0.0.0
+      --port 8080
+      -a laguna-xs-2.1-33b-q4km
+      --metrics
+    ports:
+      - "127.0.0.1:8106:8080"
+
   # GLM-4.7-Flash judge model (M-040). Chris asked for "the strongest"
   # judge candidate — per the catalog's own benchmark record, that's this
   # llama.cpp/GGUF build, not the AWQ/vLLM one already registered in
