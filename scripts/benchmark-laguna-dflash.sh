@@ -38,20 +38,26 @@ if [ "${#PAUSED_UNITS[@]}" -gt 0 ]; then
 fi
 
 # ---- stop exclusive (non-always-up) model services for GPU exclusivity ----
+# Resolve via container ID (compose ps -q) -> docker inspect labels. The compose
+# SERVICE name is not a valid `docker inspect` target (container names differ,
+# e.g. litellm service = litellm-proxy container), so the first version of this
+# misread infra services as exclusive and stopped litellm + turnstone — fixed.
 STOPPED_SVCS=()
-while read -r svc; do
-  [ -n "$svc" ] || continue
-  labels=$(docker inspect --format '{{range $k, $v := .Config.Labels}}{{$k}}={{$v}} {{end}}' "$svc" 2>/dev/null || true)
-  if ! echo "$labels" | grep -q "com.local-ai-machine.always-up=true"; then
-    STOPPED_SVCS+=("$svc")
-  fi
-done < <(cd docker && docker compose ps --format '{{.Service}}' 2>/dev/null | tr -d '\r')
+while read -r cid; do
+  [ -n "$cid" ] || continue
+  au=$(docker inspect --format '{{index .Config.Labels "com.local-ai-machine.always-up"}}' "$cid" 2>/dev/null || true)
+  [ "$au" = "true" ] && continue
+  svc=$(docker inspect --format '{{index .Config.Labels "com.docker.compose.service"}}' "$cid" 2>/dev/null || true)
+  [ -n "$svc" ] && STOPPED_SVCS+=("$svc")
+done < <(cd docker && docker compose ps -q 2>/dev/null)
 if [ "${#STOPPED_SVCS[@]}" -gt 0 ]; then
   log "Stopping exclusive services: ${STOPPED_SVCS[*]}"
   (cd docker && docker compose stop "${STOPPED_SVCS[@]}")
 fi
 
 restore() {
+  log "Teardown: removing test container BEFORE restoring services (restoring the 68GB standing laguna while the test container still holds its own 68GB load caused an OOM-kill of the test container, exit 137, on the first run)"
+  docker rm -f laguna-dflash-test >/dev/null 2>&1 || true
   log "Teardown: restoring ${STOPPED_SVCS[*]:-none} + resuming ${PAUSED_UNITS[*]:-none}"
   if [ "${#STOPPED_SVCS[@]}" -gt 0 ]; then
     (cd docker && docker compose up -d "${STOPPED_SVCS[@]}")
@@ -65,10 +71,9 @@ restore() {
     done
   fi
   if [ "${#PAUSED_UNITS[@]}" -gt 0 ]; then
-    sudo -n systemctl start "${PAUSED_UNITS[@]}"
+    timeout 60 sudo -n systemctl start "${PAUSED_UNITS[@]}" || true
     log "Downloads resumed"
   fi
-  docker rm -f laguna-dflash-test >/dev/null 2>&1 || true
 }
 trap restore EXIT
 
