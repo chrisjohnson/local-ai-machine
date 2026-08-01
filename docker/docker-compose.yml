@@ -1154,6 +1154,21 @@ services:
     depends_on:
       - litellm
 
+  omp:
+    image: ghcr.io/can1357/oh-my-pi:latest
+    container_name: oh-my-pi
+    user: "1000:1000"
+    tty: true
+    volumes:
+      - /home/chris/turnstone-workspace/printer-dashboard:/work
+      - ~/.omp:/home/omp/.omp
+    environment:
+      - PI_CONFIG_DIR=/home/omp/.omp
+    working_dir: /work
+    command: ["cli"]
+    depends_on:
+      - litellm
+
 volumes:
   turnstone_postgres_data:
   searxng-cache:
