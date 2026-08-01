@@ -984,6 +984,8 @@ services:
     labels:
       com.local-ai-machine.always-up: "true"
     network_mode: host
+    group_add:
+      - "131"  # docker group GID (matches host's docker group)
     environment:
       PI_CODING_AGENT_DIR: /data/pi-agent-config
       PORT: "30141"
