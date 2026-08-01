@@ -1155,6 +1155,8 @@ services:
       - litellm
 
   omp:
+    build:
+      context: ./omp/
     image: ghcr.io/can1357/oh-my-pi:latest
     container_name: oh-my-pi
     user: "1000:1000"
