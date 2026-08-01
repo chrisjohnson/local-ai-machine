@@ -23,13 +23,19 @@ WORKDIR /app
 # docker.io + docker-compose-plugin: enables docker CLI inside pi-web
 # container to control host Docker - socket mount added to docker-compose.yml
 # (same privilege model as turnstone already has, accepted deliberately).
+# openssl: provides `openssl` CLI (s_client, s_server, verify, etc.) for TLS
+# debugging, certificate inspection, and raw TLS/SSL connections.
+# netcat-openbsd: provides `nc` for raw TCP/UDP socket debugging and data
+# transfer.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         git \
         ca-certificates \
+        openssl \
         openssh-client \
         curl \
         docker.io \
+        netcat-openbsd \
     && rm -rf /var/lib/apt/lists/*
 
 # gh (GitHub CLI) isn't packaged in Debian at all - installed from the
