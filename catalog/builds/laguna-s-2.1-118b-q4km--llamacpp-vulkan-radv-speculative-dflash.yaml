@@ -1,0 +1,98 @@
+id: laguna-s-2.1-118b-q4km--llamacpp-vulkan-radv-speculative-dflash
+model:
+  display_name: Laguna-S-2.1 (UD-Q4_K_M GGUF) + Laguna-S-2.1-DFlash (BF16 GGUF) classic
+    speculative decoding attempt
+  family: poolside
+  hf_repo: unsloth/Laguna-S-2.1-GGUF
+  hf_revision: null
+  architecture: moe
+  total_params: 118e9
+  active_params: 8e9
+  num_experts: null
+  quantization: GGUF-Q4_K_M (UD, imatrix-calibrated) target + GGUF-BF16 draft (custom
+    DFlashLagunaForCausalLM architecture)
+  context_length_native: null
+  modality: text
+  files:
+  - UD-Q4_K_M/Laguna-S-2.1-UD-Q4_K_M-00001-of-00003.gguf
+  - UD-Q4_K_M/Laguna-S-2.1-UD-Q4_K_M-00002-of-00003.gguf
+  - UD-Q4_K_M/Laguna-S-2.1-UD-Q4_K_M-00003-of-00003.gguf
+  local_path: /var/lib/ai-models/laguna-s-2.1-118b-q4km
+  size_on_disk_gb: 68.1
+versions:
+- version: v1
+  compose_service_id: null
+  engine_ref: llamacpp-vulkan-radv-server-v1
+  role: 'M-052 experiment (M-050 option 3, a card-labeled long-shot). NOT added to
+    docker-compose.yml since the model fails to load at all -- there is no working
+    configuration to record as a reproducible service, unlike the M-050 option-2
+    (Laguna XS) sibling which did load and run. BROKEN -- draft checkpoint
+    architecture not supported by stock llama.cpp.'
+  notes: 'Poolside''s dedicated `Laguna-S-2.1-DFlash` checkpoint
+    (`poolside/Laguna-S-2.1-GGUF` -> `laguna-s-2.1-DFlash-BF16.gguf`, 2,233,764,224
+    bytes, downloaded to /var/lib/ai-models/laguna-s-2.1-dflash-draft per M-052)
+    tested as a plain classic llama.cpp `-md`/`--spec-type draft-simple` draft
+    model for Laguna-S-2.1, on this box''s existing trusted stock llama.cpp
+    toolbox (docker.io/kyuz0/amd-strix-halo-toolboxes:vulkan-radv, same image
+    digest as every other llama.cpp build in this catalog,
+    sha256:1648e4195154aef5dc975253d962e1e1b8358af26b0e54b4faf89a156131c320,
+    engine version 0e4a03622 (10154)). Explicitly NOT using
+    `--spec-type draft-dflash` (fork-specific, unavailable on stock llama.cpp;
+    that path is a separate off-limits card, M-053).
+
+    Result: FAILS TO LOAD. Exact error (from `llama-server -m <laguna-s-2.1
+    shard 1> -md <dflash draft gguf> -ngl 999 -fa 1 --swa-full --reasoning-format
+    deepseek -n 8192 --spec-type draft-simple -c 8192`):
+
+    ```
+    load_model: loading model /models-target/Laguna-S-2.1-UD-Q4_K_M-00001-of-00003.gguf
+    llama_model_load: error loading model: done_getting_tensors: wrong number of tensors; expected 76, got 69
+    llama_model_load_from_file_impl: failed to load model
+    [spec] failed to measure draft model memory: failed to load model
+    ```
+
+    Isolated the failure precisely before concluding anything, since the log line
+    order made it look at first glance like the *target* model was the one
+    failing: (1) loaded the Laguna-S-2.1 target ALONE, no `-md`, no draft flags at
+    all -- loaded cleanly in ~69s, "model loaded", server started and listened
+    normally, ruling out any corruption in the target''s on-disk shards (shard 1
+    is legitimately only 3.68MB by design -- confirmed by manually parsing its
+    GGUF header: it carries `split.tensors.count = 814` matching shards 2+3''s
+    568+246=814 combined tensor count exactly, and its own file size exactly
+    matches the catalog''s previously-recorded total minus shards 2/3''s actual
+    sizes, i.e. not corrupted or truncated). (2) loaded the DFlash draft GGUF
+    ALONE, as a plain primary `-m` target with no target model and no
+    speculative-decoding flags at all -- got the exact identical error
+    (`done_getting_tensors: wrong number of tensors; expected 76, got 69`),
+    proving the failure is 100% attributable to the draft checkpoint itself, not
+    the target, not a mount/permissions issue, and not something specific to the
+    speculative-decoding code path.
+
+    Root cause: stock llama.cpp''s GGUF loader does not correctly parse this
+    checkpoint''s custom `DFlashLagunaForCausalLM` architecture (6 sliding-
+    attention layers, block_size 16, purpose-built for poolside''s DFlash
+    block-diffusion decode loop) -- it appears to recognize enough metadata to
+    attempt a tensor count validation, but the loader''s tensor-counting logic
+    for this architecture disagrees with what''s actually present in the file
+    (expects 76, finds 69), and refuses to proceed. This is consistent with the
+    card''s own framing going in: real conversion/loader support for this
+    architecture only exists in poolside''s own (explicitly off-limits, separate
+    M-053 card) llama.cpp fork branch `laguna`. No attempt was made to patch,
+    rebuild, or otherwise work around this -- per the card''s explicit
+    instruction not to spend real time on a fundamentally unsupported
+    architecture tag.
+
+    No real generation benchmark was possible or attempted (model never loads).
+    Host confirmed restored to pre-task state: both ad-hoc test containers
+    (target-only isolation test, draft-only isolation test) stopped and removed,
+    no docker-compose.yml changes made (nothing here reached a working state
+    worth recording as a reproducible service), litellm role targets unchanged
+    throughout (verified via /model/info before and no roles pointed at any port
+    used in this test), no other model-serving containers were running before or
+    after.
+
+    '
+  status: BROKEN
+  created: '2026-08-01'
+  last_verified: '2026-08-01'
+  benchmark_runs: []
