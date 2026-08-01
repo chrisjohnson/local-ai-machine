@@ -7,6 +7,10 @@
 # /build/build/bin and the fork commit is recorded in /build/fork-commit.txt.
 FROM docker.io/kyuz0/amd-strix-halo-toolboxes:vulkan-radv
 
+# The toolbox image has gcc/glslc but no linker (binutils/ld) — required by
+# CMake's compiler-probe before it will configure anything.
+RUN dnf install -y binutils && dnf clean all
+
 WORKDIR /build
 RUN git clone --depth 1 --branch laguna https://github.com/poolsideai/llama.cpp.git /build/src \
     && git -C /build/src rev-parse HEAD > /build/fork-commit.txt
