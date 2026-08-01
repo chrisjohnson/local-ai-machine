@@ -67,5 +67,30 @@ Key research findings (verified from can1357/oh-my-pi source, main branch):
 <!-- append-only, one line per entry, newest last. Never move this card to done/
      without a line here explaining why. -->
 
+- 2026-08-01 (big-pickle) — Seeded omp's NATIVE models.yml (not models.json):
+  verified from can1357/oh-my-pi source that config lives at
+  {agentDir}/models.yml with .yaml fallback + legacy .json auto-migration, so
+  the pi-web seed was translated to YAML rather than copied as JSON.
+- 2026-08-01 (big-pickle) — Fixed PI_CONFIG_DIR=/home/omp/.omp -> .omp in both
+  Dockerfile and compose: omp resolves config root as
+  path.join(os.homedir(), PI_CONFIG_DIR), so the old absolute value landed at
+  /home/omp/home/omp/.omp and missed the ~/.omp volume mount entirely.
+- 2026-08-01 (big-pickle) — litellm reached via host.docker.internal:4000/v1 +
+  extra_hosts host-gateway (turnstone precedent); litellm is host-networked and
+  omp is bridge-networked, so 127.0.0.1 would not work from inside omp.
+- 2026-08-01 (big-pickle) — Ported pi-web's seed-once + refuse-without-key
+  guards, extended to skip seeding when ANY of models.yml/.yaml/.json exists
+  (a fresh models.yml would otherwise shadow a user's existing .yaml/.json).
+- 2026-08-01 (big-pickle) — NOT deployed: Chris asked for a draft. Deploy (box
+  pull + `docker compose up -d --build omp`) offered but left to him.
+- 2026-08-01 (big-pickle) — Done: 7874d47 on main. Verified shell syntax, both
+  YAML files parse, compose config renders, entrypoint path-resolution/guard/
+  non-stomp/sed-substitution behavior tested in sandbox.
+
 ## Handoff notes
 <!-- what's half-done, what the next agent picking this up should do first. -->
+Deploy to the box: `ssh local-ai-machine 'cd /home/chris/local-ai-machine && git pull --ff-only'`
+then `docker compose up -d --build omp` from docker/. The omp image builds from
+../oh-my-pi (Dockerfile + template + entrypoint). Alternative not taken: omp's
+models.yml apiKey also supports env-var-name resolution (apiKey: LITELLM_MASTER_KEY,
+no sed needed) if Chris prefers no secret materialized on disk.
