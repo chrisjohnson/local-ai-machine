@@ -385,6 +385,36 @@ let
     { name = "laguna-xs-2.1-33b-q4km"; repo = "poolside/Laguna-XS-2.1-GGUF"; hfFiles = [
         "Laguna-XS-2.1-Q4_K_M.gguf"
       ]; }
+    # M-052: poolside's dedicated Laguna-S-2.1-DFlash draft-model checkpoint
+    # (M-050 "option 3") - a genuine long-shot, not a proven-fast addition.
+    # Small (~2.08 GiB), so cheap to have on hand regardless of outcome.
+    # Confirmed via HF metadata: custom `DFlashLagunaForCausalLM`
+    # architecture (6 sliding-attention layers, block_size 16),
+    # purpose-built for DFlash's block-diffusion decode loop, NOT a
+    # generic autoregressive draft model - stock llama.cpp very likely
+    # doesn't even recognize this architecture tag at all (no upstream
+    # conversion/loader support; that only exists in poolside's own
+    # llama.cpp fork, which is explicitly off-limits per Chris's own
+    # safety-review-respecting decision on M-050 option 1). The point of
+    # downloading this is to test loading it as a plain classic `-md`
+    # draft on the box's existing, trusted stock llama.cpp toolbox anyway
+    # (M-050's own framing: "very unlikely to work... try only if [other
+    # options] fail and there's appetite for a long-shot") - if it doesn't
+    # even load, that's a clean, cheap, informative "no". This is the GGUF
+    # conversion (poolside's own, in the same repo as the main model's
+    # quantized GGUF), not the raw safetensors checkpoint
+    # (poolside/Laguna-S-2.1-DFlash, 2.23GB safetensors - not usable by
+    # llama.cpp in any form) - confirmed exact file+size via the HF API
+    # tree listing: 2,233,764,224 bytes (~2.08 GiB).
+    #
+    # DELIBERATELY NOT DEPLOYED YET - Chris's explicit instruction:
+    # "Don't enable any downloads yet while we're benchmarking." This
+    # entry records the download target; do not run nixos-rebuild switch
+    # to actually apply it until benchmarking work in flight (M-050,
+    # M-051) has wound down.
+    { name = "laguna-s-2.1-dflash-draft"; repo = "poolside/Laguna-S-2.1-GGUF"; hfFiles = [
+        "laguna-s-2.1-DFlash-BF16.gguf"
+      ]; }
   ];
 in
 {
