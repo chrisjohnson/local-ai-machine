@@ -1,0 +1,139 @@
+id: laguna-s-2.1-118b-q4km--llamacpp-laguna-fork-vulkan-dflash
+model:
+  display_name: Laguna-S-2.1 (UD-Q4_K_M GGUF) + Laguna-S-2.1-DFlash (BF16 GGUF) real DFlash speculative decoding via poolside's laguna fork (Vulkan build)
+  family: poolside
+  hf_repo: unsloth/Laguna-S-2.1-GGUF
+  hf_revision: null
+  architecture: moe
+  total_params: 118e9
+  active_params: 8e9
+  num_experts: null
+  quantization: GGUF-Q4_K_M (UD, imatrix-calibrated) target + GGUF-BF16 draft (custom
+    DFlashLagunaForCausalLM architecture)
+  context_length_native: null
+  modality: text
+  files:
+  - UD-Q4_K_M/Laguna-S-2.1-UD-Q4_K_M-00001-of-00003.gguf
+  - UD-Q4_K_M/Laguna-S-2.1-UD-Q4_K_M-00002-of-00003.gguf
+  - UD-Q4_K_M/Laguna-S-2.1-UD-Q4_K_M-00003-of-00003.gguf
+  - laguna-s-2.1-DFlash-BF16.gguf (draft, /var/lib/ai-models/laguna-s-2.1-dflash-draft, M-052)
+  local_path: /var/lib/ai-models/laguna-s-2.1-118b-q4km
+  size_on_disk_gb: 68.1
+versions:
+- version: v1
+  compose_service_id: null
+  engine_ref: llamacpp-laguna-fork-vulkan-v1
+  role: 'M-053 experiment (M-050 option 1 — the one untried candidate: poolside''s
+    llama.cpp fork branch `laguna` built with Vulkan instead of the community''s
+    ROCm/HIP). Result: TESTED_NOT_VIABLE. The fork builds cleanly with Vulkan
+    (after bounded toolchain fixes), DFlash initializes and serves at the full
+    -c 131072 baseline context, BUT real generation throughput is ~9.3 tok/s
+    (3 short samples: 7.98 / 8.52 / 11.52) vs the 30.0 tok/s plain Vulkan baseline
+    — 3.2x slower — and draft acceptance collapses to 10-19% vs the 73-90% the
+    community measured on the same fork built with ROCm/HIP. The DFlash diffusion
+    draft''s block predictions do not align with the target model on the RADV/Vulkan
+    path. NOT added to docker-compose.yml: nothing here is worth serving. This
+    closes M-050''s speculative-decoding investigation with all three options now
+    resolved (1: this negative; 2: XS too heavy a classic draft; 3: DFlash checkpoint
+    unsupported by stock llama.cpp). Recommend continuing to serve Laguna-S-2.1
+    plain (30.0 tok/s, full 131072 context).'
+  notes: 'Custom image `local-ai-machine/llamacpp-laguna-fork:vulkan-radv` built
+    from `docker/llamacpp-laguna-fork-vulkan-radv.dockerfile` (kyuz0 toolbox base,
+    which carries the Vulkan dev toolchain + Mesa RADV 25.3.6 runtime). Fork head
+    04b2b72cb54048ead292884adbe11f284e3ec950. Build fixes required (see engine
+    recipe known_gotchas): dangling `ld` alternative in the toolbox image, and GCC 15
+    missing `<cmath>` include in common/speculative.cpp''s DFlash row-clamping path.
+
+    Loaded at the FULL -c 131072 context (unlike the classic-XS sibling build, which
+    OOM''d past 8192) — the tiny 2GB DFlash draft plus its KV cache fits alongside the
+    68GB target, so the context handicap that dogged the XS comparison does NOT apply
+    here. This is a clean apples-to-apples run at the same context as the 30.0 tok/s
+    plain baseline.
+
+    Real benchmark (see benchmark_runs): 3 short fresh prompts + 1 long-context
+    prompt (11,243 prompt tokens), measured via /v1/chat/completions request timings
+    (llama-bench has no --spec-type support, same caveat as the XS/MTP-family
+    builds). `--spec-type draft-dflash --spec-draft-n-max 15` confirmed active via
+    draft_n/draft_n_accepted telemetry (draft_n ~2000-3000 per 512-token generation
+    — roughly 5-6 drafted tokens per generated token, consistent with block-diffusion
+    drafting at n_max 15). Short-context generation 7.98 / 8.52 / 11.52 tok/s (avg
+    9.34), long-context 7.92 tok/s. Draft acceptance 10.4% / 12.0% / 18.6% short,
+    11.4% long. Contrast with the same fork on ROCm/HIP (community thread, M-050):
+    acceptance 73.5-90.6% but real speed only ~19-26 tok/s (ROCm base was slower).
+    Here the Vulkan target is fast but the DFlash draft path is broken-in-effect —
+    the opposite failure mode, both net negatives. No crash, no clean "doesn''t
+    build" — just a decisive throughput regression, which is the honest result the
+    card anticipated as a possible outcome ("record honestly either way").
+
+    No workaround was pursued past this point, per the card''s explicit instruction
+    not to debug someone else''s unmerged fork indefinitely. Host restored to
+    pre-task state: standing laguna-s-2.1-118b-q4km compose service back up and
+    healthy, ds4 imatrix download (M-051) resumed to activating, no stray containers,
+    box repo worktree clean.
+
+    '
+  status: TESTED_NOT_VIABLE
+  created: '2026-08-01'
+  last_verified: '2026-08-01'
+  benchmark_runs:
+  - timestamp: '2026-08-01T23:32:19Z'
+    benchmark_id: llamacpp-server-live-timing-v1
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: 7d42fd33b7321eed67436eebc67d82cc6ad09c92
+      host_gpu_driver: Mesa 25.3.6 (in-image mesa-vulkan-drivers-25.3.6-3.fc43, RADV)
+      concurrent_load:
+        downloads_paused: true (download-model-ds4-deepseek-v4-flash-iq2xxs-imatrix.service paused for the run, resumed after)
+        vllm_co_resident_or_stopped: standing laguna-s-2.1-118b-q4km compose service stopped for the run (only exclusive service running); litellm/turnstone/infra untouched
+      host_metrics_window:
+        start: '2026-08-01T23:28:10Z'
+        end: '2026-08-01T23:32:19Z'
+      image_digest: local-ai-machine/llamacpp-laguna-fork@sha256:98819738b785eb3d2c02b428a70e6a5e9d8c3da3b46d9cc2f1589766963169be
+      engine_version: '04b2b72cb54048ead292884adbe11f284e3ec950 (fork branch laguna, built GNU 15.3.1, Vulkan backend)'
+    result:
+      note: Measured via real /v1/chat/completions request timings against a manual
+        llama-server container from the fork image, invocation `llama-server -m
+        <laguna-s-2.1 shard 1 of 3> -md <laguna-s-2.1-DFlash-BF16.gguf> --spec-type
+        draft-dflash --spec-draft-n-max 15 -ngl 999 -fa 1 --swa-full --reasoning-format
+        deepseek -n 8192 -c 131072` (full baseline context). 3 short fresh prompts +
+        1 long-context prompt. DFlash confirmed engaged via draft_n/draft_n_accepted.
+      context_used_tokens: 131072
+      baseline_comparison_note: 'Plain Laguna-S-2.1 baseline (llamacpp-vulkan-radv,
+        v1) = 30.0 tok/s at 131072 context. This build: 7.9-11.5 tok/s at the same
+        context — 3.2x slower. Community ROCm/HIP build of the same fork: ~19-26
+        tok/s at 73-91% acceptance; this Vulkan build achieves 10-19% acceptance,
+        so both the draft path AND the net result regress on RADV.'
+      short_context_tg_tok_s_samples:
+      - 7.98
+      - 8.52
+      - 11.52
+      short_context_tg_tok_s_avg: 9.34
+      short_context_draft_acceptance_samples:
+      - accepted: 310
+        generated: 2967
+        rate: 0.104
+      - accepted: 326
+        generated: 2728
+        rate: 0.120
+      - accepted: 374
+        generated: 2007
+        rate: 0.186
+      long_context_prompt_tokens: 11243
+      long_context_pp_tok_s: 283.8
+      long_context_tg_tok_s: 7.92
+      long_context_draft_acceptance:
+        accepted: 158
+        generated: 1390
+        rate: 0.114
+      raw_stdout_file: /tmp/laguna-dflash-results/ (short-0/1/2.json, long.json, engine-version.txt) on the box
+    known_issues_encountered:
+    - 'Build required toolchain fixes (both in the Dockerfile): toolbox image has no
+      usable `ld` (dangling /etc/alternatives/ld symlink, repaired to ld.bfd) and
+      common/speculative.cpp needed an added `#include <cmath>` for GCC 15.'
+    - 'First benchmark attempt: benchmark-script trap restored the 68GB standing
+      laguna before removing the test container, double-loading ~136GB and OOM-killing
+      the test container (exit 137). Trap reordered (test container removed first);
+      rerun clean.'
+    - 'DFlash draft acceptance collapse on Vulkan (10-19% vs 73-91% community ROCm
+      numbers) — the diffusion draft''s predictions do not align with the target on
+      the RADV path. Not debugged further, per the card''s no-rabbit-hole instruction.'

@@ -1,0 +1,44 @@
+id: llamacpp-laguna-fork-vulkan-v1
+family: llamacpp
+description: >
+  poolsideai/llama.cpp fork, branch `laguna`, built with Vulkan/RADV (gfx1151) —
+  the one backend combination nobody in the community thread tried for real
+  DFlash speculative decoding. Custom image `local-ai-machine/llamacpp-laguna-fork:vulkan-radv`
+  built from `docker/llamacpp-laguna-fork-vulkan-radv.dockerfile` (builds from the
+  kyuz0 toolbox image, which already carries the Vulkan dev toolchain + Mesa RADV
+  runtime). See `catalog/builds/laguna-s-2.1-118b-q4km--llamacpp-laguna-fork-vulkan-dflash.yaml`
+  for the M-053 benchmark result (negative: loads and runs at full 131072 context,
+  but DFlash draft acceptance collapses to 10-19% and generation throughput is
+  ~9.3 tok/s vs the 30.0 tok/s plain baseline).
+image: local-ai-machine/llamacpp-laguna-fork:vulkan-radv
+runtime:
+  devices: ["/dev/kfd:/dev/kfd", "/dev/dri:/dev/dri"]
+  group_add: ["26", "303"]   # numeric GIDs for video/render
+  volumes:
+    - "/var/lib/ai-models/laguna-s-2.1-118b-q4km:/models:ro"
+    - "/var/lib/ai-models/laguna-s-2.1-dflash-draft:/models-draft:ro"
+common_env: {}
+common_flags:
+  - -ngl 999      # offload all layers
+  - -fa 1         # flash attention on (works on this Vulkan build; the community's ROCm build required -fa 0)
+  - --swa-full
+  - --reasoning-format deepseek
+invocation_template: |
+  docker run --rm --device /dev/kfd --device /dev/dri --group-add 26 --group-add 303 \
+    -v /var/lib/ai-models/laguna-s-2.1-118b-q4km:/models:ro \
+    -v /var/lib/ai-models/laguna-s-2.1-dflash-draft:/models-draft:ro \
+    local-ai-machine/llamacpp-laguna-fork:vulkan-radv \
+    /build/build/bin/llama-server \
+    -m /models/UD-Q4_K_M/Laguna-S-2.1-UD-Q4_K_M-00001-of-00003.gguf \
+    -md /models-draft/laguna-s-2.1-DFlash-BF16.gguf \
+    --spec-type draft-dflash --spec-draft-n-max 15 \
+    -ngl 999 -fa 1 --swa-full --reasoning-format deepseek -n 8192 -c 131072 \
+    --host 0.0.0.0 --port 8120
+known_gotchas:
+  - "Build-time fixes required (recorded in the Dockerfile): the kyuz0 toolbox image ships gcc/glslc but no usable linker — /usr/bin/ld -> /etc/alternatives/ld is a dangling symlink (broken alternatives DB), fixed by linking ld.bfd; and GCC 15 header-hygiene: common/speculative.cpp (DFlash row-clamping path) uses std::isfinite without <cmath>, patched with a one-line include."
+  - "Fork head as built/tested: 04b2b72cb54048ead292884adbe11f284e3ec950 (recorded in image at /build/fork-commit.txt)."
+  - "DFlash loads and serves at the full -c 131072 baseline context (unlike the Laguna-XS classic-draft sibling, which OOM'd past -c 8192)."
+  - "Real measured result is a strong negative: DFlash draft acceptance 10-19% (community ROCm/HIP build of the same fork saw 73-90%) and generation ~7.9-11.5 tok/s vs the 30.0 tok/s plain Vulkan baseline — 3x slower. The DFlash diffusion draft's predictions do not align with the target on the RADV/Vulkan path."
+  - "No compose service (ad-hoc docker run only) — nothing about this result is worth serving; kept reproducible via the Dockerfile + this recipe."
+status: active
+first_used: "2026-08-01"
