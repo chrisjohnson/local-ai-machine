@@ -1,0 +1,133 @@
+id: ds4-deepseek-v4-flash-iq2xxs--ds4-strix-halo
+model:
+  display_name: DeepSeek-V4-Flash (DS4/DwarfStar, IQ2XXS)
+  family: DeepSeek
+  hf_repo: antirez/deepseek-v4-gguf
+  hf_revision: null
+  architecture: moe
+  total_params: 284e9
+  active_params: 13e9
+  num_experts: null
+  quantization: IQ2XXS/Q2K/Q8 mixed (DwarfStar-specific tensor layout, NOT a generic llama.cpp GGUF)
+  context_length_native: 1048576
+  modality: text
+  files:
+  - DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2.gguf
+  - DeepSeek-V4-Flash-MTP-Q4K-Q8_0-F32.gguf
+  local_path: /var/lib/ai-models/ds4-deepseek-v4-flash-iq2xxs
+  size_on_disk_gb: 84.3
+versions:
+- version: v1
+  compose_service_id: null
+  engine_ref: null
+  role: 284B/13B-active MoE, genuine speculative-decoding experiment (M-047/M-050) -- not a standing
+    compose service, run via ad hoc `docker run` for this benchmark only
+  notes: 'Standalone DwarfStar (ds4) engine, NOT llama.cpp -- antirez/ds4, purpose-built inference
+    engine for DeepSeek V4 Flash with a dedicated Strix Halo ROCm build target. Served via
+    `kyuz0/strix-halo-ds4-toolbox:rocm-7.14` (same trusted author as this box''s existing vLLM/llama.cpp
+    toolbox images). No docker-compose service exists for this -- deployed via ad hoc `docker run`
+    (containers `ds4-128k-*`) for this benchmark, matching the "swap-in comparison tier" pattern used
+    elsewhere in this catalog for non-standing builds.
+
+    **Known gap, not yet corrected: this benchmark ran on the WRONG GGUF variant.** The Strix-Halo-specific
+    upstream doc (github.com/antirez/ds4/blob/main/STRIXHALO.md) explicitly recommends the
+    `-imatrix.gguf` variant ("Use the standard IQ2XXS/Q2K/Q8 imatrix GGUF:
+    DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf"). This build downloaded
+    and benchmarked the plain, non-imatrix file (`...-chat-v2.gguf`, no `-imatrix` suffix) per the
+    repo''s general (non-hardware-specific) README guidance instead. Both files are ~86.72GB (imatrix
+    calibration affects quantization quality, not size), so this is a correctness gap, not a capacity
+    one. The MTP-vs-no-MTP *comparison* below is still internally fair (both runs used the same wrong
+    file), but the absolute tok/s numbers may not match what the recommended imatrix variant would give.
+    Follow-up: download `...-chat-v2-imatrix.gguf` and re-run both benchmarks for authoritative numbers.
+
+    A real, hardware-specific OOM was hit and fixed during this benchmark, not worked around blindly:
+    `ds4-server` at `--ctx 128000` was OOM-killed by the kernel during prefill of a real ~116k-token
+    prompt (confirmed via `journalctl -k`). Root cause matches a known, still-unmerged upstream issue
+    (antirez/ds4 issue #359, PR #361): the ROCm backend''s tensor allocator uses device-only `cudaMalloc`
+    instead of `cudaMallocManaged`, so prefill scratch buffers can''t spill into the broader unified-memory
+    pool even though `amdgpu.gttsize=126976` is already correctly configured on this box. Fixed with
+    `--prefill-chunk 1024` (below the tool''s own default of 4096), which keeps peak allocation small
+    enough to avoid the OOM -- a legitimate documented flag, not a hack.
+
+    **Real result: MTP made no measurable difference to generation speed on this hardware.** Both runs
+    used the identical real ~116k-token prompt (115,837 prompt tokens) + 300-token generation, same
+    container image, same host state:
+    - No MTP: prefill 141.41 tok/s avg (819.14s for 115,837 tokens), generation 11.86 tok/s avg (25.29s
+      for 300 tokens), no OOM.
+    - MTP enabled: prefill 99.26 tok/s avg (1167.05s for 115,837 tokens) -- notably slower prefill despite
+      MTP not algorithmically affecting prefill; likely the MTP draft model''s resident weights competing
+      for memory bandwidth even during prefill, not confirmed further. Generation: 11.86 tok/s avg
+      (25.29s for 300 tokens) -- statistically identical to the no-MTP run, not a rounding coincidence
+      (matched to 2 decimal places across the whole decode span).
+    - This matches independent research found the same session: a different quantizer''s README for
+      this same base model reported "MTP was a net loss of 3-11%" on Apple Silicon, attributing it to
+      being compute/dequantization-bound rather than memory-bandwidth-bound -- here it is not quite a
+      loss, but a complete wash. Consistent with the theory that at this quantization level, dequantization
+      cost dominates decode regardless of platform, so speculative verification work is not free and
+      does not pay for itself.
+
+    Real generation speed (11.86 tok/s either way) is modest for a 13B-active model on this hardware --
+    notably slower than every 3B-10B-active model already benchmarked in this catalog. Given the known
+    wrong-variant gap above, this number should be treated as provisional pending a re-run on the
+    recommended imatrix build, not a final verdict on this engine/model combination for this hardware.
+    '
+  status: WORKING
+  created: '2026-08-01'
+  last_verified: '2026-08-01'
+  benchmark_runs:
+  - timestamp: '2026-08-01T19:41:00Z'
+    benchmark_id: ds4-server-live-timing-v1
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: ec81a9c0af26932f6ec138ca59cdfba739127bc9
+      host_gpu_driver: Mesa 25.3.6
+      concurrent_load:
+        downloads_paused: null
+        vllm_co_resident_or_stopped: no_other_models_running_at_time_of_run
+      host_metrics_window:
+        start: '2026-08-01T19:41:00Z'
+        end: '2026-08-01T19:56:32Z'
+      image_digest: '[kyuz0/strix-halo-ds4-toolbox@sha256:2590cf3cc283f59b170ae3a01a141c0730f793f59a0dabe4b8daf011125d497f]'
+      engine_version: 'ds4-server (no --version output available; image tag kyuz0/strix-halo-ds4-toolbox:rocm-7.14)'
+    result:
+      note: MTP disabled (no -md/--mtp flag). Measured via real ds4-server chat request timings against
+        a real ~116k-token prompt, parsed from the server's own per-chunk prefill/decode progress log
+        (not a synthetic micro-benchmark).
+      variant_caveat: Ran on the non-recommended plain (non-imatrix) GGUF -- see notes above.
+      prompt_tokens: 115837
+      completion_tokens: 300
+      prefill_tok_s_avg: 141.41
+      prefill_wall_s: 819.14
+      generation_tok_s_avg: 11.86
+      generation_wall_s: 25.29
+      total_wall_s: 844.43
+      extra_flags: --prefill-chunk 1024 (workaround for a real OOM, see notes -- upstream antirez/ds4
+        issue #359 / PR #361)
+      finish_reason: length
+  - timestamp: '2026-08-01T20:06:58Z'
+    benchmark_id: ds4-server-live-timing-v1
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: ec81a9c0af26932f6ec138ca59cdfba739127bc9
+      host_gpu_driver: Mesa 25.3.6
+      concurrent_load:
+        downloads_paused: null
+        vllm_co_resident_or_stopped: no_other_models_running_at_time_of_run
+      host_metrics_window:
+        start: '2026-08-01T20:06:58Z'
+        end: '2026-08-01T20:26:50Z'
+      image_digest: '[kyuz0/strix-halo-ds4-toolbox@sha256:2590cf3cc283f59b170ae3a01a141c0730f793f59a0dabe4b8daf011125d497f]'
+      engine_version: 'ds4-server (no --version output available; image tag kyuz0/strix-halo-ds4-toolbox:rocm-7.14)'
+    result:
+      note: MTP enabled (-md DeepSeek-V4-Flash-MTP-Q4K-Q8_0-F32.gguf). Same prompt, same methodology as
+        the no-MTP run above for a direct apples-to-apples comparison.
+      variant_caveat: Ran on the non-recommended plain (non-imatrix) GGUF -- see notes above.
+      prompt_tokens: 115837
+      completion_tokens: 300
+      prefill_tok_s_avg: 99.26
+      prefill_wall_s: 1167.05
+      generation_tok_s_avg: 11.86
+      generation_wall_s: 25.29
+      total_wall_s: 1192.34
+      extra_flags: --prefill-chunk 1024, --spec-draft-n-max default
+      finish_reason: length
