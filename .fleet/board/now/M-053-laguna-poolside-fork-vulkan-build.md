@@ -2,8 +2,8 @@
 id: M-053
 title: Build poolside's llama.cpp fork (branch laguna) with Vulkan for real DFlash speculative decoding
 initiative_id: null
-claimed_by: null
-claimed_at: null
+claimed_by: big-pickle
+claimed_at: 2026-08-01T22:57:00Z
 blocks: null
 blocked_by: null
 status: null
@@ -44,9 +44,10 @@ plausibly beat our existing baseline rather than just match or lose to
 it.
 
 ## Plan
-1. [ ] Get Chris's explicit go-ahead at the time this is actually picked
+1. [x] Get Chris's explicit go-ahead at the time this is actually picked
    up — don't assume this card's mere existence in the backlog is
    sufficient authorization to start building/running the fork.
+   (GRANTED 2026-08-01 via direct request to reopen and proceed.)
 2. [ ] Clone `github.com/poolsideai/llama.cpp`, branch `laguna`.
 3. [ ] Attempt a Vulkan build (`GGML_VULKAN=ON`, matching this repo's
    existing Vulkan RADV toolbox build pattern) targeting gfx1151. If the
@@ -81,5 +82,13 @@ it.
   round. Moved to done without executing the plan so the approach (and
   its explicit-greenlight requirement) stays tracked without lingering as
   open backlog.
+- Reopened and claimed (2026-08-01): that closure was a mistake — Chris
+  did not intend to close this; the Vulkan-DFlash experiment is the one
+  untried candidate and he has now explicitly greenlit building/running
+  the poolside fork. This is the informed sign-off the card requires;
+  plan item 1 marked done accordingly.
+
+## Signals
+<!-- signal: big-pickle 2026-08-01T22:57Z — claiming, building poolside's laguna fork with Vulkan per Chris's explicit greenlight -->
 
 ## Handoff notes
