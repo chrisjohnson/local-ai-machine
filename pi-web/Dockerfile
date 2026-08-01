@@ -113,7 +113,8 @@ RUN mkdir -p /data && chown -R node:node /data
 # known-hosts/identity path expansion - unlike git, which does honor
 # $HOME directly. usermod actually changes that passwd entry so both
 # mechanisms agree.
-RUN usermod -d /home/chris node
+RUN usermod -d /home/chris node \
+    && usermod -aG docker node
 ENV HOME=/home/chris
 USER node
 
