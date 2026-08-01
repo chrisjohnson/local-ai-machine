@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
-# M-053: real DFlash speculative-decoding benchmark for Laguna-S-2.1 on the
-# poolside `laguna` fork (Vulkan build). Run on the box, AFTER build-laguna-fork.sh.
+# Real DFlash speculative-decoding benchmark for Laguna-S-2.1 on the poolside
+# `laguna` fork. Run on the box, AFTER the matching build script.
+#
+# M-053: Vulkan build, the initial full run (3 short + 1 long prompt).
+# M-055: parameterized sweep/control — override SPEC_N_MAX / FA_FLAG /
+#        RESULT_DIR / MAX_TOKENS / N_SHORT env vars; defaults preserve the
+#        M-053 invocation exactly.
 #
 # Follows catalog/OPERATIONS.md's safety procedure: pauses the download queue,
 # stops exclusive (non-always-up) model services for GPU exclusivity, restores
@@ -15,9 +20,13 @@ set -uo pipefail
 
 cd /home/chris/local-ai-machine
 
-IMAGE=local-ai-machine/llamacpp-laguna-fork:vulkan-radv
-PORT=8120
-RESULT_DIR=/tmp/laguna-dflash-results
+IMAGE=${IMAGE:-local-ai-machine/llamacpp-laguna-fork:vulkan-radv}
+PORT=${PORT:-8120}
+SPEC_N_MAX=${SPEC_N_MAX:-15}
+FA_FLAG=${FA_FLAG:--fa 1}
+MAX_TOKENS=${MAX_TOKENS:-512}
+N_SHORT=${N_SHORT:-3}
+RESULT_DIR=${RESULT_DIR:-/tmp/laguna-dflash-results}
 mkdir -p "$RESULT_DIR"
 
 log() { echo "[$(date -u +%FT%TZ)] $*"; }
@@ -91,8 +100,8 @@ for ctx in 131072 16384 8192; do
     /build/build/bin/llama-server \
     -m /models/UD-Q4_K_M/Laguna-S-2.1-UD-Q4_K_M-00001-of-00003.gguf \
     -md /models-draft/laguna-s-2.1-DFlash-BF16.gguf \
-    --spec-type draft-dflash --spec-draft-n-max 15 \
-    -ngl 999 -fa 1 --swa-full --reasoning-format deepseek -n 8192 \
+    --spec-type draft-dflash --spec-draft-n-max "$SPEC_N_MAX" \
+    -ngl 999 $FA_FLAG --swa-full --reasoning-format deepseek -n 8192 \
     -c "$ctx" --host 0.0.0.0 --port "$PORT" -a laguna-s-2.1-dflash \
     >/dev/null 2>&1 || { log "docker run failed at -c $ctx"; continue; }
 
@@ -119,13 +128,17 @@ docker logs laguna-dflash-test 2>&1 | grep -E "build:|version" | head -5 > "$RES
 
 # ---- run the benchmark ----
 START_TS=$(date -u +%FT%TZ)
-python3 - "$PORT" "$started" "$RESULT_DIR" "$START_TS" <<'PY'
+python3 - "$PORT" "$started" "$RESULT_DIR" "$START_TS" "$MAX_TOKENS" "$N_SHORT" "$SPEC_N_MAX" "$FA_FLAG" <<'PY'
 import json, sys, time, urllib.request, uuid, datetime
 
 port, ctx, outdir, start_ts = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+max_tokens = int(sys.argv[5]) if len(sys.argv) > 5 else 512
+n_short = int(sys.argv[6]) if len(sys.argv) > 6 else 3
+spec_n_max = sys.argv[7] if len(sys.argv) > 7 else "15"
+fa_flag = sys.argv[8] if len(sys.argv) > 8 else "-fa 1"
 base = f"http://127.0.0.1:{port}/v1/chat/completions"
 
-def ask(prompt, max_tokens=512):
+def ask(prompt, max_tokens=max_tokens):
     payload = json.dumps({
         "messages": [{"role": "user", "content": prompt}],
         "max_tokens": max_tokens,
@@ -154,7 +167,7 @@ topics = [
     "What are the practical tradeoffs between quantization schemes like Q4_K_M and BF16 for serving LLMs on unified memory?",
 ]
 short_samples = []
-for i, topic in enumerate(topics):
+for i, topic in enumerate(topics[:n_short]):
     prompt = f"{uuid.uuid4()} {topic}"
     resp = ask(prompt)
     with open(f"{outdir}/short-{i}.json", "w") as f:
@@ -183,6 +196,7 @@ long_summary = summarize(resp)
 print(json.dumps({
     "benchmark_id": "llamacpp-server-live-timing-v1",
     "started_utc": start_ts,
+    "config": {"spec_n_max": spec_n_max, "fa_flag": fa_flag, "max_tokens": max_tokens},
     "context_used_tokens": int(ctx),
     "short_context_samples": short_samples,
     "long_context_sample": long_summary,
@@ -192,5 +206,6 @@ PY
 END_TS=$(date -u +%FT%TZ)
 log "Benchmark window: $START_TS .. $END_TS"
 log "Fingerprint: host_kernel=$HOST_KERNEL repo_commit=$REPO_COMMIT image_digest=$IMAGE_DIGEST"
+log "Config: SPEC_N_MAX=$SPEC_N_MAX FA_FLAG=$FA_FLAG MAX_TOKENS=$MAX_TOKENS N_SHORT=$N_SHORT"
 log "Results + raw responses in $RESULT_DIR (engine-version.txt)"
 log "DFLASH_BENCH_DONE"
