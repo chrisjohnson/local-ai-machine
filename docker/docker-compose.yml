@@ -1175,7 +1175,10 @@ services:
       # Same env value every litellm-facing service already gets.
       - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
     working_dir: /work
-    command: ["cli"]
+    # `cli` is a subcommand of the omp binary, not a PATH executable; our
+    # Dockerfile entrypoint is the seed script (not upstream's `omp`), so the
+    # subcommand must be dispatched through the binary explicitly.
+    command: ["omp", "cli"]
     extra_hosts:
       # Reach the host-networked litellm proxy (port 4000) from this
       # bridge-networked container — same pattern as turnstone.

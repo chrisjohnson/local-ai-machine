@@ -26,6 +26,15 @@ RUN mkdir -p /home/omp/.bun/bin && \
     cp /root/.bun/bin/bun /home/omp/.bun/bin/bun && \
     chown -R omp:omp /home/omp/.bun
 
+# Seed-once model config (litellm provider), same pattern as pi-web: committed
+# template carries a __LITELLM_MASTER_KEY__ placeholder, substituted at runtime
+# only when the config file is first created. COPY/chmod run as root (before
+# USER omp): BuildKit COPY'd files are root-owned even when the active USER is
+# non-root, so a chmod after the USER switch would fail with EPERM.
+COPY models.seed.yml.tmpl /app/models.seed.yml.tmpl
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 # Switch user context for runtime safety
 USER omp
 WORKDIR /home/omp
@@ -38,16 +47,16 @@ ENV PATH="/home/omp/.bun/bin:${PATH}"
 # the ~/.omp:/home/omp/.omp volume mount entirely.
 ENV PI_CONFIG_DIR=".omp"
 
-# Install the official bundle via Bun
-RUN bun install -g @oh-my-pi/pi-coding-agent
-
-# Seed-once model config (litellm provider), same pattern as pi-web: committed
-# template carries a __LITELLM_MASTER_KEY__ placeholder, substituted at runtime
-# only when the config file is first created.
-COPY models.seed.yml.tmpl /app/models.seed.yml.tmpl
-COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+# Install the official bundle via Bun. Bun blocks untrusted lifecycle scripts
+# by default; onnxruntime-node (downloads its native .node binary) and
+# protobufjs (bundling postinstall) are both required for runtime features
+# (embeddings/memory), so trust exactly those two after install.
+RUN bun install -g @oh-my-pi/pi-coding-agent \
+    && bun pm -g trust onnxruntime-node protobufjs
 
 WORKDIR /work
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
-CMD ["cli"]
+# Original upstream used ENTRYPOINT ["omp"] + CMD ["cli"] (cli is a subcommand
+# of the omp binary, not a PATH executable); the seed entrypoint replaces the
+# omp ENTRYPOINT, so the subcommand must be dispatched through `omp` here.
+CMD ["omp", "cli"]
