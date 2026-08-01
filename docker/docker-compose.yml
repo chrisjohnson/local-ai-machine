@@ -1166,9 +1166,20 @@ services:
       - /home/chris/turnstone-workspace/printer-dashboard:/work
       - ~/.omp:/home/omp/.omp
     environment:
-      - PI_CONFIG_DIR=/home/omp/.omp
+      # Relative name, not absolute: omp resolves the config root as
+      # path.join(os.homedir(), PI_CONFIG_DIR), so ".omp" lands on the
+      # ~/.omp:/home/omp/.omp mount above.
+      - PI_CONFIG_DIR=.omp
+      # Seed-time substitution target for models.seed.yml.tmpl's
+      # __LITELLM_MASTER_KEY__ placeholder (oh-my-pi/docker-entrypoint.sh).
+      # Same env value every litellm-facing service already gets.
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
     working_dir: /work
     command: ["cli"]
+    extra_hosts:
+      # Reach the host-networked litellm proxy (port 4000) from this
+      # bridge-networked container — same pattern as turnstone.
+      - "host.docker.internal:host-gateway"
     depends_on:
       - litellm
 

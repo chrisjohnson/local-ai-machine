@@ -32,11 +32,22 @@ WORKDIR /home/omp
 
 # Ensure pathing and environments match the new user space
 ENV PATH="/home/omp/.bun/bin:${PATH}"
-ENV PI_CONFIG_DIR="/home/omp/.omp"
+# PI_CONFIG_DIR is a directory NAME joined under $HOME, not an absolute path
+# (@oh-my-pi/pi-utils/dirs: path.join(os.homedir(), PI_CONFIG_DIR)); an
+# absolute value here silently resolves to /home/omp/home/omp/.omp and misses
+# the ~/.omp:/home/omp/.omp volume mount entirely.
+ENV PI_CONFIG_DIR=".omp"
 
 # Install the official bundle via Bun
 RUN bun install -g @oh-my-pi/pi-coding-agent
 
+# Seed-once model config (litellm provider), same pattern as pi-web: committed
+# template carries a __LITELLM_MASTER_KEY__ placeholder, substituted at runtime
+# only when the config file is first created.
+COPY models.seed.yml.tmpl /app/models.seed.yml.tmpl
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 WORKDIR /work
-ENTRYPOINT ["omp"]
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["cli"]

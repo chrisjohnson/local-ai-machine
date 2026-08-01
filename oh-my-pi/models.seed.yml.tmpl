@@ -1,0 +1,47 @@
+# Seed template for oh-my-pi (omp) model config — translated from
+# pi-web/models.seed.json.tmpl into omp's native format. omp reads this from
+# $PI_CONFIG_DIR/agent/models.yml (YAML preferred; a legacy models.json at the
+# same path is auto-migrated on load, but we seed the native YAML directly).
+# __LITELLM_MASTER_KEY__ is substituted by docker-entrypoint.sh at first boot;
+# the committed template carries a placeholder, never a real secret
+# (docker/.env, read at runtime only).
+#
+# baseUrl: litellm runs host-networked (docker-compose `litellm`, port 4000);
+# this bridge-networked container reaches it via host.docker.internal + the
+# extra_hosts entry on the `omp` compose service (turnstone precedent).
+providers:
+  local-litellm:
+    baseUrl: http://host.docker.internal:4000/v1
+    api: openai-completions
+    apiKey: __LITELLM_MASTER_KEY__
+    compat:
+      supportsDeveloperRole: false
+    models:
+      - id: coder
+        name: Local coder (litellm)
+        reasoning: false
+        input: [text]
+        contextWindow: 131072
+        maxTokens: 8192
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
+      - id: judge
+        name: Local judge (litellm)
+        reasoning: false
+        input: [text]
+        contextWindow: 65536
+        maxTokens: 8192
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
+      - id: vision
+        name: Local vision (litellm)
+        reasoning: false
+        input: [text, image]
+        contextWindow: 32768
+        maxTokens: 8192
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
+      - id: orchestrator
+        name: Local orchestrator (litellm)
+        reasoning: false
+        input: [text]
+        contextWindow: 65536
+        maxTokens: 8192
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
