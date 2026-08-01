@@ -7,9 +7,12 @@
 # /build/build/bin and the fork commit is recorded in /build/fork-commit.txt.
 FROM docker.io/kyuz0/amd-strix-halo-toolboxes:vulkan-radv
 
-# The toolbox image has gcc/glslc but no linker (binutils/ld) — required by
-# CMake's compiler-probe before it will configure anything.
-RUN dnf install -y binutils && dnf clean all
+# The toolbox image has gcc/glslc but no usable linker: binutils is present yet
+# /usr/bin/ld -> /etc/alternatives/ld is a dangling symlink (the image's
+# alternatives database is broken), so CMake's compiler-probe fails with
+# `collect2: fatal error: cannot find 'ld'`. Repair the link to the real ld.bfd.
+RUN dnf install -y binutils && dnf clean all \
+    && ln -sf /usr/bin/ld.bfd /usr/bin/ld
 
 WORKDIR /build
 RUN git clone --depth 1 --branch laguna https://github.com/poolsideai/llama.cpp.git /build/src \
