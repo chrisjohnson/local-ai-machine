@@ -1161,6 +1161,7 @@ services:
     container_name: oh-my-pi
     user: "1000:1000"
     tty: true
+    stdin_open: true
     volumes:
       - /home/chris/turnstone-workspace/printer-dashboard:/work
       - ~/.omp:/home/omp/.omp
