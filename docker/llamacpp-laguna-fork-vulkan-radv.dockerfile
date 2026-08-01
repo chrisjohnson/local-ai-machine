@@ -19,6 +19,12 @@ RUN git clone --depth 1 --branch laguna https://github.com/poolsideai/llama.cpp.
     && git -C /build/src rev-parse HEAD > /build/fork-commit.txt
 
 WORKDIR /build/src
+# GCC 15 header-hygiene fix: common/speculative.cpp uses std::isfinite (the DFlash
+# row-clamping path) without including <cmath>; older libstdc++ provided it
+# transitively, GCC 15 does not. Surgical one-line include — the only <cmath>-missing
+# user in the compiled (non-SYCL, non-test) tree.
+RUN sed -i '/#include <map>/a #include <cmath>' /build/src/common/speculative.cpp \
+    && grep -n "include <cmath>" /build/src/common/speculative.cpp
 RUN cmake -B /build/build -DGGML_VULKAN=ON -DCMAKE_BUILD_TYPE=Release -DLLAMA_CURL=OFF \
     && grep -E "GGML_VULKAN|LLAMA_VULKAN" /build/build/CMakeCache.txt \
     && cmake --build /build/build -j --target llama-server llama-bench llama-cli
