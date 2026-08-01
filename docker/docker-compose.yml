@@ -590,6 +590,75 @@ services:
     ports:
       - "127.0.0.1:8103:8080"
 
+  # M-048: Qwen3.5-122B-A10B (plain, UD-Q5_K_XL, non-MTP) live-server
+  # deployment, for a same-quant, same-methodology comparison against the
+  # MTP variant below. Already benchmarked once via llamacpp-bench-v1
+  # (tg128 22.16 tok/s, see catalog/builds/qwen3.5-122b-a10b--llamacpp-vulkan-radv.yaml)
+  # but llama-bench can't run the MTP side (no --spec-type support), so
+  # this service re-measures the plain variant via live-server request
+  # timing to match the MTP variant's only-available methodology.
+  # Swap-in comparison tier, not a standing service — not wired into any
+  # litellm role.
+  qwen3.5-122b-a10b--llamacpp-vulkan-radv-v1:
+    image: docker.io/kyuz0/amd-strix-halo-toolboxes:vulkan-radv
+    container_name: qwen3.5-122b-a10b--llamacpp-vulkan-radv-v1
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - "26"
+      - "303"
+    volumes:
+      - /var/lib/ai-models/llamacpp-qwen3.5-122b-a10b:/models:ro
+    command: >
+      llama-server
+      -m /models/UD-Q5_K_XL/Qwen3.5-122B-A10B-UD-Q5_K_XL-00001-of-00003.gguf
+      -ngl 999
+      -fa 1
+      -c 131072
+      --host 0.0.0.0
+      --port 8080
+      -a qwen3.5-122b-a10b
+      --metrics
+    ports:
+      - "127.0.0.1:8104:8080"
+
+  # M-048: Qwen3.5-122B-A10B MTP (multi-token-prediction) speculative-decoding
+  # variant, same UD-Q5_K_XL quant tier as the plain build above (chosen
+  # specifically to make this a clean same-quant comparison). --spec-type
+  # draft-mtp requires -np/--parallel 1 (MTP supports only a single server
+  # slot), matching the proven qwen3.6-35b-a3b-mtp flags. llama-bench does
+  # not support --spec-type, so this is benchmarked via live-server request
+  # timing, same as the plain build above — not blended with the
+  # llamacpp-bench-v1 pp512/tg128 harness. Swap-in comparison tier, not
+  # wired into any litellm role.
+  qwen3.5-122b-a10b-mtp--llamacpp-vulkan-radv-mtp-v1:
+    image: docker.io/kyuz0/amd-strix-halo-toolboxes:vulkan-radv
+    container_name: qwen3.5-122b-a10b-mtp--llamacpp-vulkan-radv-mtp-v1
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - "26"
+      - "303"
+    volumes:
+      - /var/lib/ai-models/llamacpp-qwen3.5-122b-a10b-mtp:/models:ro
+    command: >
+      llama-server
+      -m /models/UD-Q5_K_XL/Qwen3.5-122B-A10B-UD-Q5_K_XL-00001-of-00003.gguf
+      -ngl 999
+      -fa 1
+      --spec-type draft-mtp
+      --spec-draft-n-max 3
+      -np 1
+      -c 131072
+      --host 0.0.0.0
+      --port 8080
+      -a qwen3.5-122b-a10b-mtp
+      --metrics
+    ports:
+      - "127.0.0.1:8105:8080"
+
   # ---------------------------------------------------------------------------
   # Ollama — shared single instance, port 11434
   # ---------------------------------------------------------------------------
