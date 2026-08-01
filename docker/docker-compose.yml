@@ -1048,6 +1048,10 @@ services:
       # remap, avoids any path mismatch between what a session file says
       # and what's actually on disk in the container).
       - /home/chris:/home/chris
+      # Docker socket mount (2026-07-31): enables docker CLI inside pi-web
+      # container to control host Docker - same privilege model as
+      # turnstone already has (accepted deliberately, not default).
+      - /var/run/docker.sock:/var/run/docker.sock
       # GitHub SSH deploy key (2026-07-31, M-044 superseding the /root/.ssh
       # stopgap): pi-web now runs as the `node` user (uid 1000, matching
       # host chris) with HOME=/home/chris explicitly set in the Dockerfile

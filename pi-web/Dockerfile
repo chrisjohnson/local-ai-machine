@@ -20,12 +20,16 @@ WORKDIR /app
 # already needed for the identical reason (its own Dockerfile comment:
 # "confirmed missing on the first attempt").
 # curl: needed below to fetch the gh CLI release tarball.
+# docker.io + docker-compose-plugin: enables docker CLI inside pi-web
+# container to control host Docker - socket mount added to docker-compose.yml
+# (same privilege model as turnstone already has, accepted deliberately).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         git \
         ca-certificates \
         openssh-client \
         curl \
+        docker.io \
     && rm -rf /var/lib/apt/lists/*
 
 # gh (GitHub CLI) isn't packaged in Debian at all - installed from the
@@ -40,6 +44,17 @@ RUN GH_VERSION=$(curl -fsSL https://api.github.com/repos/cli/cli/releases/latest
     && tar -xzf /tmp/gh.tar.gz -C /tmp \
     && mv "/tmp/gh_${GH_VERSION}_linux_amd64/bin/gh" /usr/local/bin/gh \
     && rm -rf /tmp/gh.tar.gz "/tmp/gh_${GH_VERSION}_linux_amd64"
+
+# docker-compose-plugin: `docker compose` (not `docker-compose` standalone)
+# available inside pi-web container for managing the host's compose stack.
+# Installed from Docker's official apt repo - unlike gh CLI, Docker actually
+# does package this for Debian and it's worth the apt repo setup for a first-
+# class tool that integrates with the docker CLI itself.
+RUN curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/trusted.gpg.d/docker.asc \
+    && echo "deb [arch=$(dpkg --print-architecture)] https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" > /etc/apt/sources.list.d/docker.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends docker-compose-plugin \
+    && rm -rf /var/lib/apt/lists/*
 
 # /home/chris is bind-mounted from the host where it's owned by uid 1000.
 # Confirmed live in the pi-agent-supervisor build (M-031 decision log) that
