@@ -34,28 +34,70 @@ DFlash's diffusion approach) that doesn't need any NVIDIA-specific
 hardware. Requirement: the draft model must share the target's
 tokenizer.
 
-Three candidates to actually test, in priority order (this needs
-hands-on verification, not more research — genuinely uncertain which, if
-any, work):
+**Real community evidence found (2026-08-01, Reddit r/LocalLLaMA thread
+"AI summary of creating a toolbox for Laguna S 2.1" —
+reddit.com/r/LocalLLaMA/comments/1v3f6jq/, OP + a reply from u/Protryt),
+not speculation — this materially changes the priority order below.**
+Someone already built `poolsideai/llama.cpp` branch `laguna` on Strix
+Halo (gfx1151) and ran it, both plain and with DFlash:
+- OP built with **ROCm/HIP** (`-DGGML_HIP=ON -DAMDGPU_TARGETS=gfx1151`),
+  on a Fedora toolbox. Hit a real, hardware-specific wall: flash
+  attention crashes outright on this GPU under ROCm without `rocWMMA`
+  (`HIP kernel flash_attn_ext_f16 has no device code compatible with HIP
+  arch 1300`) — had to disable FA entirely (`-fa 0`) to get anything
+  running at all.
+- OP's plain (no-DFlash) `llama-bench` result on that ROCm/no-FA build:
+  **18.44 tok/s** tg128 (Q4_K_M, ngl 99).
+- OP's own DFlash attempt failed outright (`dflash requires ctx_other to
+  be set`) — gave up.
+- u/Protryt got DFlash actually running using a community-written patch
+  (Proton Drive link posted in-thread) fixing that exact error. Real
+  measured results (pasted `llama-server` logs): draft acceptance
+  73.5-90.6%, but **real generation speed only ~19-26 tok/s** across
+  several logged requests.
+- **The critical comparison: our own already-measured Laguna-S-2.1
+  baseline on THIS box — Vulkan RADV, no speculative decoding at all —
+  is 30.0 tok/s.** That beats both OP's plain ROCm baseline (18.44) and
+  Protryt's DFlash-accelerated ROCm result (~19-26). The bottleneck isn't
+  "no speculative decoding" — it's that ROCm/HIP itself appears to
+  underperform our proven Vulkan RADV path on this exact GPU, almost
+  certainly because of the FA-without-rocWMMA limitation nobody in that
+  thread worked around. **Building this fork via ROCm/HIP would very
+  likely make things slower for us, not faster.**
+- **Nobody in that thread tried building the fork with Vulkan instead of
+  ROCm.** That's now the one genuinely open, promising question: if
+  `poolsideai/llama.cpp`/`laguna` builds cleanly with `GGML_VULKAN=ON`
+  and inherits whatever makes our existing Vulkan RADV setup faster
+  (proper FA support, evidently), DFlash's acceptance-rate boost could
+  stack on top of our 30 tok/s baseline instead of ROCm's ~18. If the
+  fork's Vulkan backend turns out not to support the DFlash-specific
+  decode path at all (a real possibility — Vulkan support in the README
+  may just be inherited boilerplate, per this card's earlier note), that
+  itself is a valid, useful negative result.
 
-1. **The real DFlash mechanism, via poolside's own llama.cpp fork —
-   found after this card was first written, now the most promising
-   option.** `github.com/poolsideai/llama.cpp`, branch `laguna`, adds the
-   actual `--spec-type draft-dflash` support upstream llama.cpp lacks
-   ("upstream ships the generic DFlash framework but not the Laguna
-   decoder contract this draft model needs"). The matching draft-model
-   GGUF already exists and is published in a repo we already know:
+Candidates to actually test, in priority order (this needs hands-on
+verification — genuinely uncertain which, if any, work):
+
+1. **Poolside's `laguna` fork, built with VULKAN (not ROCm/HIP) — the
+   one thing the community thread didn't try, now the most promising
+   option precisely because of what that thread found.**
+   `github.com/poolsideai/llama.cpp`, branch `laguna`. Build with
+   `-DGGML_VULKAN=ON` (matching this repo's existing Vulkan RADV toolbox
+   build pattern), NOT the `-DGGML_HIP=ON` path OP/Protryt used. The
+   matching draft-model GGUF already exists in a repo we already know:
    `poolside/Laguna-S-2.1-GGUF` → `laguna-s-2.1-DFlash-BF16.gguf`.
    Documented invocation: `llama-server -m laguna-s-2.1-Q4_K_M.gguf -md
    laguna-s-2.1-DFlash-BF16.gguf --spec-type draft-dflash
-   --spec-draft-n-max 15`. The fork's README lists Vulkan as a generic
-   supported backend (same `GGML_VULKAN` build flag as our current
-   toolbox) — but that's boilerplate inherited from upstream llama.cpp,
-   NOT confirmation that the DFlash-specific decode-loop code has
-   actually been exercised on Vulkan rather than just CUDA/HIP. That's a
-   real unknown only a real build-and-try will resolve. Requires
-   building a custom Docker image from this fork (not just pulling
-   kyuz0's existing toolbox) — real but bounded work, not a huge lift.
+   --spec-draft-n-max 15`. Known issue to watch for from the community
+   thread: `dflash requires ctx_other to be set` — if this recurs on a
+   Vulkan build, the community patch (Proton Drive link:
+   `https://drive.proton.me/urls/DZZHA26NS4#0spkpMpg9Znu`, written by
+   an AI assistant per u/Protryt's account, fixing this exact error) may
+   apply regardless of backend — worth trying before concluding it's a
+   dead end, though verify what the patch actually changes before
+   applying it blindly. Requires building a custom Docker image from
+   this fork (not just pulling kyuz0's existing toolbox) — real but
+   bounded work, not a huge lift.
 2. **Laguna XS 2.1 as a classic `-md` draft** (already downloaded,
    33B/3B-active, same poolside family — plausible but unconfirmed
    tokenizer compatibility with Laguna-S-2.1). Works on stock/upstream
