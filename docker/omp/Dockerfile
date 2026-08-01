@@ -1,27 +1,32 @@
-FROM node:22-alpine AS runner
+FROM node:22-bookworm-slim AS runner
 
-# Install system dependencies (excluding bun)
-RUN apk add --no-cache \
+# Install structural system dependencies 
+RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     bash \
     openssh-client \
-    curl
+    curl \
+    ca-certificates \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install Bun via the official shell script
-RUN curl -fsSL https://bun.sh | bash
+RUN curl -fsSL https://bun.sh/install | bash
 
-# Ensure Bun is available during the build phase
+# Ensure Bun is available to root during the build phase
 ENV PATH="/root/.bun/bin:${PATH}"
 
-# Setup user identity to mirror host permissions
-RUN addgroup -g 1000 omp && \
-    adduser -u 1000 -G omp -h /home/omp -s /bin/bash -D omp
+# Modify the existing node user/group (1000:1000) to 'omp'
+RUN usermod -l omp node && \
+    groupmod -n omp node && \
+    usermod -d /home/omp -m omp
 
-# Copy bun binary to the non-root user's path and fix permissions
+# Create paths, copy binary, and fix permissions
 RUN mkdir -p /home/omp/.bun/bin && \
     cp /root/.bun/bin/bun /home/omp/.bun/bin/bun && \
     chown -R omp:omp /home/omp/.bun
 
+# Switch user context for runtime safety
 USER omp
 WORKDIR /home/omp
 
