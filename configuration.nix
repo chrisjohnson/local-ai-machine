@@ -339,6 +339,34 @@ let
         "DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2.gguf"
         "DeepSeek-V4-Flash-MTP-Q4K-Q8_0-F32.gguf"
       ]; }
+    # M-051: re-download of the entry directly above, this time with the
+    # CORRECT GGUF variant. The Strix-Halo-specific upstream doc
+    # (github.com/antirez/ds4/blob/main/STRIXHALO.md, section "5. Use the
+    # right GGUF") explicitly says: "Use the standard IQ2XXS/Q2K/Q8 imatrix
+    # GGUF: DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf"
+    # — the entry above lacks the `-imatrix` suffix and was downloaded per
+    # the repo's general (non-hardware-specific) README instead, before
+    # this doc was found. Both files are ~86.72GB (imatrix calibration
+    # affects quantization quality, not size) — a correctness gap, not a
+    # capacity one. Full history: catalog/builds/ds4-deepseek-v4-flash-iq2xxs--ds4-strix-halo.yaml
+    # and .fleet/board/done/M-047-ds4-mtp-onoff-benchmark.md (documents the
+    # gap; the MTP-on/off benchmark there ran on the wrong file). Confirmed
+    # exact filenames + sizes fresh via the HF API tree listing (not
+    # trusted from prior context): main weights 86,720,111,488 bytes
+    # (~80.76 GiB, imatrix variant — note there is also a same-size
+    # `-imatrix-0731.gguf` file in this repo; STRIXHALO.md names the plain
+    # `-imatrix.gguf` one, not the `-0731` one, so that's what's used here),
+    # MTP add-on 3,807,602,400 bytes (~3.55 GiB, byte-identical file to the
+    # one already downloaded above, but redeclared here so this entry is
+    # self-contained / re-downloadable independently of the wrong-variant
+    # one, which Chris may want to delete later to reclaim ~84GB). Old
+    # entry deliberately left in place above rather than removed as part of
+    # this change — deleting a ~90GB local dir is a separate, deliberate
+    # decision, not a side effect of fixing the download list.
+    { name = "ds4-deepseek-v4-flash-iq2xxs-imatrix"; repo = "antirez/deepseek-v4-gguf"; hfFiles = [
+        "DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf"
+        "DeepSeek-V4-Flash-MTP-Q4K-Q8_0-F32.gguf"
+      ]; }
     # Laguna XS 2.1 (poolside), released 2026-07-02 - a newer, smaller
     # sibling of laguna-s-2.1-118b-q4km above, not the same model at a
     # different quant. 33B total / 3B active MoE (the same fast
