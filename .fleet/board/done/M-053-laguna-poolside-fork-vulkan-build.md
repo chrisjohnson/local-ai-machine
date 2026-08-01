@@ -77,5 +77,9 @@ it.
   "lowest priority of three, not blocked" per Chris's explicit
   correction — recorded here so the framing doesn't drift back to
   "off-limits" over time.
+- Closed by Chris's direct request (2026-08-01): not picked up this
+  round. Moved to done without executing the plan so the approach (and
+  its explicit-greenlight requirement) stays tracked without lingering as
+  open backlog.
 
 ## Handoff notes
