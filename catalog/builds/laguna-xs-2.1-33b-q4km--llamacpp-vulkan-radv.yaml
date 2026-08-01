@@ -78,4 +78,36 @@ versions:
   status: WORKING
   created: '2026-08-01'
   last_verified: '2026-08-01'
-  benchmark_runs: []
+  benchmark_runs:
+  - timestamp: '2026-08-01T19:05:00Z'
+    benchmark_id: llamacpp-server-live-timing-v1
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: 6cc30ce016f1050005d2b921f517b51f44e240c9
+      host_gpu_driver: Mesa 25.3.6
+      concurrent_load:
+        downloads_paused: null
+        vllm_co_resident_or_stopped: no_vllm_running_at_time_of_run
+      host_metrics_window:
+        start: '2026-08-01T19:05:00Z'
+        end: '2026-08-01T19:08:30Z'
+      image_digest: '[kyuz0/amd-strix-halo-toolboxes@sha256:1648e4195154aef5dc975253d962e1e1b8358af26b0e54b4faf89a156131c320]'
+      engine_version: 0e4a03622 (10154)
+    result:
+      note: Not the standalone llamacpp-bench-v1 (llama-bench pp512/tg128) harness -- measured via
+        real /v1/chat/completions request timings against the running llama-server, same methodology
+        used for the MTP comparison builds in this family (no --spec-type support in llama-bench).
+      short_context_tg_tok_s_samples:
+      - 92.44
+      - 90.49
+      - 90.55
+      short_context_tg_tok_s_avg: 91.16
+      short_context_tg_tok_s_peak: 92.44
+      short_context_prompt_tok_s_range:
+      - 142.05
+      - 307.79
+      long_context_prompt_tokens: 5236
+      long_context_pp_tok_s: 974.04
+      long_context_tg_tok_s: 80.67
+      long_context_tg_degradation_pct: 12.7
+      raw_stdout_file: null
