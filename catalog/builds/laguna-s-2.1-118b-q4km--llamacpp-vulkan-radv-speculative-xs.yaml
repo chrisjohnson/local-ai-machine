@@ -19,20 +19,30 @@ model:
   size_on_disk_gb: 68.1
 versions:
 - version: v1
-  compose_service_id: null
+  compose_service_id: laguna-s-2.1-118b-q4km--llamacpp-vulkan-radv-speculative-xs-v1
   engine_ref: llamacpp-vulkan-radv-server-v1
-  role: 'M-050 experiment only, NOT deployed as a standing compose service. Laguna-XS-2.1
+  role: 'M-050 experiment. Recorded as a real docker-compose.yml service for
+    reproducibility/future re-evaluation (per Chris''s standing instruction that
+    every build gets a compose entry even if not currently in use), but NOT
+    currently pointed at by any litellm role and not recommended for standing
+    use given the negative result below. Laguna-XS-2.1
     (33B/3B-active, already on disk from M-049) tested as a classic llama.cpp `-md`/
     `--spec-type draft-simple` speculative-decoding draft model for Laguna-S-2.1
     (118B/8B-active). Net result: NEGATIVE -- tokenizer/vocab is compatible (both
     models loaded and speculative decoding actively engaged, confirmed via real
     draft-acceptance telemetry), but real generation throughput came in BELOW the
     existing 30.0 tok/s plain Laguna-S-2.1 baseline at every context length tested.
-    Do not deploy; kept as a documented negative result per M-050''s own framing
-    (a clean "no" is exactly as valuable as a "yes" here).'
-  notes: 'Ad-hoc `docker run` only (manual container, not added to docker-compose.yml)
-    -- this was purely an experiment to answer M-050''s option-2 question, not a
-    candidate for standing deployment given the negative result below. Same trusted
+    Do not point a role at this service; kept as a documented negative result per
+    M-050''s own framing (a clean "no" is exactly as valuable as a "yes" here).'
+  notes: 'Defined in docker-compose.yml as
+    laguna-s-2.1-118b-q4km--llamacpp-vulkan-radv-speculative-xs-v1 (port 8107,
+    -c 8192 -- the highest context that loaded/served stably in testing, see
+    below) so the exact tested configuration is reproducible later, even though
+    the real benchmark result was negative and no role currently points at it.
+    The original hands-on testing in this session used ad-hoc `docker run`
+    invocations (not this compose service directly) to iterate through the
+    failure modes below before landing on the working config now captured in
+    compose. Same trusted
     image every other llama.cpp service in this repo uses
     (docker.io/kyuz0/amd-strix-halo-toolboxes:vulkan-radv), stock llama.cpp, no
     custom build, no new download -- both Laguna-S-2.1 and Laguna-XS-2.1 were
@@ -111,9 +121,12 @@ versions:
     memory footprint additionally forces a much smaller context window than the
     proven single-model baseline. Recommend continuing to serve Laguna-S-2.1
     plain (existing 30.0 tok/s baseline, full 131072 context) rather than paired
-    with this draft model. All test containers were ad-hoc `docker run`
-    instances, stopped and removed after the benchmark; no compose service or
-    standing deployment was created for this build.
+    with this draft model. The original benchmark used ad-hoc `docker run`
+    instances (stopped and removed after the run); the exact tested config has
+    since been captured as a real docker-compose.yml service
+    (laguna-s-2.1-118b-q4km--llamacpp-vulkan-radv-speculative-xs-v1, port 8107)
+    so it stays reproducible for the future even though nothing currently
+    points a role at it and it is not recommended for standing use.
 
     '
   status: TESTED_NOT_VIABLE

@@ -585,6 +585,51 @@ services:
     ports:
       - "127.0.0.1:8106:8080"
 
+  # M-050: Laguna-S-2.1 target + Laguna-XS-2.1 as a classic llama.cpp
+  # speculative-decoding draft model (-md / --spec-type draft-simple).
+  # Recorded here for posterity/reproducibility even though the real
+  # benchmark result was NEGATIVE — do not point any role at this service.
+  # Tokenizer/vocab compatibility between the two models is confirmed real,
+  # and speculative decoding does actively engage (draft acceptance
+  # 40.8-72.4% measured), but real generation throughput (16.9-28.1 tok/s)
+  # came in below the plain laguna-s-2.1-118b-q4km baseline (30.0 tok/s) at
+  # every context depth tested. -c is reduced to 8192 from the plain
+  # baseline's 131072 because this box's Strix Halo unified-memory GPU could
+  # not fit both models' KV caches at full context (OOM/device-lost at
+  # 131072 and 16384 respectively — see catalog entry for exact errors). No
+  # --ctx-size-draft-equivalent flag exists on this llama-server build to
+  # give the draft model its own smaller context, so -c applies to both.
+  # Full writeup: catalog/builds/laguna-s-2.1-118b-q4km--llamacpp-vulkan-radv-speculative-xs.yaml
+  # (status: TESTED_NOT_VIABLE) and .fleet/board/done/M-050-laguna-speculative-decoding-experiment.md.
+  laguna-s-2.1-118b-q4km--llamacpp-vulkan-radv-speculative-xs-v1:
+    image: docker.io/kyuz0/amd-strix-halo-toolboxes:vulkan-radv
+    container_name: laguna-s-2.1-118b-q4km--llamacpp-vulkan-radv-speculative-xs-v1
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - "26"
+      - "303"
+    volumes:
+      - /var/lib/ai-models/laguna-s-2.1-118b-q4km:/models-s:ro
+      - /var/lib/ai-models/laguna-xs-2.1-33b-q4km:/models-xs:ro
+    command: >
+      llama-server
+      -m /models-s/UD-Q4_K_M/Laguna-S-2.1-UD-Q4_K_M-00001-of-00003.gguf
+      -md /models-xs/Laguna-XS-2.1-Q4_K_M.gguf
+      --spec-type draft-simple
+      -ngl 999
+      -fa 1
+      --reasoning-format deepseek
+      -n 8192
+      -c 8192
+      --host 0.0.0.0
+      --port 8080
+      -a laguna-s-2.1-118b-speculative-xs
+      --metrics
+    ports:
+      - "127.0.0.1:8107:8080"
+
   # GLM-4.7-Flash judge model (M-040). Chris asked for "the strongest"
   # judge candidate — per the catalog's own benchmark record, that's this
   # llama.cpp/GGUF build, not the AWQ/vLLM one already registered in
