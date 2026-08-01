@@ -32,9 +32,12 @@ correctness gap, not a capacity one. Full history in
    `-imatrix.gguf` file (+ the same MTP add-on, byte-identical to the one
    already downloaded, redeclared so this entry is self-contained).
    Confirmed exact filename/size fresh via the HF API tree listing.
-2. [x] Commit, push, deploy on host (pull + the exact pre-authorized
-   `nixos-rebuild switch` command), confirm the new download service
-   actually started and is making real progress.
+2. [x] Commit and push the config change.
+2a. [ ] Deploy on host (pull + the exact pre-authorized `nixos-rebuild
+   switch` command) and confirm the new download service actually
+   started and is making real progress — **deliberately held per Chris's
+   explicit instruction: don't enable any new downloads while M-050's
+   benchmark is running.** Do this once that's clear.
 3. [ ] Once fully downloaded, re-run both the no-MTP and MTP benchmarks
    (same real ~116k-token-prompt methodology as M-047) on the correct
    file, and record the results as a new `benchmark_runs[]` entry (or a
