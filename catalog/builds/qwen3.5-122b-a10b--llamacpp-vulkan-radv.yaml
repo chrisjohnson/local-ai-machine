@@ -51,6 +51,46 @@ versions:
       tg128_tok_s: 22.16 ± 0.02
       engine_build: c812c543f (10128)
       raw_stdout_file: catalog/raw/qwen3.5-122b-a10b--llamacpp-vulkan-radv-v1--llamacpp-bench-v1--20260726T005106Z.txt
+  - timestamp: '2026-08-01T01:52:40Z'
+    benchmark_id: llamacpp-live-request-v1
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: 8ae15aa3d8cd6dbd93252810434aafd79c874510
+      host_gpu_driver: Mesa 25.3.6
+      concurrent_load:
+        downloads_paused: false
+        other_llamacpp_services_co_resident: glm-4.7-flash--llamacpp-vulkan-radv-v1
+          only (judge/orchestrator/coder role, left running/undisturbed; ~192MB VRAM,
+          ~22GB GTT baseline)
+      host_metrics_window:
+        start: '2026-08-01T01:52:40Z'
+        end: '2026-08-01T01:58:26Z'
+      image_digest: '[kyuz0/amd-strix-halo-toolboxes@sha256:1648e4195154aef5dc975253d962e1e1b8358af26b0e54b4faf89a156131c320]'
+      engine_version: 0e4a03622 (10154)
+    result:
+      short_prompt:
+        prompt_tokens: 30
+        completion_tokens: 400
+        prompt_tok_s: 43.23
+        tg_tok_s: 21.90
+        wall_clock_s: 18.998
+        raw_response_file: catalog/raw/qwen3.5-122b-a10b--llamacpp-vulkan-radv-v1--llamacpp-live-request-v1--short-prompt--20260801T015545Z.json
+      long_context:
+        prompt_tokens: 7845
+        completion_tokens: 400
+        prompt_tok_s: 267.83
+        tg_tok_s: 21.18
+        wall_clock_s: 48.277
+        raw_response_file: catalog/raw/qwen3.5-122b-a10b--llamacpp-vulkan-radv-v1--llamacpp-live-request-v1--long-context--20260801T015545Z.json
+    notes: 'Re-measured via live-server request timing (not llama-bench) specifically
+      to give a fair, same-methodology baseline for the M-048 MTP comparison
+      (see qwen3.5-122b-a10b-mtp--llamacpp-vulkan-radv-mtp.yaml) — llama-bench
+      does not support --spec-type/MTP flags at all, so the MTP variant could
+      only be measured via live-server timing, and comparing that against this
+      build''s existing llamacpp-bench-v1 number would not be apples-to-apples.
+      This run corroborates the earlier llamacpp-bench-v1 tg128 figure closely
+      (21.90/21.18 tok/s live-request here vs. 22.16 tok/s via llama-bench),
+      confirming the two methodologies agree within noise for this build.'
   - timestamp: '2026-07-26T00:51:06Z'
     benchmark_id: seven-tier-coding-v2
     fingerprint:

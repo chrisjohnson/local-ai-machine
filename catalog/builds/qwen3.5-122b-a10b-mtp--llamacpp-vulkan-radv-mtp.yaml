@@ -1,0 +1,105 @@
+id: qwen3.5-122b-a10b-mtp--llamacpp-vulkan-radv-mtp
+model:
+  display_name: Qwen3.5-122B-A10B (MTP)
+  family: Qwen3.5
+  hf_repo: unsloth/Qwen3.5-122B-A10B-MTP-GGUF
+  hf_revision: null
+  architecture: hybrid-mamba-attention-moe
+  total_params: 122e9
+  active_params: 10e9
+  num_experts: null
+  quantization: GGUF-Q5_K_XL (UD)
+  context_length_native: null
+  modality: text
+  files:
+  - UD-Q5_K_XL/Qwen3.5-122B-A10B-UD-Q5_K_XL-00001-of-00003.gguf
+  - UD-Q5_K_XL/Qwen3.5-122B-A10B-UD-Q5_K_XL-00002-of-00003.gguf
+  - UD-Q5_K_XL/Qwen3.5-122B-A10B-UD-Q5_K_XL-00003-of-00003.gguf
+  local_path: /var/lib/ai-models/llamacpp-qwen3.5-122b-a10b-mtp
+  size_on_disk_gb: 88.0
+versions:
+- version: v1
+  compose_service_id: qwen3.5-122b-a10b-mtp--llamacpp-vulkan-radv-mtp-v1
+  engine_ref: llamacpp-vulkan-radv-mtp-v1
+  role: MTP speculative-decoding counterpart to qwen3.5-122b-a10b--llamacpp-vulkan-radv,
+    same UD-Q5_K_XL quant tier (chosen specifically to make this a clean same-quant
+    A/B comparison, per M-048). MTP-tensor-bearing GGUF from a separate unsloth
+    repo (unsloth/Qwen3.5-122B-A10B-MTP-GGUF).
+  notes: '--spec-type draft-mtp --spec-draft-n-max 3 per llama.cpp PR #22673, matching
+    the flags already proven on qwen3.6-35b-a3b-mtp. MTP requires -np/--parallel 1
+    (single server slot only) — confirmed in server logs (`n_slots = 1, kv_unified
+    = ''false''`) alongside `common_speculative_init_result: creating MTP draft
+    context against the target model`.
+
+    llama-bench does not support --spec-type/MTP flags at all (confirmed via
+    --help, no spec/draft/mtp flags present), so this cannot use the standard
+    llamacpp-bench-v1 pp512/tg128 harness. Benchmarked instead via direct
+    llama-server request timing (`timings` block in the /v1/chat/completions
+    response), against a live-server instance — benchmark_id llamacpp-live-request-v1,
+    not blended with llamacpp-bench-v1. The non-MTP counterpart
+    (qwen3.5-122b-a10b--llamacpp-vulkan-radv) was re-measured with the identical
+    live-request methodology (see its own benchmark_runs) specifically so this
+    comparison is apples-to-apples rather than comparing a llama-bench number
+    against a live-request number.
+
+    Two prompts run per variant: a short prompt (30 prompt tokens) and a long-context
+    prompt (7845 prompt tokens, ~44KB of filler text ending in a summarization
+    question) to see whether the speedup holds as context grows. Both requests
+    capped at max_tokens=400 (finish_reason: length in both cases — this is a
+    reasoning model that was still inside <think> content at the cutoff, but
+    that does not affect the tok/s measurement, which is per-token timing from
+    llama-server''s own instrumentation, not dependent on reaching a natural stop).
+
+    Result: MTP gave a real, substantial speedup that HELD UP (in fact strengthened
+    slightly) at long context — draft acceptance rate stayed high (85-89%) in
+    both cases:
+      - short prompt (30 tok prompt): plain 21.90 tok/s -> MTP 35.63 tok/s (+62.7%),
+        draft_n_accepted 286/336 (85.1%)
+      - long context (7845 tok prompt): plain 21.18 tok/s -> MTP 35.38 tok/s (+67.0%),
+        draft_n_accepted 290/327 (88.7%)
+    Prompt-processing (prefill) speed was essentially unaffected by MTP (257-268
+    tok/s either way, as expected — MTP only accelerates the decode/generation
+    phase). Conclusion: MTP is a clear win for this model+quant tier, worth
+    keeping as the standing choice over the plain variant for generation-heavy
+    workloads, with no observed degradation at ~8K context.'
+  status: WORKING
+  created: '2026-08-01'
+  last_verified: '2026-08-01'
+  benchmark_runs:
+  - timestamp: '2026-08-01T02:02:33Z'
+    benchmark_id: llamacpp-live-request-v1
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: 8ae15aa3d8cd6dbd93252810434aafd79c874510
+      host_gpu_driver: Mesa 25.3.6
+      concurrent_load:
+        downloads_paused: false
+        other_llamacpp_services_co_resident: glm-4.7-flash--llamacpp-vulkan-radv-v1
+          only (judge/orchestrator/coder role, left running/undisturbed; ~192MB VRAM,
+          ~22GB GTT baseline)
+      host_metrics_window:
+        start: '2026-08-01T01:58:33Z'
+        end: '2026-08-01T02:02:23Z'
+      image_digest: '[kyuz0/amd-strix-halo-toolboxes@sha256:1648e4195154aef5dc975253d962e1e1b8358af26b0e54b4faf89a156131c320]'
+      engine_version: 0e4a03622 (10154)
+    result:
+      short_prompt:
+        prompt_tokens: 30
+        completion_tokens: 400
+        prompt_tok_s: 43.23
+        tg_tok_s: 35.63
+        draft_n: 336
+        draft_n_accepted: 286
+        draft_accept_rate: 0.851
+        wall_clock_s: 12.099
+        raw_response_file: catalog/raw/qwen3.5-122b-a10b-mtp--llamacpp-vulkan-radv-mtp-v1--llamacpp-live-request-v1--short-prompt--20260801T020233Z.json
+      long_context:
+        prompt_tokens: 7845
+        completion_tokens: 400
+        prompt_tok_s: 257.16
+        tg_tok_s: 35.38
+        draft_n: 327
+        draft_n_accepted: 290
+        draft_accept_rate: 0.887
+        wall_clock_s: 41.916
+        raw_response_file: catalog/raw/qwen3.5-122b-a10b-mtp--llamacpp-vulkan-radv-mtp-v1--llamacpp-live-request-v1--long-context--20260801T020233Z.json
