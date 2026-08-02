@@ -897,8 +897,8 @@ services:
     image: local-ai-machine/turnstone-with-docker:latest
     container_name: turnstone-server
     restart: unless-stopped
-    labels:
-      com.local-ai-machine.always-up: "true"
+    #labels:
+      #com.local-ai-machine.always-up: "true"
     command: ["turnstone-server", "--host", "0.0.0.0", "--port", "8080"]
     ports:
       - "8080:8080"
@@ -1090,8 +1090,8 @@ services:
     image: ghcr.io/open-webui/open-webui:main
     container_name: open-webui
     restart: unless-stopped
-    labels:
-      com.local-ai-machine.always-up: "true"
+    #labels:
+      #com.local-ai-machine.always-up: "true"
     ports:
       - "3001:8080"
     environment:
@@ -1233,8 +1233,8 @@ services:
       - ~/.omp:/home/node/.omp
       - /home/chris/.ssh:/home/node/.ssh
       - /var/run/docker.sock:/var/run/docker.sock
-    labels:
-      com.local-ai-machine.always-up: "true"
+    #labels:
+      #com.local-ai-machine.always-up: "true"
     network_mode: host
     group_add:
       - "131"  # docker group GID (matches host's docker group)
