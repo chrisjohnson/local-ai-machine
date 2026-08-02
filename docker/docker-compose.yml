@@ -1252,7 +1252,7 @@ services:
       - PI_CODING_AGENT_DIR=/home/piweb/.pi-web
       - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
     working_dir: /work
-    command: ["pi-web"]
+    command: ["bash", "-c", "pi-web-sessiond & PI_WEB_HOST=0.0.0.0 PI_WEB_PORT=3000 pi-web-server"]
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
