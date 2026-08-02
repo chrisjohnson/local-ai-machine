@@ -70,5 +70,40 @@ community's 73-91% acceptance was actually measured on.
   two bounded diagnostics; a fork-debug effort (if the ROCm control points
   that way) is deliberately NOT folded into this card — it would need its own
   time-box and Chris's explicit go-ahead, matching M-053's greenlight pattern.
+- 2026-08-02 (sweep complete, both rounds; raw JSON under
+  catalog/raw/dflash-sweep-2026-08-02/). The "acceptance collapse" is a
+  BLOCK-SIZE effect, not a fixed Vulkan defect — and not FA-related. The
+  fork's DFlash is block-diffusion (all-or-nothing per block); at
+  --spec-draft-n-max 15, whole 15-token blocks almost never pass. Sweep
+  (Vulkan fork image, -c 131072 full context, -fa 1 unless noted, 2 short +
+  1 long prompt each):
+
+  | config | short acc | short tok/s | long acc | long tok/s |
+  |---|---|---|---|---|
+  | n15 fa1 (M-053) | 10-19% | 8.0-11.5 | 11.4% | 7.9 |
+  | n8 fa1 | 17-18% | 9.2-9.5 | 26.4% | 11.3 |
+  | n6 fa1 | 23-27% | 21.2-23.1 | 27.2% | 20.9 |
+  | n4 fa1 | 31-38% | 24.8-27.1 | 40.1% | 25.9 |
+  | n3 fa1 | 39-49% | 27.1-30.9 | 50.2% | 27.4 |
+  | n2 fa1 | 48-55% | 27.7-30.1 | 53.3% | 26.7 |
+  | n15 fa0 | 10-10.4% | 7.5-7.7 | 12.8% | 6.2 |
+
+  Findings: (a) -fa 0 makes everything WORSE, so flash attention is not the
+  corruption source — rule it out. (b) acceptance rises monotonically as
+  block size shrinks (10-19% at n15 -> 48-55% at n2), and throughput follows
+  (7.9-11.5 -> 26.7-30.9 tok/s), a ~2.7-3.2x improvement. (c) BUT the
+  optimum (n3) lands exactly AT the plain 30.0 tok/s baseline — best single
+  sample 30.9 tok/s, long-context n3 = 27.4 tok/s vs plain long 27.42 tok/s
+  (M-053-era plain baseline 30.93 short / 27.42 long). Draft overhead (a
+  full 2GB diffusion-draft forward pass per block step) cancels the
+  acceptance gain. INTERIM CONCLUSION: DFlash-on-Vulkan is tunable but a
+  wash vs plain decoding — it matches, does not beat, the 30 tok/s baseline.
+  The 73-91% community acceptance at n15 on ROCm remains unexplained and is
+  the precise thing the ROCm control (now building) targets.
+- 2026-08-02: ROCm control build running on the box (rocm/dev-ubuntu-24.04
+  7.14.0-full base, fork pinned to the same 04b2b72 commit, GGML_HIP=ON
+  gfx1151, -j6). To run next: IMAGE=...:rocm-7.14, FA_FLAG="-fa 0" (community
+  constraint — FA crashes under ROCm on this GPU without rocWMMA), n15 first
+  (direct community comparison), then n3/n2 if it loads.
 
 ## Handoff notes
