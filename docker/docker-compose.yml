@@ -1199,8 +1199,8 @@ services:
     stdin_open: true
     volumes:
       - /home/chris/turnstone-workspace/printer-dashboard:/work
-      - ~/.omp:/home/omp/.omp
-      - /home/chris:/home/chris
+      - ~/.omp:/home/node/.omp
+      - /home/chris/.ssh:/home/node/.ssh
       - /var/run/docker.sock:/var/run/docker.sock
     labels:
       com.local-ai-machine.always-up: "true"
