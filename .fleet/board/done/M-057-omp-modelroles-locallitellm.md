@@ -31,9 +31,9 @@ related_cards:
 1. [x] Write `oh-my-pi/.omp/agent/config.yml` mapping all 10 built-in roles to coder/planner
 2. [x] Dockerfile: COPY config.yml after bun install layer
 3. [x] docker-entrypoint.sh: seed config.yml (seed-once, no key substitution needed)
-4. [ ] Commit + push; verify no cache-bust (bun layer before COPY)
-5. [ ] Deploy: pull on box, apply modelRoles to live config.yml, restart omp container
-6. [ ] Verify live config.yml takes effect (omp container up, no seed-overwrite)
+4. [x] Commit + push; verify no cache-bust (bun layer before COPY)
+5. [x] Deploy: pull on box, apply modelRoles to live config.yml, restart omp container
+6. [x] Verify live config.yml takes effect (omp container up, no seed-overwrite)
 
 ## Signals
 <!-- signal: big-pickle 2026-08-02T03:10:00Z — claiming, writing config.yml + Dockerfile + entrypoint -->
@@ -42,6 +42,13 @@ related_cards:
 - 2026-08-02: map `default/smol/commit/tiny/task/vision -> coder` (fast, interactive,
   fan-out); `slow/plan/designer/advisor -> planner` (heavy reasoning/planning).
   No `:thinking` suffixes (llama.cpp serving doesn't support effort levels).
+- 2026-08-02 done: config.yml committed (source of truth), Dockerfile COPY placed
+  after `bun install` (cache preserved), entrypoint seeds config.yml seed-once.
+  Deployed: box pulled, live ~/.omp/agent/config.yml updated with all 10 roles
+  (preserving symbolPreset/theme/setupVersion), omp image rebuilt, container
+  restarted clean (03:17:42Z, only benign in-container provider-discovery warnings).
+  Seed-once guard held — did not overwrite the live config. omp already resolves
+  local-litellm/coder + local-litellm/planner (title-generator requests in logs).
 
 ## Handoff notes
 - Box already has a live `~/.omp/agent/config.yml` (default+plan only). The image
