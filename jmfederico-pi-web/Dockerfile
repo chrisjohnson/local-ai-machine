@@ -1,7 +1,6 @@
-
 FROM node:22-bookworm-slim AS runner
 
-# Install structural system dependencies
+# Install structural system dependencies and build tools for node-gyp
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     bash \
@@ -9,6 +8,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
     unzip \
+    python3 \
+    make \
+    g++ \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Bun via the official shell script
