@@ -26,12 +26,14 @@ RUN mkdir -p /home/omp/.bun/bin && \
     cp /root/.bun/bin/bun /home/omp/.bun/bin/bun && \
     chown -R omp:omp /home/omp/.bun
 
+RUN mkdir -p /app/.omp/agent
+
 # Seed-once model config (litellm provider), same pattern as pi-web: committed
 # template carries a __LITELLM_MASTER_KEY__ placeholder, substituted at runtime
 # only when the config file is first created. COPY/chmod run as root (before
 # USER omp): BuildKit COPY'd files are root-owned even when the active USER is
 # non-root, so a chmod after the USER switch would fail with EPERM.
-COPY models.seed.yml.tmpl /app/models.seed.yml.tmpl
+COPY .omp/agent/models.seed.yml.tmpl /app/.omp/agent/models.seed.yml.tmpl
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
