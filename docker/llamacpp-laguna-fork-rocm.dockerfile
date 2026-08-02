@@ -41,4 +41,13 @@ RUN cmake -B /build/build \
     && grep -E "GGML_HIP|AMDGPU_TARGETS" /build/build/CMakeCache.txt \
     && cmake --build /build/build -j6 --target llama-server llama-bench llama-cli
 
+# ROCm 7.14 keeps its libraries under /opt/rocm/core-7.14/lib (NOT the loader's
+# default paths), so the freshly-linked binaries cannot find hipblas/rocblas at
+# runtime. Register every ROCm lib dir with ldconfig and bake the cache into the
+# image; without this, llama-cli/server fail with "cannot open shared object
+# file: libhipblas.so.3".
+RUN find /opt/rocm -maxdepth 5 -type d \( -name lib -o -name lib64 \) \
+    | sort >> /etc/ld.so.conf.d/rocm.conf \
+    && ldconfig
+
 WORKDIR /build
