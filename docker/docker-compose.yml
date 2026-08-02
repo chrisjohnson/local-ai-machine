@@ -1200,6 +1200,13 @@ services:
     volumes:
       - /home/chris/turnstone-workspace/printer-dashboard:/work
       - ~/.omp:/home/omp/.omp
+      - /home/chris:/home/chris
+      - /var/run/docker.sock:/var/run/docker.sock
+    labels:
+      com.local-ai-machine.always-up: "true"
+    network_mode: host
+    group_add:
+      - "131"  # docker group GID (matches host's docker group)
     environment:
       # Relative name, not absolute: omp resolves the config root as
       # path.join(os.homedir(), PI_CONFIG_DIR), so ".omp" lands on the
