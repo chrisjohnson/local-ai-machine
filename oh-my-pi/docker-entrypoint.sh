@@ -36,7 +36,7 @@ if [ ! -f "$MODELS_DIR/models.yml" ] && [ ! -f "$MODELS_DIR/models.yaml" ] && [ 
   fi
   # Substitute the real key at startup - the committed template has a
   # placeholder, never a real secret (docker/.env, read at runtime only).
-  sed "s/__LITELLM_MASTER_KEY__/$LITELLM_MASTER_KEY/" /app/models.seed.yml.tmpl > "$MODELS_DIR/models.yml"
+  sed "s/__LITELLM_MASTER_KEY__/$LITELLM_MASTER_KEY/" /app/.omp/agent/models.seed.yml.tmpl > "$MODELS_DIR/models.yml"
 fi
 
 exec "$@"
