@@ -47,14 +47,31 @@ runs are approximate — the trend across n is the signal.
 The 73-91% community numbers were all measured on a ROCm/HIP build of the same fork;
 the M-055 ROCm control (`local-ai-machine/llamacpp-laguna-fork:rocm-7.14`, same
 04b2b72 commit, GGML_HIP=ON gfx1151, base rocm/dev-ubuntu-24.04:7.14.0-full) measures
-acceptance on THIS box at the community's config (n15, `-fa 0`). Result lands in
-`catalog/builds/laguna-s-2.1-118b-q4km--llamacpp-laguna-fork-rocm-dflash.yaml`.
+acceptance on THIS box at the community's config (n15, `-fa 0`).
+
+**Outcome — TESTED_NOT_VIABLE, load never completed** (full evidence at
+`catalog/raw/laguna-rocm-control-2026-08-02/EVIDENCE.md`):
+1. DFlash server (n15, `-fa 0`, -c 131072) hangs during load: the memory-fit probe
+   fails to create the draft llama_context (`dflash requires ctx_other to be set` →
+   `failed to create llama_context from model`), then the real load stalls at ~551MiB
+   RSS with no output for 7+ min.
+2. The DFlash draft cannot init standalone (any backend) — `ctx_other` is only set by
+   `--spec-type draft-dflash` server mode; run alone it fails (expected, but rules out
+   the cheap "probe the draft alone" shortcut).
+3. Even a PLAIN no-draft 68GB load on this ROCm build stalls after weight paging
+   (~51GiB RSS, CPU spin ~73%, no output in 8+ min, immune to SIGTERM).
 
 ## What it means
 
-- If ROCm acceptance here is also low → DFlash is a dead end on this hardware; the
-  community numbers were env/patch-specific. **Serve Laguna-S-2.1 plain at 30 tok/s.**
-- If ROCm acceptance jumps to 70%+ → the collapse is Vulkan-specific; a time-boxed
-  fork-debug becomes a candidate (needs Chris's call).
-- Either way: all three M-050 speculative-decoding options (fork-DFlash, XS classic
-  draft, stock-llama.cpp MTP head) are resolved — none beats plain decoding on this box.
+- The ROCm control is a **clean negative**: DFlash never got far enough to measure
+  acceptance on this box's ROCm path, and the stall reproduces even without the draft —
+  this ROCm llama.cpp build is broken-in-effect on gfx1151 (consistent with the box's
+  documented-broken `ollama-rocm-0177`). The community's 73-91% ROCm acceptance
+  numbers do not reproduce on this hardware/toolchain.
+- **Serve Laguna-S-2.1 plain at 30.0 tok/s (full 131072 context).** This closes the
+  DFlash investigation; all three M-050 speculative-decoding options (fork-DFlash,
+  XS classic draft, stock-llama.cpp MTP head) are resolved — none beats plain decoding
+  on this box. A time-boxed fork-debug is not warranted: there is no Vulkan-vs-ROCm
+  divergence left to attribute, since neither backend can serve DFlash at a
+  throughput advantage.
+

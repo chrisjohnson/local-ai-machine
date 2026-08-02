@@ -42,5 +42,6 @@ known_gotchas:
   - "Flash attention (`-fa 1`) crashes on gfx1151 under ROCm without rocWMMA (community-reported, matches the HIP arch 1300 compile error). Run with `-fa 0`."
   - "Fork head as built/tested: 04b2b72cb54048ead292884adbe11f284e3ec950 (same commit as the Vulkan build; recorded in image at /build/fork-commit.txt)."
   - "Base image: rocm/dev-ubuntu-24.04:7.14.0-full carries the version-matched HIP SDK (hipcc, hipblas-devel, rocblas-devel); the kyuz0 toolbox image has hipcc but no gcc/cmake/ninja, so the official dev image was chosen as the build base."
+  - "MEASURED FAILURE (2026-08-02): the DFlash server load hangs on gfx1151 — the memory-fit probe fails to create the draft llama_context (dflash requires ctx_other) and the real load then stalls at ~551MiB RSS with no output. Even a PLAIN no-draft load of the 68GB model stalls after weight paging (~51GiB RSS, CPU spin, SIGTERM-immune). This ROCm build never reached generation on this box; the community's ROCm DFlash acceptance numbers are not reproducible here. See catalog/builds/laguna-s-2.1-118b-q4km--llamacpp-laguna-fork-rocm-dflash.yaml and catalog/raw/laguna-rocm-control-2026-08-02/."
 status: active
 first_used: "2026-08-02"

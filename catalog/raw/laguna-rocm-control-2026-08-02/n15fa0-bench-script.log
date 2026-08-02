@@ -1,0 +1,21 @@
+[2026-08-02T01:18:40Z] Pausing downloads: download-model-ds4-deepseek-v4-flash-iq2xxs-imatrix.service
+Stopping 'download-model-ds4-deepseek-v4-flash-iq2xxs-imatrix.service', but its triggering units are still active:
+download-model-ds4-deepseek-v4-flash-iq2xxs-imatrix.timer
+[2026-08-02T01:18:40Z] Stopping exclusive services: laguna-s-2.1-118b-q4km--llamacpp-vulkan-radv-v1 omp
+time="2026-08-02T01:18:40Z" level=warning msg="/home/chris/local-ai-machine/docker/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+ Container oh-my-pi Stopping 
+ Container laguna-s-2.1-118b-q4km--llamacpp-vulkan-radv-v1 Stopping 
+ Container oh-my-pi Stopped 
+ Container laguna-s-2.1-118b-q4km--llamacpp-vulkan-radv-v1 Stopped 
+[2026-08-02T01:18:41Z] Attempting load at -c 131072
+[2026-08-02T01:23:36Z] Teardown: removing test container BEFORE restoring services (restoring the 68GB standing laguna while the test container still holds its own 68GB load caused an OOM-kill of the test container, exit 137, on the first run)
+[2026-08-02T01:23:41Z] Teardown: restoring laguna-s-2.1-118b-q4km--llamacpp-vulkan-radv-v1 omp + resuming download-model-ds4-deepseek-v4-flash-iq2xxs-imatrix.service
+time="2026-08-02T01:23:41Z" level=warning msg="/home/chris/local-ai-machine/docker/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+ Container litellm-proxy Running 
+ Container litellm-db Running 
+ Container laguna-s-2.1-118b-q4km--llamacpp-vulkan-radv-v1 Starting 
+ Container oh-my-pi Starting 
+ Container oh-my-pi Started 
+ Container laguna-s-2.1-118b-q4km--llamacpp-vulkan-radv-v1 Started 
+[2026-08-02T01:25:06Z] Standing laguna service healthy
+[2026-08-02T01:26:07Z] Downloads resumed
