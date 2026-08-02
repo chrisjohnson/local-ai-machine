@@ -39,4 +39,11 @@ if [ ! -f "$MODELS_DIR/models.yml" ] && [ ! -f "$MODELS_DIR/models.yaml" ] && [ 
   sed "s/__LITELLM_MASTER_KEY__/$LITELLM_MASTER_KEY/" /app/.omp/agent/models.seed.yml.tmpl > "$MODELS_DIR/models.yml"
 fi
 
+# Same seed-once convention for settings (model role routing). config.yml is
+# plain (no secret substitution needed). If the user already has one, leave it —
+# omp itself may have written or been pointed at a customized version.
+if [ ! -f "$MODELS_DIR/config.yml" ]; then
+  cp /app/.omp/agent/config.yml "$MODELS_DIR/config.yml"
+fi
+
 exec "$@"

@@ -56,6 +56,11 @@ ENV PI_CONFIG_DIR=".omp"
 RUN bun install -g @oh-my-pi/pi-coding-agent \
     && bun pm -g trust onnxruntime-node protobufjs
 
+# Settings seed (model role routing) — kept AFTER the bun install so a config.yml
+# edit doesn't bust the slow Bun layer cache. Seeded on first boot by
+# docker-entrypoint.sh (same seed-once convention as models.seed.yml.tmpl).
+COPY .omp/agent/config.yml /app/.omp/agent/config.yml
+
 WORKDIR /work
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 # Original upstream used ENTRYPOINT ["omp"] + CMD ["cli"] (cli is a subcommand

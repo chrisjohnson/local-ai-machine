@@ -1,0 +1,23 @@
+# omp settings — model role routing (config.yml, read at ~/.omp/agent/config.yml).
+#
+# Maps every built-in omp modelRole to one of our two litellm-backed local roles:
+#   local-litellm/coder    -> qwen3.6-35b-a3b MTP (:8102) — fast, chat-completes ~0.6s
+#   local-litellm/planner  -> laguna-s-2.1 (:8108)         — 118B/~8B-active MoE, deep reasoning
+#
+# role->target split rationale:
+#   default / smol / commit / tiny / task / vision -> coder   (fast interactive + fan-out)
+#   slow / plan / designer / advisor               -> planner (heavy reasoning, planning)
+# A role pointing at another role is also legal (e.g. slow: @plan) but we bind directly
+# to the provider/model id so the mapping survives settings churn. Thinking-level suffixes
+# (:minimal..:xhigh) are unsupported by llama.cpp serving — omit them.
+modelRoles:
+  default: local-litellm/coder
+  smol: local-litellm/coder
+  slow: local-litellm/planner
+  vision: local-litellm/coder
+  plan: local-litellm/planner
+  designer: local-litellm/planner
+  commit: local-litellm/coder
+  tiny: local-litellm/coder
+  task: local-litellm/coder
+  advisor: local-litellm/planner
