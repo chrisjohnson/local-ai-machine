@@ -54,12 +54,12 @@ Known facts:
    ollama containers no longer exist (per Chris: leave them stopped). Relaunched laguna + qwen
    MTP; both healthy, qwen chat completes in 0.6s, 120GiB used / 4GiB free (co-residency holds).
    coder -> 127.0.0.1:8102/v1 persisted across reboot (litellm DB).
-4. [ ] Add planner to scripts/litellm-bootstrap.sh ROLES; run it on box (seeds planner role)
-5. [ ] Add planner to pi-web/models.seed.json.tmpl (git)
-6. [ ] Add planner to oh-my-pi/models.seed.yml.tmpl (git)
-7. [ ] Update LIVE runtime configs: pi-web config + ~/.omp/agent/models.yml (box, runtime state not git)
-8. [ ] set-role.sh planner laguna-s-2.1-118b-q4km--llamacpp-vulkan-radv-v1; verify live
-9. [ ] Commit + push (templates + bootstrap), move card to done/
+4. [x] Add planner to scripts/litellm-bootstrap.sh ROLES; run it on box (seeds planner role)
+5. [x] Add planner to pi-web/models.seed.json.tmpl (git)
+6. [x] Add planner to oh-my-pi/.omp/agent/models.seed.yml.tmpl (git)
+7. [x] Update LIVE runtime configs: pi-web config + ~/.omp/agent/models.yml (box, runtime state not git)
+8. [x] set-role.sh planner laguna-s-2.1-118b-q4km--llamacpp-vulkan-radv-v1; verify live
+9. [x] Commit + push (templates + bootstrap), move card to done/
 
 ## Signals
 <!-- append-only. Leave signals for other agents. -->
@@ -69,7 +69,17 @@ Known facts:
 ## Decision log
 <!-- append-only, one line per entry, newest last. Never move this card to done/
      without a line here explaining why. -->
+- 2026-08-02 big-pickle: Phase 2 (planner role) complete and verified live. planner
+  role seeded via bootstrap + set-role.sh -> laguna-s-2.1-118b-q4km @8101; live configs
+  updated (pi-web models.json + omp models.yml); git templates committed (013acea).
+  coder -> qwen3.6-35b-a3b-mtp @8102, planner -> laguna @8101 both confirmed via
+  litellm /model/info. Card to done/.
 
 ## Handoff notes
 <!-- what's half-done, what the next agent picking this up should do first. -->
-Phase 1 (launch + coder) is Chris's explicit first step; role work follows.
+- DONE: qwen MTP (8102) + laguna (8101) co-resident, coder+planner roles live.
+- NOTE: judge/orchestrator still point at glm @8103, vision @8010 — those services were
+  NOT running at close-out (only laguna+qwen MTP+infra up after reboot). Not in scope.
+- NOTE: pi-web/ollama containers removed during power-cycle; pi-web config is live at
+  ~/.pi/agent/models.json (was reduced to coder-only + planner; full 5-role seed exists
+  in templates for next container recreate).
