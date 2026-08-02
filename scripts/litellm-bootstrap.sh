@@ -37,7 +37,7 @@ ENV_FILE="${LITELLM_ENV_FILE:-$REPO_ROOT/docker/.env}"
 # Add new role names here when a new one is introduced (e.g. by an
 # M-0xx card) - this is the one place that needs a git commit when a
 # genuinely new role category is added; which model backs it never does.
-ROLES=(coder judge vision orchestrator)
+ROLES=(coder judge vision orchestrator planner)
 
 STUB_MODEL="UNCONFIGURED-run-set-role.sh"
 STUB_API_BASE="http://unconfigured.invalid/v1"
