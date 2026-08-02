@@ -71,10 +71,23 @@ versions:
     healthy, ds4 imatrix download (M-051) resumed to activating, no stray containers,
     box repo worktree clean.
 
+    M-055 (2026-08-02) swept the one open question — is the 10-19% acceptance a
+    config effect? Sweep of --spec-draft-n-max 2/3/4/6/8 (+ fa0 control at n15) on
+    the SAME Vulkan fork image; full table + raw JSON in the second benchmark_runs
+    entry and catalog/raw/dflash-sweep-2026-08-02/. VERDICT: the acceptance collapse
+    is a BLOCK-SIZE effect of DFlash''s block diffusion (all-or-nothing per block),
+    not a fixed backend defect and not flash-attention. Acceptance rises monotonically
+    as block size shrinks (10-19% at n15 to 48-55% at n2) with throughput following
+    (7.9-11.5 to 26.7-30.9 tok/s), BUT the best configs (n3, n2) land exactly AT the
+    plain 30.0 tok/s baseline — the 2GB diffusion-draft forward pass per block step
+    cancels the acceptance gain. DFlash-on-Vulkan is tunable but a wash: it matches,
+    never beats, plain decoding. See the ROCm control record for the decisive
+    backend-attribution result.
+
     '
   status: TESTED_NOT_VIABLE
   created: '2026-08-01'
-  last_verified: '2026-08-01'
+  last_verified: '2026-08-02'
   benchmark_runs:
   - timestamp: '2026-08-01T23:32:19Z'
     benchmark_id: llamacpp-server-live-timing-v1
@@ -126,6 +139,74 @@ versions:
         generated: 1390
         rate: 0.114
       raw_stdout_file: /tmp/laguna-dflash-results/ (short-0/1/2.json, long.json, engine-version.txt) on the box
+  - timestamp: '2026-08-02T00:00:00Z'
+    benchmark_id: llamacpp-server-live-timing-v1 (sweep)
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: b549e52 (M-055 parameterized bench script; box HEAD during the sweep)
+      host_gpu_driver: Mesa 25.3.6 (in-image mesa-vulkan-drivers-25.3.6-3.fc43, RADV)
+      concurrent_load:
+        downloads_paused: true (download-model-ds4-deepseek-v4-flash-iq2xxs-imatrix.service paused per run, resumed after)
+        vllm_co_resident_or_stopped: standing laguna-s-2.1-118b-q4km compose service stopped per run (only exclusive service running)
+      host_metrics_window:
+        start: '2026-08-01T23:55:00Z'
+        end: '2026-08-02T00:20:00Z'
+      image_digest: local-ai-machine/llamacpp-laguna-fork@sha256:98819738b785eb3d2c02b428a70e6a5e9d8c3da3b46d9cc2f1589766963169be (same image as M-053)
+      engine_version: '04b2b72cb54048ead292884adbe11f284e3ec950 (fork branch laguna, Vulkan backend)'
+    result:
+      note: 'DFlash parameter sweep on the Vulkan fork image, two rounds, full
+        -c 131072 context, 2 short fresh prompts + 1 long-context prompt per config.
+        Raw responses committed at catalog/raw/dflash-sweep-2026-08-02/<config>/
+        (short-0.json, short-1.json, long.json per config: n15fa0, n2fa1, n3fa1,
+        n4fa1, n6fa1, n8fa1). M-053''s n15/fa1 run serves as the in-family control.
+        Sweep window 00:00-00:20Z; MAX_TOKENS=256 for the sweep runs (shorter than
+        M-053''s 512) so short-sample tok/s are not directly comparable in magnitude
+        to M-053 — the trend across n is what matters.'
+      context_used_tokens: 131072
+      sweep_table:
+        - config: "n15 fa1 (M-053 control)"
+          short_acceptance_pct: "10-19"
+          short_tok_s: "8.0-11.5"
+          long_acceptance_pct: "11.4"
+          long_tok_s: 7.9
+        - config: "n8 fa1"
+          short_acceptance_pct: "17-18"
+          short_tok_s: "9.2-9.5"
+          long_acceptance_pct: "26.4"
+          long_tok_s: 11.3
+        - config: "n6 fa1"
+          short_acceptance_pct: "23-27"
+          short_tok_s: "21.2-23.1"
+          long_acceptance_pct: "27.2"
+          long_tok_s: 20.9
+        - config: "n4 fa1"
+          short_acceptance_pct: "31-38"
+          short_tok_s: "24.8-27.1"
+          long_acceptance_pct: "40.1"
+          long_tok_s: 25.9
+        - config: "n3 fa1"
+          short_acceptance_pct: "39-49"
+          short_tok_s: "27.1-30.9"
+          long_acceptance_pct: "50.2"
+          long_tok_s: 27.4
+        - config: "n2 fa1"
+          short_acceptance_pct: "48-55"
+          short_tok_s: "27.7-30.1"
+          long_acceptance_pct: "53.3"
+          long_tok_s: 26.7
+        - config: "n15 fa0 (FA-off control)"
+          short_acceptance_pct: "10-10.4"
+          short_tok_s: "7.5-7.7"
+          long_acceptance_pct: "12.8"
+          long_tok_s: 6.2
+      findings:
+        - "fa0 is WORSE than fa1 at every point (n15: 7.5-7.7 vs 8.0-11.5 tok/s) — flash attention is exonerated as the corruption source."
+        - "Acceptance rises monotonically as DFlash block size shrinks (10-19% at n15 -> 48-55% at n2) and throughput follows (7.9-11.5 -> 26.7-30.9 tok/s), a ~2.7-3.2x improvement. DFlash block diffusion is all-or-nothing per block, so large n_max blocks almost never fully pass."
+        - "BUT the optimum (n3) lands exactly AT the plain 30.0 tok/s baseline (best single sample 30.9; long-context n3 27.4 vs plain long 27.42). The full 2GB diffusion-draft forward pass per block step cancels the acceptance gain."
+      interim_conclusion: 'DFlash-on-Vulkan is tunable but a wash vs plain decoding —
+        it matches (best case ~30 tok/s), never beats, the 30.0 tok/s plain baseline.
+        The 73-91% community acceptance at n15 on ROCm remains unexplained; the ROCm
+        control build (M-055) targets exactly that question.'
     known_issues_encountered:
     - 'Build required toolchain fixes (both in the Dockerfile): toolbox image has no
       usable `ld` (dangling /etc/alternatives/ld symlink, repaired to ld.bfd) and

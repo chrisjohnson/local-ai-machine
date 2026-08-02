@@ -1,0 +1,46 @@
+id: llamacpp-laguna-fork-rocm-v1
+family: llamacpp
+description: >
+  poolsideai/llama.cpp fork, branch `laguna`, built with ROCm/HIP targeting
+  gfx1151 (Strix Halo) — the M-055 ROCm control build. The community's 73.5-90.6%
+  DFlash draft-acceptance numbers on this fork were all measured on a ROCm/HIP
+  build; this image reproduces that exact config on THIS box so we can attribute
+  the M-053 acceptance collapse (10-19% on Vulkan/RADV) to backend or hardware.
+  Custom image `local-ai-machine/llamacpp-laguna-fork:rocm-7.14` built from
+  `docker/llamacpp-laguna-fork-rocm.dockerfile` (base rocm/dev-ubuntu-24.04:
+  7.14.0-full — same ROCm 7.14 release as the box's existing kyuz0 toolbox
+  runtime — fork pinned to the identical commit 04b2b72 as the Vulkan build for a
+  clean A/B). See `catalog/builds/laguna-s-2.1-118b-q4km--llamacpp-laguna-fork-rocm-dflash.yaml`
+  for the control result.
+image: local-ai-machine/llamacpp-laguna-fork:rocm-7.14
+runtime:
+  devices: ["/dev/kfd:/dev/kfd", "/dev/dri:/dev/dri"]
+  group_add: ["26", "303"]   # numeric GIDs for video/render
+  volumes:
+    - "/var/lib/ai-models/laguna-s-2.1-118b-q4km:/models:ro"
+    - "/var/lib/ai-models/laguna-s-2.1-dflash-draft:/models-draft:ro"
+common_env: {}
+common_flags:
+  - -ngl 999      # offload all layers
+  - -fa 0         # REQUIRED on gfx1151 under ROCm: flash attention crashes without rocWMMA ("no device code compatible with HIP arch 1300"); -fa 0 matches the config the community's 73-91% acceptance was measured on
+  - --swa-full
+  - --reasoning-format deepseek
+invocation_template: |
+  docker run --rm --device /dev/kfd --device /dev/dri --group-add 26 --group-add 303 \
+    -v /var/lib/ai-models/laguna-s-2.1-118b-q4km:/models:ro \
+    -v /var/lib/ai-models/laguna-s-2.1-dflash-draft:/models-draft:ro \
+    local-ai-machine/llamacpp-laguna-fork:rocm-7.14 \
+    /build/build/bin/llama-server \
+    -m /models/UD-Q4_K_M/Laguna-S-2.1-UD-Q4_K_M-00001-of-00003.gguf \
+    -md /models-draft/laguna-s-2.1-DFlash-BF16.gguf \
+    --spec-type draft-dflash --spec-draft-n-max 15 \
+    -ngl 999 -fa 0 --swa-full --reasoning-format deepseek -n 8192 -c 131072 \
+    --host 0.0.0.0 --port 8120
+known_gotchas:
+  - "ROCm 7.14 keeps its libraries under /opt/rocm/core-7.14/lib, NOT the loader's default paths — the freshly-linked binaries fail at runtime with `cannot open shared object file: libhipblas.so.3`. Fixed in the Dockerfile by registering every /opt/rocm lib dir via ldconfig and baking the cache into the image (validated: llama-cli loads and reports `version: 1 (04b2b72)`)."
+  - "Do NOT `docker pull` a base image in parallel with a `docker build` of that same image — the pull can hang (~30 min, zero progress, no TCP) and deadlock buildkit's `FROM` step on the same content store. Let buildkit fetch the base itself; kill any parallel pull if this happens."
+  - "Flash attention (`-fa 1`) crashes on gfx1151 under ROCm without rocWMMA (community-reported, matches the HIP arch 1300 compile error). Run with `-fa 0`."
+  - "Fork head as built/tested: 04b2b72cb54048ead292884adbe11f284e3ec950 (same commit as the Vulkan build; recorded in image at /build/fork-commit.txt)."
+  - "Base image: rocm/dev-ubuntu-24.04:7.14.0-full carries the version-matched HIP SDK (hipcc, hipblas-devel, rocblas-devel); the kyuz0 toolbox image has hipcc but no gcc/cmake/ninja, so the official dev image was chosen as the build base."
+status: active
+first_used: "2026-08-02"
