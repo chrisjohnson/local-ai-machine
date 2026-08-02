@@ -143,3 +143,30 @@ versions:
     - 'No repeat of the documented reasoning/EOS-token runaway-generation bug in this run -- all
       4 requests terminated normally (3 via the max_tokens=400 cap given the model''s verbose
       reasoning style, 1 via a natural stop token on the long-context summarization prompt).'
+- version: v2
+  compose_service_id: laguna-s-2.1-118b-q4km--llamacpp-vulkan-radv-v2
+  engine_ref: llamacpp-vulkan-radv-v1
+  role: Standing planner-role candidate (co-resident with qwen3.6-35b-a3b-mtp)
+  notes: >-
+    Serving-config-only change vs v1 (same engine recipe, same model artifact), cut per
+    the M-002 versioning rule so v1's benchmark_runs[] stay comparable: KV cache quantized
+    to q8_0 (-ctk q8_0 -ctv q8_0) to halve the ~24GiB f16 KV footprint at -c 131072.
+    Motivation: with v1's f16 KV, laguna + qwen3.6-35b-a3b-mtp co-resident sat at ~120GiB
+    used / ~1-4GiB free against a 124GiB pool, and a real OOM incident on 2026-08-02
+    (docker `container oom` event 02:28:54Z) SIGKILLed the qwen MTP container (exit 137)
+    when laguna's KV cache grew past the wall. q8_0 KV halves that footprint to ~12GiB,
+    restoring ~12-16GiB headroom at the same -c 131072 context with no context-length loss.
+    Empirical per-model footprints measured 2026-08-02 (stop-one-container-at-a-time):
+    laguna v1 alone ~96GiB used (68GB weights + ~24-28GiB KV), qwen MTP alone ~24GiB
+    (hybrid SSM/attention arch -> tiny KV), base system ~4GiB. GGUF arch facts (via
+    /tmp/ggufmeta.py on box): laguna 48 blocks, 8 KV heads, key/value len 128, emb 3072,
+    SWA full cache; qwen35moe 41 blocks, 2 KV heads, key/value len 256, SSM state 128.
+    v2 is the model the planner role points at (8108). Deployed 2026-08-02, verified
+    healthy; measured ~85GiB used / ~39GiB available with qwen MTP also running.
+    NOTE: v2 has no benchmark_runs yet -- run a real fingerprinted benchmark (same
+    llamacpp-server-live-timing-v1 method as v1) before treating any v2 number as
+    comparable to v1's 30.93 tok/s figure; expect modest tg impact from q8_0 KV.
+  status: WORKING
+  created: '2026-08-02'
+  last_verified: '2026-08-02'
+  benchmark_runs: []
