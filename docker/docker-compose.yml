@@ -1228,6 +1228,36 @@ services:
     depends_on:
       - litellm
 
+  jmfederico-pi-web:
+    build:
+      context: ../jmfederico-pi-web/
+    image: ghcr.io/jmfederico/pi-web:latest
+    container_name: pi-web
+    user: "1000:1000"
+    tty: true
+    stdin_open: true
+    ports:
+      - "8080:3000" # Expose the Next.js UI port
+    volumes:
+      - /home/chris/turnstone-workspace/printer-dashboard:/work
+      - ~/.pi-web:/home/piweb/.pi-web
+      - /home/chris/.ssh:/home/piweb/.ssh
+      - /var/run/docker.sock:/var/run/docker.sock
+    labels:
+      com.local-ai-machine.always-up: "true"
+    group_add:
+      - "131"  # docker group GID
+    environment:
+      # Absolute path for pi-web config directory
+      - PI_CODING_AGENT_DIR=/home/piweb/.pi-web
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
+    working_dir: /work
+    command: ["pi-web"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - litellm
+
 volumes:
   turnstone_postgres_data:
   searxng-cache:
