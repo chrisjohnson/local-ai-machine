@@ -45,27 +45,32 @@ community's 73-91% acceptance was actually measured on.
 ## Plan
 1. [x] Chris greenlit the two-step diagnostic ("sweep, then rocm control"),
    per the M-053 follow-up discussion (2026-08-01).
-2. [ ] Parameterize the existing DFlash bench script (n_max + fa + result-dir
+2. [x] Parameterize the existing DFlash bench script (n_max + fa + result-dir
    env overrides, M-053 defaults preserved) so configs are reproducible.
-3. [ ] Run the Vulkan sweep: n_max=8/fa1, n_max=4/fa1, n_max=15/fa0 (2 short
+3. [x] Run the Vulkan sweep: n_max=8/fa1, n_max=4/fa1, n_max=15/fa0 (2 short
    prompts each; M-053's n15/fa1 run is the in-family control). Record
    acceptance + tok/s per config.
-4. [ ] Build the ROCm control image (fork @ 04b2b72, GGML_HIP=ON,
+4. [x] Build the ROCm control image (fork @ 04b2b72, GGML_HIP=ON,
    AMDGPU_TARGETS=gfx1151) via a Dockerfile layered on
-   kyuz0/strix-halo-ds4-toolbox:rocm-7.14 (image has hipcc but no
-   gcc/cmake/ninja — toolchain layer required).
-5. [ ] Run the ROCm control bench: n_max=15, `-fa 0`, same methodology.
-   Record acceptance + tok/s. (Optionally one `-fa 1` probe; expected to
-   crash per community — record as known issue if so.)
-6. [ ] State the conclusion: is the Vulkan acceptance collapse a config
-   effect, a tunable knob, or a backend-specific defect? Update the M-053
-   catalog family with the sweep/control results.
-7. [ ] Restore box to pre-task state (services, downloads, git clean), commit
+   rocm/dev-ubuntu-24.04:7.14.0-full.
+5. [x] Run the ROCm control bench: n_max=15, `-fa 0`, same methodology.
+   Result: DFLASH_LOAD_FAILED — the load hangs before any sample (evidence in
+   catalog/raw/laguna-rocm-control-2026-08-02/). No acceptance measurement
+   possible; the negative is recorded honestly.
+6. [x] State the conclusion: is the Vulkan acceptance collapse a config
+   effect, a tunable knob, or a backend-specific defect? → Block-size effect
+   (tunable, but a wash — tops out at the 30 tok/s plain baseline); the ROCm
+   control shows the community's ROCm numbers don't reproduce on this box
+   (load fails entirely). Catalog family updated (build records, engine
+   recipe, research note, raw evidence).
+7. [x] Restore box to pre-task state (services, downloads, git clean), commit
    + push records.
 
 ## Signals
 
 <!-- signal: big-pickle 2026-08-02T01:00Z — ROCm build unblocked after killing a hung `docker pull` of the base image that was deadlocking buildkit's FROM step; build re-downloading base itself (~7.77GB layer, throttled ~1MB/s), ETA 1-2h. Check build log /tmp/laguna-fork-rocm-build.log. -->
+
+<!-- signal: big-pickle 2026-08-02T01:45Z — done. ROCm control: load fails on gfx1151 (draft ctx init + even plain load stalls); community's ROCm acceptance not reproducible here. DFlash dead end on both backends. Catalog committed; box restored. Serve plain @ 30 tok/s. -->
 
 ## Decision log
 - 2026-08-01: card created from the M-053 follow-up. Scope is strictly the
@@ -109,10 +114,34 @@ community's 73-91% acceptance was actually measured on.
   with a build of the same image — let buildkit fetch it itself; if a
   parallel pull is ever needed, it must finish before the build starts.
   After killing the pull, the build resumed its own download and progressed.
-- 2026-08-02: ROCm control build running on the box (rocm/dev-ubuntu-24.04
-  7.14.0-full base, fork pinned to the same 04b2b72 commit, GGML_HIP=ON
-  gfx1151, -j6). To run next: IMAGE=...:rocm-7.14, FA_FLAG="-fa 0" (community
-  constraint — FA crashes under ROCm on this GPU without rocWMMA), n15 first
-  (direct community comparison), then n3/n2 if it loads.
+- 2026-08-02 (ROCm control, decisive): image `local-ai-machine/llamacpp-
+  laguna-fork:rocm-7.14` built and smoke-tested (ldconfig fix for the
+  libhipblas.so.3 runtime miss — ROCm 7.14 libs live under
+  /opt/rocm/core-7.14/lib). The control bench at the community config (n15,
+  `-fa 0`, -c 131072) FAILED TO LOAD: the memory-fit probe errors
+  ("dflash requires ctx_other to be set" -> "failed to create llama_context
+  from model"), then the real load hangs ~551MiB RSS, no output for 7+ min.
+  Follow-up probes: the draft alone can't init standalone (ctx_other is
+  spec-mode-only — expected), and even a PLAIN no-draft load of the 68GB
+  model stalls after weight paging (~51GiB RSS, CPU spin, SIGTERM-immune).
+  => The ROCm llama.cpp path is broken-in-effect on gfx1151 on this box
+  (consistent with the documented-broken ollama-rocm-0177); the community's
+  73-91% ROCm acceptance numbers are NOT reproducible here. Verdict closes
+  the DFlash investigation: no backend serves DFlash at a throughput
+  advantage on this hardware. Recommendation stands: serve Laguna-S-2.1
+  plain (30.0 tok/s, full 131072 context).
+- 2026-08-02 (closeout): full catalog records committed (Vulkan build record
+  sweep table, ROCm build record, ROCm engine recipe, research note, raw
+  evidence in catalog/raw/laguna-rocm-control-2026-08-02/ and
+  catalog/raw/dflash-sweep-2026-08-02/). Box restored to pre-task state:
+  standing laguna healthy, ds4 imatrix download resumed, no stray
+  containers, repo clean.
 
 ## Handoff notes
+- No PR — catalog/config-as-code committed directly to main per this repo's
+  established workflow (M-053 precedent), box repo synced by pull.
+- Recommendation for Chris: serve Laguna-S-2.1 plain (30.0 tok/s, full
+  131072 context). DFlash is a dead end on this hardware on both Vulkan and
+  ROCm; all M-050 speculative-decoding options are now resolved. Nothing
+  else pending from this card.
+
