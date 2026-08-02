@@ -46,9 +46,14 @@ Known facts:
 
 ## Plan
 <!-- ordered checklist -->
-1. [ ] Launch qwen3.6-35b-a3b MTP llamacpp service (compose up -d, scoped); verify /health + /v1/models
-2. [ ] Verify laguna-s still up + healthy
-3. [ ] set-role.sh coder qwen3.6-35b-a3b--llamacpp-vulkan-radv-mtp-v1; verify live via chat completion
+1. [x] Launch qwen3.6-35b-a3b MTP llamacpp service (compose up -d, scoped); verify /health + /v1/models
+2. [x] Verify laguna-s still up + healthy
+3. [x] set-role.sh coder qwen3.6-35b-a3b--llamacpp-vulkan-radv-mtp-v1; verify live via chat completion
+3b. [x] Post-power-cycle recovery (2026-08-02): box power-cycled by Chris after qwen@-c131072
+   KV cache + laguna + ollama thrashed 123GiB used / box unreachable. On reboot: pi-web +
+   ollama containers no longer exist (per Chris: leave them stopped). Relaunched laguna + qwen
+   MTP; both healthy, qwen chat completes in 0.6s, 120GiB used / 4GiB free (co-residency holds).
+   coder -> 127.0.0.1:8102/v1 persisted across reboot (litellm DB).
 4. [ ] Add planner to scripts/litellm-bootstrap.sh ROLES; run it on box (seeds planner role)
 5. [ ] Add planner to pi-web/models.seed.json.tmpl (git)
 6. [ ] Add planner to oh-my-pi/models.seed.yml.tmpl (git)
@@ -59,6 +64,7 @@ Known facts:
 ## Signals
 <!-- append-only. Leave signals for other agents. -->
 <!-- signal: big-pickle 2026-08-01T23:55Z — claiming; launching qwen first per Chris's ordering -->
+<!-- signal: big-pickle 2026-08-02T02:12Z — Phase 1 done+recovered; qwen MTP + laguna healthy, coder->qwen live, pi-web/ollama stopped per Chris -->
 
 ## Decision log
 <!-- append-only, one line per entry, newest last. Never move this card to done/
