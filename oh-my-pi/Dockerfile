@@ -28,14 +28,6 @@ RUN mkdir -p /home/omp/.bun/bin && \
 
 RUN mkdir -p /app/.omp/agent
 
-# Seed-once model config (litellm provider), same pattern as pi-web: committed
-# template carries a __LITELLM_MASTER_KEY__ placeholder, substituted at runtime
-# only when the config file is first created. COPY/chmod run as root (before
-# USER omp): BuildKit COPY'd files are root-owned even when the active USER is
-# non-root, so a chmod after the USER switch would fail with EPERM.
-COPY .omp/agent/models.seed.yml.tmpl /app/.omp/agent/models.seed.yml.tmpl
-COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Switch user context for runtime safety
 USER omp
@@ -67,3 +59,22 @@ ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 # of the omp binary, not a PATH executable); the seed entrypoint replaces the
 # omp ENTRYPOINT, so the subcommand must be dispatched through `omp` here.
 CMD ["omp", "cli"]
+
+USER root
+# Seed-once model config (litellm provider), same pattern as pi-web: committed
+# template carries a __LITELLM_MASTER_KEY__ placeholder, substituted at runtime
+# only when the config file is first created. COPY/chmod run as root (before
+# USER omp): BuildKit COPY'd files are root-owned even when the active USER is
+# non-root, so a chmod after the USER switch would fail with EPERM.
+COPY .omp/agent/models.seed.yml.tmpl /app/.omp/agent/models.seed.yml.tmpl
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    docker.io \
+    netcat-openbsd \
+    net-tools \
+    dnsutils \
+    && rm -rf /var/lib/apt/lists/*
+
+USER omp
