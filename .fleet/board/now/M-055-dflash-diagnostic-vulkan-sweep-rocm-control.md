@@ -65,6 +65,8 @@ community's 73-91% acceptance was actually measured on.
 
 ## Signals
 
+<!-- signal: big-pickle 2026-08-02T01:00Z — ROCm build unblocked after killing a hung `docker pull` of the base image that was deadlocking buildkit's FROM step; build re-downloading base itself (~7.77GB layer, throttled ~1MB/s), ETA 1-2h. Check build log /tmp/laguna-fork-rocm-build.log. -->
+
 ## Decision log
 - 2026-08-01: card created from the M-053 follow-up. Scope is strictly the
   two bounded diagnostics; a fork-debug effort (if the ROCm control points
@@ -99,7 +101,14 @@ community's 73-91% acceptance was actually measured on.
   acceptance gain. INTERIM CONCLUSION: DFlash-on-Vulkan is tunable but a
   wash vs plain decoding — it matches, does not beat, the 30 tok/s baseline.
   The 73-91% community acceptance at n15 on ROCm remains unexplained and is
-  the precise thing the ROCm control (now building) targets.
+   the precise thing the ROCm control (now building) targets.
+- 2026-08-02 (ops): a manual `docker pull rocm/dev-ubuntu-24.04:7.14.0-full`
+  run in parallel with the build HUNG (~30 min, zero progress, no TCP) and
+  deadlocked the build's `[1/8] FROM` (buildkit waits on the same content
+  store the pull holds). Lesson: do NOT pre-pull a base image in parallel
+  with a build of the same image — let buildkit fetch it itself; if a
+  parallel pull is ever needed, it must finish before the build starts.
+  After killing the pull, the build resumed its own download and progressed.
 - 2026-08-02: ROCm control build running on the box (rocm/dev-ubuntu-24.04
   7.14.0-full base, fork pinned to the same 04b2b72 commit, GGML_HIP=ON
   gfx1151, -j6). To run next: IMAGE=...:rocm-7.14, FA_FLAG="-fa 0" (community
