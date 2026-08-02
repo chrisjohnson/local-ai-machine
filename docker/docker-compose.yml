@@ -590,6 +590,37 @@ services:
     ports:
       - "127.0.0.1:8102:8080"
 
+  # Same as v1, but 8bit KV quantization to reduce memory footprint
+  qwen3.6-35b-a3b--llamacpp-vulkan-radv-mtp-v2:
+    image: docker.io/kyuz0/amd-strix-halo-toolboxes:vulkan-radv
+    container_name: qwen3.6-35b-a3b--llamacpp-vulkan-radv-mtp-v2
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - "26"
+      - "303"
+    volumes:
+      - /var/lib/ai-models/llamacpp-qwen3.6-35b-a3b-mtp:/models:ro
+    command: >
+      llama-server
+      -m /models/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
+      -ngl 999
+      -fa 1
+      --spec-type draft-mtp
+      --spec-draft-n-max 3
+      -np 1
+      -c 131072
+      -n 8192
+      -ctk q8_0
+      -ctv q8_0
+      --host 0.0.0.0
+      --port 8080
+      -a qwen3.6-35b-a3b-mtp
+      --metrics
+    ports:
+      - "127.0.0.1:8109:8080"
+
   # M-049: Laguna XS 2.1, poolside's smaller MoE sibling of Laguna-S-2.1 —
   # 33B total / 3B active (same active-param class as qwen3.6-35b-a3b-mtp
   # above), 256K native context, official first-party GGUF from poolside
