@@ -8,33 +8,33 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
     unzip \
+    docker.io \
+    netcat-openbsd \
+    net-tools \
+    dnsutils \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Bun via the official shell script
 RUN curl -fsSL https://bun.sh/install | bash
 
-# Ensure Bun is available to root during the build phase
-ENV PATH="/root/.bun/bin:${PATH}"
-
-# Modify the existing node user/group (1000:1000) to 'omp'
-RUN usermod -l omp node && \
-    groupmod -n omp node && \
-    usermod -d /home/omp -m omp
+RUN usermod -d /home/node node \
+    && usermod -aG docker node \
+    && chown node:node /home/node
+ENV HOME=/home/node
 
 # Create paths, copy binary, and fix permissions
-RUN mkdir -p /home/omp/.bun/bin && \
-    cp /root/.bun/bin/bun /home/omp/.bun/bin/bun && \
-    chown -R omp:omp /home/omp/.bun
+RUN mkdir -p /bun/bin && \
+    cp /root/.bun/bin/bun /bun/bin/bun && \
+    chown -R node:node /bun
 
 RUN mkdir -p /app/.omp/agent
 
-
 # Switch user context for runtime safety
-USER omp
-WORKDIR /home/omp
+USER node
+WORKDIR /home/node
 
 # Ensure pathing and environments match the new user space
-ENV PATH="/home/omp/.bun/bin:${PATH}"
+ENV PATH="/bun/bin:${PATH}"
 # PI_CONFIG_DIR is a directory NAME joined under $HOME, not an absolute path
 # (@oh-my-pi/pi-utils/dirs: path.join(os.homedir(), PI_CONFIG_DIR)); an
 # absolute value here silently resolves to /home/omp/home/omp/.omp and misses
@@ -58,7 +58,7 @@ ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 # Original upstream used ENTRYPOINT ["omp"] + CMD ["cli"] (cli is a subcommand
 # of the omp binary, not a PATH executable); the seed entrypoint replaces the
 # omp ENTRYPOINT, so the subcommand must be dispatched through `omp` here.
-CMD ["omp", "cli"]
+CMD ["omp"]
 
 USER root
 # Seed-once model config (litellm provider), same pattern as pi-web: committed
@@ -70,11 +70,6 @@ COPY .omp/agent/models.seed.yml.tmpl /app/.omp/agent/models.seed.yml.tmpl
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    docker.io \
-    netcat-openbsd \
-    net-tools \
-    dnsutils \
-    && rm -rf /var/lib/apt/lists/*
+USER node
 
-USER omp
+ENV PATH="/home/node/.bun/bin:${PATH}"
