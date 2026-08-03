@@ -266,6 +266,74 @@ npm-registry distribution during development.
    or stay scoped to just the continuation brief? Leaning toward brief-only
    for a v1, agent-guide diff view as a possible follow-up.
 
+### Built, tested, deployed (2026-08-03)
+
+Chris confirmed the plugins.md source used was accurate before build started
+— cross-checked against `github.com/jmfederico/pi-web/blob/main/docs/plugins.md`
+directly (the hosted `pi-web.dev/plugins` site 403'd on fetch, GitHub source
+matches the bundled npm package docs exactly, including the "no cleanup
+function returned" detail a web search snippet had misleadingly implied
+might differ). No drift, safe to build against.
+
+Built via a dedicated implement agent (worktree-isolated), reviewed and
+merged by hand rather than trusted blindly:
+
+- `jmfederico-pi-web/plugins/pi-continue-companion/`: `package.json`,
+  `pi-web-plugin.js` (activate() contributing a `workspacePanels` "Continue"
+  tab + a command-palette action), `continueHandoffParser.js` (markdown →
+  structured brief, never throws), `continueDiscovery.js`
+  (`files.listFiles`/`files.readFile`-based `.pi/continue/*.md` discovery,
+  base64url session-id decoding), `continuePanelElement.js` (Lit/shadow-DOM
+  custom element, list+detail, modeled closely on the real bundled `relays`
+  plugin's `relaysPanelElement.js`).
+- `test/parser.test.js` + real fixture (copied live from the box's actual
+  handoff file) + a hand-built minimal/empty-sections fixture. Independently
+  re-ran this myself post-merge (not just trusting the build agent's report)
+  — all assertions pass against real data: task/doneWhen text, 0 Forbid
+  (section legitimately absent that day), 11 Established, 3 Learned, 1 Open,
+  4 Next, every sub-field correctly extracted. One real bug the build agent
+  found *during its own testing* and fixed: a naive `;`-split on the
+  "key: value; key: value" tail truncated an Open entry's `verifies:` value
+  at an internal semicolon present in the real data — fixed with
+  field-name-boundary-aware splitting, regression-tested.
+- Deployment: `Dockerfile` bakes the plugin into
+  `/app/.pi-web/plugins-seed/pi-continue-companion`; `docker-entrypoint.sh`
+  does an always-overwrite sync into `$PI_CODING_AGENT_DIR/plugins/` on every
+  container start (deliberately NOT the seed-once pattern used for
+  settings.json/models.json — this is our own actively-developed code, must
+  never go stale on restart).
+- Code-reviewed the diff by hand before merging (not just the agent's
+  self-report): confirmed `pi-web-plugin.js`'s `activate()`/contribution
+  shape matches the verified API exactly, confirmed the Dockerfile/entrypoint
+  wiring is correct. Found and fixed one cosmetic nit myself (missing
+  `"type": "module"` in package.json causing a Node ESM-detection warning
+  when running the test directly — harmless to the actual browser-side
+  plugin runtime, just noisy for local test runs).
+- Merged to `main` (commit `aaf4af7`), pushed, box's git checkout
+  fast-forwarded to match, then **rebuilt jmfederico-pi-web from that
+  official checkout** (not the build agent's scratch build, which
+  intentionally avoided touching the box's git state) — `docker compose up
+  -d --build jmfederico-pi-web`.
+- **Live verification, post-official-rebuild**: `pi-web` container up,
+  zero errors/exceptions in logs, plugin files present at
+  `/home/piweb/.pi-web/plugins/pi-continue-companion/`, and
+  `/pi-web-plugins/manifest.json` lists it: `{"id":"pi-continue-companion",
+  "source":"local","scope":"local","machineSpecific":false}`, alongside the
+  bundled `info`/`relays`/`updates`/`workspace-tasks` plugins — pi-web's own
+  plugin loader recognizes it correctly.
+- Minor known non-issue: the deployed plugin directory includes the `test/`
+  folder (Dockerfile COPYs the whole plugin dir) — harmless bloat, pi-web's
+  loader only reads the declared `module` entry point, not worth a
+  `.dockerignore` for such a small file set right now.
+
+**Still unverified — genuinely needs a human or a browser-capable tool**:
+actual visual rendering, panel-tab placement/styling in the real UI, and
+interactive behavior (clicking a handoff row, list↔detail navigation,
+refresh). No browser automation tool was available in this environment for
+either the build agent or me. Chris should open pi-web
+(`http://<box>:8080`) and check the "Continue" tab in the workspace side
+panel directly — that's the one thing this card cannot self-certify.
+
 ## Signals
 <!-- append-only. Leave signals for other agents. Format:
      <!-- signal: <pet-name> <ISO8601-UTC> — <short message> -->
