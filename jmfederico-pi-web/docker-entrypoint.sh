@@ -29,4 +29,14 @@ if [ ! -f "$CONFIG_ROOT/settings.json" ]; then
   cp /app/.pi-web/settings.seed.json "$CONFIG_ROOT/settings.json"
 fi
 
+# Seed the pi-continue extension config once. pi-continue reads this path
+# ($PI_CODING_AGENT_DIR/extensions/pi-continue.json), not the npm:pi-continue
+# block in settings.json. Defaults would put handoff synthesis on the slow
+# planner/laguna model (summarizerModel: "inherit" -> session default) and
+# fail the 180s timeout; pin it to the fast coder model instead.
+if [ ! -f "$CONFIG_ROOT/extensions/pi-continue.json" ]; then
+  mkdir -p "$CONFIG_ROOT/extensions"
+  cp /app/.pi-web/pi-continue.seed.json "$CONFIG_ROOT/extensions/pi-continue.json"
+fi
+
 exec "$@"

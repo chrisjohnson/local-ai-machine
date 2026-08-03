@@ -1,0 +1,16 @@
+{
+  "enabled": true,
+  "summarizerModel": "local-litellm/coder",
+  "reasoning": "inherit",
+  "historyMaxTokens": null,
+  "synthesisTimeoutMs": 180000,
+  "continuationArtifactMode": "always",
+  "agentGuidePath": "AGENTS.md",
+  "agentGuideSyncMode": "off",
+  "midRunGuardEnabled": true,
+  "appendCompactionMetadata": false,
+  "appendReadFileTags": false,
+  "appendModifiedFileTags": true,
+  "promptOverridePolicy": "project-override",
+  "showAfterCompact": true
+}
