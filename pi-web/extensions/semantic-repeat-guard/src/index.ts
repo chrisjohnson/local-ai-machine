@@ -79,7 +79,7 @@
 import type { ExtensionAPI, ExtensionContext, ToolCallEvent } from "@earendil-works/pi-coding-agent";
 
 const JUDGE_PROVIDER = "local-litellm";
-const JUDGE_MODEL_ID = "judge";
+const JUDGE_MODEL_ID = "small-moe";
 const WINDOW_SIZE = 8;
 const CHECK_EVERY_N_CALLS = 5;
 // Reasoning models need real headroom to finish their chain-of-thought
