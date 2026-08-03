@@ -11,8 +11,9 @@
 # allowed to drift without a git conflict", 2026-07-31 design). Without
 # this script, a fresh litellm DB would have no "big-moe"/"medium-moe"/
 # "small-moe"/etc. roles at all until someone manually ran set-role.sh
-# once - this closes that gap, same shape as scripts/turnstone-bootstrap.sh
-# for Turnstone's own DB-only settings.
+# once - this closes that gap (previously mirrored by
+# scripts/turnstone-bootstrap.sh for the now-decommissioned Turnstone
+# service's own DB-only settings).
 #
 # Role names were renamed 2026-08-03 from function-based names (coder,
 # judge, vision, orchestrator, planner) to size+architecture-based names.
