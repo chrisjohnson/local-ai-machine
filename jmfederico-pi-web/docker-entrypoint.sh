@@ -32,13 +32,17 @@ fi
 # Seed the pi-continue extension config once. pi-continue reads this path
 # ($PI_CODING_AGENT_DIR/extensions/pi-continue.json), not the npm:pi-continue
 # block in settings.json. Defaults would put handoff synthesis on the slow
-# planner/laguna model (summarizerModel: "inherit" -> session default) and
-# fail the default timeout; pin it to "coder-continue-json" (a scoped
-# litellm route, see docker/litellm/config.yaml, that forces a json_schema
-# response_format matching pi-continue's artifact shape — the plain "coder"
-# role is a thinking model that prepends prose the strict JSON.parse()
-# rejects) and give it a 300s synthesisTimeoutMs (large handoff contexts can
-# burn 140s+ on prompt processing alone before generation starts).
+# big-moe/laguna model (summarizerModel: "inherit" -> session default) and
+# used to fail the default timeout; pin it to "big-moe-continue-json" (a
+# scoped litellm route, see docker/litellm/config.yaml, that forces a
+# json_schema response_format matching pi-continue's artifact shape — the
+# plain "big-moe" role is a thinking model that prepends prose the strict
+# JSON.parse() rejects) and give it a 300s synthesisTimeoutMs (large handoff
+# contexts can burn 140s+ on prompt processing alone before generation
+# starts). The json_schema fix was empirically verified against the laguna
+# backend (2026-08-03, ~19s in testing) before this route replaced the
+# earlier "medium-moe-continue-json" (qwen3.6-35b, formerly "coder-
+# continue-json") pin, which remains available as a known-good fallback.
 if [ ! -f "$CONFIG_ROOT/extensions/pi-continue.json" ]; then
   mkdir -p "$CONFIG_ROOT/extensions"
   cp /app/.pi-web/pi-continue.seed.json "$CONFIG_ROOT/extensions/pi-continue.json"

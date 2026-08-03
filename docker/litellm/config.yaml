@@ -2,11 +2,21 @@
 #
 # Model definitions live here (the catalog of what's available).
 #
-# Dynamic roles (coder/judge/vision — "which model currently answers as
-# coder") are DELIBERATELY NOT in model_list below. They live entirely in
-# litellm's own database (store_model_in_db: true, see general_settings),
-# managed via the Model Management API
+# Dynamic roles (big-moe/medium-moe/medium-dense/small-moe/small-dense —
+# named by model size + architecture, e.g. "which model currently answers
+# as big-moe" — NOT by function; see 2026-08-03 rename below) are
+# DELIBERATELY NOT in model_list below. They live entirely in litellm's
+# own database (store_model_in_db: true, see general_settings), managed
+# via the Model Management API
 # (https://docs.litellm.ai/docs/proxy/model_management), not this file.
+#
+# Naming (2026-08-03): roles were renamed from function-based names
+# (coder/judge/vision/orchestrator/planner) to size+architecture-based
+# names (big-moe/medium-moe/medium-dense/small-moe/small-dense) — all
+# lowercase, hyphens only. judge and orchestrator, which had already
+# collapsed onto the same physical backend, collapsed into the single
+# role small-moe. See scripts/litellm-bootstrap.sh's ROLES array for the
+# full current list.
 #
 # This is a deliberate design (2026-07-31, Chris's explicit direction,
 # terraform's `lifecycle { ignore_changes }` as the reference model): git
@@ -46,22 +56,24 @@ model_list:
       model: anthropic/claude-3-5-sonnet-20241022
       api_key: os.environ/ANTHROPIC_API_KEY
 
-  # Scoped route for pi-continue's handoff synthesis only (2026-08-03).
-  # pi-continue does a strict JSON.parse() on the coder model's summary
-  # output with zero tolerance for a preamble, but the coder role's model
-  # (qwen3.6-35b-a3b, a "thinking" model) reliably prepends chain-of-thought
-  # prose before the JSON, which fails parsing regardless of timeout length.
+  # Scoped routes for pi-continue's handoff synthesis only (2026-08-03,
+  # updated 2026-08-03 to add a second, big-moe-backed route).
+  # pi-continue does a strict JSON.parse() on the summarizer model's output
+  # with zero tolerance for a preamble, but "thinking" models reliably
+  # prepend chain-of-thought prose before the JSON, which fails parsing
+  # regardless of timeout length.
   #
-  # Verified empirically (2026-08-03) against this exact backend+litellm
-  # combo: response_format:{type: json_object} (no schema) is a NO-OP here
-  # — litellm's drop_params silently strips it since this custom openai-
-  # compatible model isn't in litellm's known-model-capabilities map, so
-  # the request goes through unconstrained and the preamble comes back.
-  # A full response_format:{type: json_schema, json_schema: {...}} DOES
-  # survive litellm and DOES make llama.cpp grammar-constrain the "content"
-  # channel (the model's chain-of-thought still flows into the separate
-  # "reasoning_content" field, which pi-continue never reads) — confirmed
-  # with a live test producing clean, schema-exact JSON with no preamble.
+  # Verified empirically (2026-08-03) against the qwen3.6-35b-a3b-mtp
+  # backend + this litellm build: response_format:{type: json_object} (no
+  # schema) is a NO-OP here — litellm's drop_params silently strips it
+  # since this custom openai-compatible model isn't in litellm's known-
+  # model-capabilities map, so the request goes through unconstrained and
+  # the preamble comes back. A full response_format:{type: json_schema,
+  # json_schema: {...}} DOES survive litellm and DOES make llama.cpp
+  # grammar-constrain the "content" channel (the model's chain-of-thought
+  # still flows into the separate "reasoning_content" field, which
+  # pi-continue never reads) — confirmed with a live test producing clean,
+  # schema-exact JSON with no preamble.
   #
   # The schema below is a hand-maintained mirror of pi-continue's internal
   # HISTORY_ARTIFACT_VERSION "pi-continue-artifacts/v4" shape (see
@@ -70,16 +82,114 @@ model_list:
   # shape changes, this schema must be updated to match or synthesis will
   # start failing again (with a *different* validation error than today's).
   #
-  # This is a STATIC snapshot of the backend the "coder" role currently
-  # points to (127.0.0.1:8109, qwen3.6-35b-a3b-mtp) — unlike "coder" itself
-  # it will NOT follow future set-role.sh reassignments (same trade-off as
-  # governed_coder above). Only pi-continue's summarizerModel should use
-  # this; forcing this schema on the shared "coder" role would break every
-  # non-handoff use of it.
-  - model_name: coder-continue-json
+  # There are two routes below, one per model-size tier pi-continue might
+  # use as its summarizerModel — each is a STATIC snapshot of a specific
+  # backend and will NOT follow future set-role.sh reassignments of the
+  # "medium-moe"/"big-moe" roles (same trade-off as governed_coder above).
+  # Only pi-continue's summarizerModel should use these; forcing this
+  # schema onto the shared dynamic roles would break every non-handoff use
+  # of them.
+  #
+  # medium-moe-continue-json: qwen3.6-35b-a3b-mtp (127.0.0.1:8109) — the
+  # original, empirically-verified route (renamed 2026-08-03 from
+  # "coder-continue-json" when roles were renamed size/architecture-first;
+  # same backend, same schema, name change only).
+  - model_name: medium-moe-continue-json
     litellm_params:
       model: openai/qwen3.6-35b-a3b-mtp
       api_base: http://127.0.0.1:8109/v1
+      api_key: "none"
+      response_format:
+        type: json_schema
+        json_schema:
+          name: pi_continue_artifacts_v4
+          strict: true
+          schema:
+            type: object
+            additionalProperties: false
+            required: [version, brief, agentGuideUpdate]
+            properties:
+              version:
+                enum: [pi-continue-artifacts/v4]
+              brief:
+                type: object
+                additionalProperties: false
+                required: [task, done_when, forbid, established, learned, open, next]
+                properties:
+                  task: { type: string }
+                  done_when: { type: string }
+                  forbid:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: false
+                      required: [rule, source]
+                      properties:
+                        rule: { type: string }
+                        source: { type: string }
+                  established:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: false
+                      required: [claim, evidence, basis, reopen]
+                      properties:
+                        claim: { type: string }
+                        evidence: { type: string }
+                        basis: { enum: [observed, test, output, user, doc] }
+                        reopen: { type: string }
+                  learned:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: false
+                      required: [lesson, source]
+                      properties:
+                        lesson: { type: string }
+                        source: { type: string }
+                  open:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: false
+                      required: [question, verifies]
+                      properties:
+                        question: { type: string }
+                        verifies: { type: string }
+                  next:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: false
+                      required: [action, outcome]
+                      properties:
+                        action: { type: string }
+                        outcome: { type: string }
+              agentGuideUpdate:
+                type: object
+                additionalProperties: false
+                required: [content, reason]
+                properties:
+                  content:
+                    anyOf:
+                      - type: string
+                      - type: "null"
+                  reason: { type: string }
+
+  # big-moe-continue-json: laguna-s-2.1-118b-q4km (127.0.0.1:8108) — added
+  # 2026-08-03 as a second summarizerModel candidate. Laguna is a
+  # different model than qwen3.6-35b-a3b-mtp; the JSON-schema-forcing
+  # trick above is NOT assumed to work identically on it purely because it
+  # worked on qwen — it must be (and was) empirically re-verified against
+  # this exact backend before pi-continue's summarizerModel was pointed at
+  # it. Laguna is also much larger/slower than qwen3.6-35b-a3b-mtp, which
+  # is why it was avoided as the summarizer originally (before this
+  # session's JSON-schema fix solved the actual parsing problem — speed
+  # was never the blocker, unparseable preamble text was).
+  - model_name: big-moe-continue-json
+    litellm_params:
+      model: openai/laguna-s-2.1-118b-q4km
+      api_base: http://127.0.0.1:8108/v1
       api_key: "none"
       response_format:
         type: json_schema

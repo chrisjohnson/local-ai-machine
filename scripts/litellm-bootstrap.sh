@@ -1,17 +1,23 @@
 #!/usr/bin/env bash
-# Seeds litellm's dynamic roles (coder, judge, vision, orchestrator) in its own database
-# via the Model Management API (POST /model/new), if they don't already
-# exist there. Idempotent - safe to re-run any time (fresh deploy, DB
-# volume recreated, etc.).
+# Seeds litellm's dynamic roles (big-moe, medium-moe, medium-dense,
+# small-moe, small-dense - named by model size + architecture, not
+# function) in its own database via the Model Management API
+# (POST /model/new), if they don't already exist there. Idempotent - safe
+# to re-run any time (fresh deploy, DB volume recreated, etc.).
 #
 # This exists because dynamic roles are DELIBERATELY not tracked in
 # docker/litellm/config.yaml (see that file's own header comment for the
 # full rationale - terraform-style "codified resource, runtime value
 # allowed to drift without a git conflict", 2026-07-31 design). Without
-# this script, a fresh litellm DB would have no "coder"/"judge"/"vision"
-# roles at all until someone manually ran set-role.sh once - this closes
-# that gap, same shape as scripts/turnstone-bootstrap.sh for Turnstone's
-# own DB-only settings.
+# this script, a fresh litellm DB would have no "big-moe"/"medium-moe"/
+# "small-moe"/etc. roles at all until someone manually ran set-role.sh
+# once - this closes that gap, same shape as scripts/turnstone-bootstrap.sh
+# for Turnstone's own DB-only settings.
+#
+# Role names were renamed 2026-08-03 from function-based names (coder,
+# judge, vision, orchestrator, planner) to size+architecture-based names.
+# judge and orchestrator, which had already collapsed onto the same
+# physical backend, collapsed into the single role small-moe.
 #
 # The values this script seeds are DELIBERATELY non-functional stubs, not
 # real model references - a role only becomes actually useful after a
@@ -37,7 +43,7 @@ ENV_FILE="${LITELLM_ENV_FILE:-$REPO_ROOT/docker/.env}"
 # Add new role names here when a new one is introduced (e.g. by an
 # M-0xx card) - this is the one place that needs a git commit when a
 # genuinely new role category is added; which model backs it never does.
-ROLES=(coder judge vision orchestrator planner)
+ROLES=(big-moe medium-moe medium-dense small-moe small-dense)
 
 STUB_MODEL="UNCONFIGURED-run-set-role.sh"
 STUB_API_BASE="http://unconfigured.invalid/v1"

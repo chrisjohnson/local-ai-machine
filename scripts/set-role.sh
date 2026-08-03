@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Updates a LiteLLM role (coder, judge, vision, etc.) to point at a
-# different model service. Reads the port from docker-compose.yml — no
+# Updates a LiteLLM role (big-moe, medium-moe, small-moe, etc.) to point at
+# a different model service. Reads the port from docker-compose.yml — no
 # manual port lookup needed. Changes the role via litellm's Model
 # Management API (POST /model/update) — does NOT edit
 # docker/litellm/config.yaml, and does NOT restart litellm (DB-backed
@@ -21,8 +21,8 @@
 #   set-role.sh <role> <service-name>
 #
 # Examples:
-#   set-role.sh coder gemma-4-26b-a4b-it--vllm-therock-gfx1151-v1
-#   set-role.sh judge qwen3.5-4b--vllm-therock-gfx1151-v1
+#   set-role.sh medium-moe gemma-4-26b-a4b-it--vllm-therock-gfx1151-v1
+#   set-role.sh small-moe qwen3.5-4b--vllm-therock-gfx1151-v1
 #
 # The service name must match a service defined in docker-compose.yml.
 # The role must already exist in litellm's DB (run
