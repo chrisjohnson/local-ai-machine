@@ -47,10 +47,6 @@ ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["pi-web"]
 
 USER root
-# Seed-once model config (litellm provider) - JSON format for pi-web
-COPY models.seed.json.tmpl /app/.pi-web/models.seed.json.tmpl
-COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Install Docker dependencies for host-level tool execution if needed
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -59,5 +55,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     net-tools \
     dnsutils \
     && rm -rf /var/lib/apt/lists/*
+
+# Seed-once model config (litellm provider) - JSON format for pi-web
+COPY models.seed.json.tmpl /app/.pi-web/models.seed.json.tmpl
+COPY settings.seed.json /app/.pi-web/settings.seed.json
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Give piweb ownership of the seed directory so it can install packages there
+RUN chown -R piweb:piweb /app/.pi-web
 
 USER piweb

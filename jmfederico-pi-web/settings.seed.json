@@ -1,0 +1,7 @@
+{
+  "defaultProvider": "local-litellm",
+  "defaultModel": "planner",
+  "packages": [
+    "npm:pi-continue"
+  ]
+}

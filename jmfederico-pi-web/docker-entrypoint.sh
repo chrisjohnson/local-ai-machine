@@ -24,4 +24,9 @@ if [ ! -f "$CONFIG_ROOT/models.json" ]; then
   sed "s/__LITELLM_MASTER_KEY__/$LITELLM_MASTER_KEY/" /app/.pi-web/models.seed.json.tmpl > "$CONFIG_ROOT/models.json"
 fi
 
+# Seed the settings.json file to automatically trigger package installations
+if [ ! -f "$CONFIG_ROOT/settings.json" ]; then
+  cp /app/.pi-web/settings.seed.json "$CONFIG_ROOT/settings.json"
+fi
+
 exec "$@"
