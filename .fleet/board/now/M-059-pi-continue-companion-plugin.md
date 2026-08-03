@@ -99,32 +99,172 @@ exists upstream in `jmfederico/pi-web` (confirmed via GitHub code search,
 2. [x] Confirm jmfederico-pi-web's real upstream repo and its own plugin
    system as the viable integration point (vs. extension-side or
    protocol-side fixes).
-3. [ ] Deep-dive `docs/plugins.md` / `plugin-api.d.ts` (and the bundled
-   example plugin, `pi-web-plugins/info`) for: what data/API hooks a
-   plugin actually gets (session list? session events/messages? a way to
-   read files under a session's working directory or PI_CODING_AGENT_DIR?
-   a way to register a new panel/route/nav entry in pi-web's own UI
-   chrome?), and the manifest/lifecycle shape required.
-4. [ ] Pin down exactly where pi-continue's handoff/ledger data actually
-   lives on disk at the point a plugin could read it (which file(s), what
-   shape, keyed by session how) — re-examine `pi-continue`'s
-   `continuation-event.ts` / `details.ts` / wherever it writes
-   `.pi/continue/<id>.md` and any session/compaction-event JSON, from the
-   companion-plugin's read side rather than the extension's write side.
-5. [ ] UX/visual design pass: survey pi-web's existing native panels
-   (Models, session browser, etc. — whatever Chris noticed) for their
-   actual look/interaction patterns (modal vs. side panel vs. inline,
-   theming, nav placement) so pi-continue-companion's panel fits in
-   rather than looking bolted-on. Sketch what it should actually show
-   (raw ledger text? a structured task/brief/next-steps view matching
-   pi-continue's own `brief` schema fields — task, done_when, forbid,
-   established, learned, open, next?).
-6. [ ] Write up a concrete implementation plan (file layout, manifest,
-   data-reading approach, rendering approach) — still planning only, no
-   code, until Chris signs off.
-7. [ ] Naming: working name is "pi-continue-companion" — confirm before
-   any repo/package scaffolding exists, since Chris is already thinking
-   about spinning it into its own repo if it works out.
+3. [x] Deep-dive `docs/plugins.md`/`plugin-api.d.ts` and the bundled
+   example plugins. Findings below.
+4. [x] Pin down exactly where pi-continue's handoff/ledger data lives on
+   disk and what it contains. Findings below.
+5. [x] UX/visual survey of pi-web's existing native panels. Findings below
+   (with one caveat: no real screenshot, structural/CSS-token inference
+   only — see "Open items" below).
+6. [x] Concrete implementation plan written below — still planning only,
+   no code written, per Chris's explicit instruction.
+7. [x] Naming confirmed by Chris: **pi-continue-companion**.
+
+### Findings: pi-web's plugin API (round 2 research, 2026-08-03)
+
+Two research agents ran in parallel: one on the plugin API + UX survey,
+one on pi-continue's on-disk data shape. Full reports are in this card's
+originating conversation; distilled here.
+
+**Manifest & lifecycle.** A plugin is a `package.json` declaring
+`piWeb.plugins: [{ id, module }]` plus a plain JS module (no build step
+required) default-exporting `{ apiVersion: 1, name, activate }`.
+`activate(context)` returns `{ contributions: { actions?, workspacePanels?,
+workspaceLabels? } }`. Runs **browser-side only** — no server/session-daemon
+hook, no access to session event/message/compaction-event history, no
+general filesystem API. Installed at `~/.pi-web/plugins/<id>/` (or
+`$PI_WEB_DATA_DIR/plugins`). Unconditionally trusted code, no permission
+model.
+
+**Data access.** The only sanctioned data layer is a `files` helper
+(`readFile`/`listFiles`/`writeFile`/`deleteFile`/`moveFile`) injected into
+panel/label contexts, **scoped to the selected workspace root**
+(path-traversal blocked). Confirmed live: pi-continue's handoff file sits
+at `<workspaceRoot>/.pi/continue/<base64url(sessionId)>.md` — squarely
+inside that scope. No special access needed.
+
+**UI registration.** Declarative only: `workspacePanels` (tabs alongside
+Files/Git/Terminal in a persistent, resizable side panel — **not modal**),
+`actions` (command-palette entries), `workspaceLabels` (small inline
+badges). No arbitrary routing. Rendering is **Lit** (`lit-html` tagged
+templates / custom elements), not React (React is pi-web's own internal
+framework, not exposed to plugins). Plugins are expected to reuse pi-web's
+own CSS custom properties (`var(--pi-border-muted)`, `var(--pi-muted)`,
+etc.) and shared classes (`toolbar`, `viewer`, `empty`, `muted`) rather
+than bring their own styling — confirmed both by docs guidance and by the
+bundled `info` plugin's real CSS.
+
+**Near-exact template already exists**: the bundled `relays` plugin reads
+markdown files from a workspace-relative directory
+(`.pi-web/relays/<name>/*.md`) written by external tools, and renders them
+via `files.listFiles`/`files.readFile` with sanitized markdown→HTML and
+graceful empty-state handling. Structurally identical to what
+pi-continue-companion needs — swap the root path
+(`.pi/continue/`→ vs `.pi-web/relays/`) and add real section parsing
+instead of treating each file as opaque markdown.
+
+**Visual shell** (dark theme, GitHub-dark-like palette, CSS custom
+properties — `--pi-bg`, `--pi-surface`, `--pi-accent`, `--pi-success` /
+`--pi-warning` / `--pi-danger`, `--pi-border(-muted)`, `--pi-text` /
+`--pi-muted` / `--pi-dim`). Layout is a persistent two-pane shell: a fixed
+~340px nav sidebar + a resizable (min 360px / 42vw) workspace side panel
+where tool tabs (Files/Git/Terminal/plugins) live. Not a modal-first UI.
+
+### Findings: pi-continue's on-disk data (round 2 research, 2026-08-03)
+
+- **Path**: `<gitProjectRoot>/.pi/continue/<base64url(sessionId)>.md` —
+  keyed by session id, one file per session, **overwritten** on every
+  successful handoff within that session (no history/timeline kept).
+  Different files in that directory = different past sessions, not a
+  timeline of one session's handoffs.
+- **Content**: the exact same `briefMarkdown` prose the (broken, in
+  pi-web) Ledger viewer would show — `## Task`, `## Done When`,
+  `## Forbid`, `## Established`, `## Learned`, `## Open`, `## Next`
+  sections, each entry a single flattened bullet
+  (e.g. `- <claim> — evidence: <e>; basis: <b>; reopen: <r>` for
+  Established). This is a fixed, deterministic render format
+  (`renderForbidEntry`/`renderEstablishedEntry`/etc. in pi-continue's
+  `blocks.ts`) — safely re-parseable by section header + bullet pattern.
+- **No structured JSON is ever persisted** — the parsed `BriefEnvelope`
+  object exists only transiently in pi-continue's own memory during
+  synthesis, then gets flattened to markdown and discarded. A companion
+  wanting a structured card-style view (not a markdown dump) must
+  re-parse the markdown, not read structured data directly.
+- **The Ledger's "extra" content (read/modified file lists, synthesis
+  telemetry — model, tokens, cost) is genuinely RAM-only**, lost on Pi
+  process restart, and was never reachable by a plugin in the first place
+  (no server-side hook API for plugins, confirmed above). This is a
+  **permanent, accepted gap** — pi-continue-companion can faithfully
+  reproduce the persisted brief content, but not this ephemeral metadata,
+  and that's fine: it's genuinely not recoverable by any means available
+  to a browser-side plugin.
+- Second output target: the agent guide file (default `AGENTS.md`) gets a
+  full-file replacement when `agentGuideSyncMode` is on and the model
+  proposed one — also plain markdown, also workspace-root-relative, also
+  in scope for `files.readFile` if we ever want to show that too.
+- Hygiene note, unrelated to the plugin itself: `.pi/continue/*.md` isn't
+  gitignored in the test repo we checked — worth a footnote to Chris that
+  projects using pi-continue may want to `.gitignore` that path, separate
+  from this card's scope.
+
+### Concrete implementation plan (still planning only — no code written)
+
+**Package layout** (mirrors the bundled `relays` plugin):
+```
+pi-continue-companion/
+  package.json          # piWeb.plugins: [{ id: "pi-continue-companion", module: "pi-web-plugin.js" }]
+  pi-web-plugin.js       # apiVersion:1, name, activate() -> { contributions: { workspacePanels: [...] } }
+  companionPanel.js      # panel logic: list + read .pi/continue/*.md via `files`, parse, render
+  companionParser.js     # re-parses the fixed ## Section / bullet format back into structured entries
+  companionPanelElement.js  # a custom element (like relaysPanelElement.js) for list+detail interaction
+```
+
+**Contribution type**: `workspacePanels`, not `actions` — a persistent tab
+next to Files/Git/Terminal is the natural, discoverable home for "what did
+my agent hand off," matching how a user would actually look for this.
+
+**Panel behavior**:
+1. `files.listFiles(".pi/continue")` → one entry per session that has ever
+   handed off in this workspace. Base64url-decode each filename back to a
+   session id for display/labeling (needs a friendly label — raw session
+   ids aren't useful; may need to correlate against whatever session
+   metadata IS available to a plugin context, or just show a truncated id
+   + file mtime as a stand-in if nothing richer is exposed — this is a
+   real open question, see below).
+2. Selecting an entry → `files.readFile()` that file, run it through
+   `companionParser.js` to recover structured `task`/`done_when`/
+   `forbid[]`/`established[]`/`learned[]`/`open[]`/`next[]` groups, render
+   as distinct visual sections (not a raw markdown dump) — e.g. a
+   task/done-when header, then collapsible or clearly-separated
+   Established/Learned/Open/Next groups, each entry a small card-like row
+   rather than a flat bullet list. This is where "nice experience, makes
+   sense visually" actually gets delivered — leaning on the same visual
+   language as pi-continue's own rendered sections but as real DOM
+   structure instead of markdown text.
+3. Empty state (no `.pi/continue/` directory yet) — reuse the `empty`
+   class convention already established by other bundled panels, with a
+   short explanation of what this panel is for.
+4. Styling: `toolbar` (panel header, maybe a refresh/list-vs-detail
+   toggle) + `viewer` (scrollable content) class conventions, `var(--pi-*)`
+   tokens throughout, no new component library.
+
+**Distribution/install path while iterating**: develop as a local plugin
+directly under `~/.pi-web/plugins/pi-continue-companion/` on the box
+(no build step needed per the docs), same low-friction loop used for
+everything else this session. Spin into its own repo later, once proven
+out, per Chris's stated intent — nothing about the plugin API requires
+npm-registry distribution during development.
+
+### Open items / things to resolve before or during implementation
+
+1. **Session labeling**: need to confirm what identifying info (if any)
+   a `workspacePanels` context exposes about the *currently open* session,
+   so the panel could default to/highlight "this session's" handoff
+   rather than just listing raw session ids. Not yet confirmed either way
+   — worth a quick follow-up read of the full `WorkspacePanelContext`
+   type (`dist/plugin-api.d.ts`) before implementation starts, rather than
+   assuming.
+2. **No verified screenshot** — the visual design above is based on CSS
+   custom properties, class-name conventions, and the bundled `info`/
+   `relays` plugins' real markup, not an actual rendered look. Worth a
+   real look (e.g. local browser via SSH port-forward, or any
+   screenshot-capable tool) before finalizing visual details, though the
+   design-token-based approach should already look native even
+   unverified.
+3. Not yet decided: does the panel also show the agent-guide
+   (`AGENTS.md`) replacement content when `agentGuideSyncMode` writes one,
+   or stay scoped to just the continuation brief? Leaning toward brief-only
+   for a v1, agent-guide diff view as a possible follow-up.
 
 ## Signals
 <!-- append-only. Leave signals for other agents. Format:
