@@ -1,9 +1,9 @@
 {
   "enabled": true,
-  "summarizerModel": "local-litellm/coder",
+  "summarizerModel": "local-litellm/coder-continue-json",
   "reasoning": "inherit",
   "historyMaxTokens": null,
-  "synthesisTimeoutMs": 180000,
+  "synthesisTimeoutMs": 300000,
   "continuationArtifactMode": "always",
   "agentGuidePath": "AGENTS.md",
   "agentGuideSyncMode": "off",

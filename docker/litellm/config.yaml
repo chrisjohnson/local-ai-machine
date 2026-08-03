@@ -46,6 +46,118 @@ model_list:
       model: anthropic/claude-3-5-sonnet-20241022
       api_key: os.environ/ANTHROPIC_API_KEY
 
+  # Scoped route for pi-continue's handoff synthesis only (2026-08-03).
+  # pi-continue does a strict JSON.parse() on the coder model's summary
+  # output with zero tolerance for a preamble, but the coder role's model
+  # (qwen3.6-35b-a3b, a "thinking" model) reliably prepends chain-of-thought
+  # prose before the JSON, which fails parsing regardless of timeout length.
+  #
+  # Verified empirically (2026-08-03) against this exact backend+litellm
+  # combo: response_format:{type: json_object} (no schema) is a NO-OP here
+  # — litellm's drop_params silently strips it since this custom openai-
+  # compatible model isn't in litellm's known-model-capabilities map, so
+  # the request goes through unconstrained and the preamble comes back.
+  # A full response_format:{type: json_schema, json_schema: {...}} DOES
+  # survive litellm and DOES make llama.cpp grammar-constrain the "content"
+  # channel (the model's chain-of-thought still flows into the separate
+  # "reasoning_content" field, which pi-continue never reads) — confirmed
+  # with a live test producing clean, schema-exact JSON with no preamble.
+  #
+  # The schema below is a hand-maintained mirror of pi-continue's internal
+  # HISTORY_ARTIFACT_VERSION "pi-continue-artifacts/v4" shape (see
+  # node_modules/pi-continue/extensions/continue/src/blocks.ts on the
+  # pi-web box). If pi-continue is ever upgraded and that version string /
+  # shape changes, this schema must be updated to match or synthesis will
+  # start failing again (with a *different* validation error than today's).
+  #
+  # This is a STATIC snapshot of the backend the "coder" role currently
+  # points to (127.0.0.1:8109, qwen3.6-35b-a3b-mtp) — unlike "coder" itself
+  # it will NOT follow future set-role.sh reassignments (same trade-off as
+  # governed_coder above). Only pi-continue's summarizerModel should use
+  # this; forcing this schema on the shared "coder" role would break every
+  # non-handoff use of it.
+  - model_name: coder-continue-json
+    litellm_params:
+      model: openai/qwen3.6-35b-a3b-mtp
+      api_base: http://127.0.0.1:8109/v1
+      api_key: "none"
+      response_format:
+        type: json_schema
+        json_schema:
+          name: pi_continue_artifacts_v4
+          strict: true
+          schema:
+            type: object
+            additionalProperties: false
+            required: [version, brief, agentGuideUpdate]
+            properties:
+              version:
+                enum: [pi-continue-artifacts/v4]
+              brief:
+                type: object
+                additionalProperties: false
+                required: [task, done_when, forbid, established, learned, open, next]
+                properties:
+                  task: { type: string }
+                  done_when: { type: string }
+                  forbid:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: false
+                      required: [rule, source]
+                      properties:
+                        rule: { type: string }
+                        source: { type: string }
+                  established:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: false
+                      required: [claim, evidence, basis, reopen]
+                      properties:
+                        claim: { type: string }
+                        evidence: { type: string }
+                        basis: { enum: [observed, test, output, user, doc] }
+                        reopen: { type: string }
+                  learned:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: false
+                      required: [lesson, source]
+                      properties:
+                        lesson: { type: string }
+                        source: { type: string }
+                  open:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: false
+                      required: [question, verifies]
+                      properties:
+                        question: { type: string }
+                        verifies: { type: string }
+                  next:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: false
+                      required: [action, outcome]
+                      properties:
+                        action: { type: string }
+                        outcome: { type: string }
+              agentGuideUpdate:
+                type: object
+                additionalProperties: false
+                required: [content, reason]
+                properties:
+                  content:
+                    anyOf:
+                      - type: string
+                      - type: "null"
+                  reason: { type: string }
+
   # All vLLM builds — fixed ports, available for set-role.sh routing.
   - model_name: qwen3.6-35b-a3b
     litellm_params:

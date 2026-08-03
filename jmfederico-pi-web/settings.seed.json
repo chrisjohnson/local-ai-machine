@@ -5,7 +5,7 @@
     "npm:pi-continue"
   ],
   "npm:pi-continue": {
-    "summarizerModel": "local-litellm/coder"
+    "summarizerModel": "local-litellm/coder-continue-json"
   },
   "compaction": {
     "enabled": true,

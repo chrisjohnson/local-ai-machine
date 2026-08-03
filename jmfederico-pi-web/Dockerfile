@@ -61,10 +61,20 @@ COPY models.seed.json.tmpl /app/.pi-web/models.seed.json.tmpl
 COPY settings.seed.json /app/.pi-web/settings.seed.json
 # Seed-once pi-continue extension config: synthesis/handoff must run on the
 # fast coder model (qwen3.6-35b) not the slow planner default (laguna-118B),
-# which used to blow past pi-continue's 180s synthesisTimeoutMs and fail the
-# handoff. pi-continue reads its config from $PI_CODING_AGENT_DIR/extensions/
-# pi-continue.json (NOT the npm:pi-continue block in settings.json), so it
-# needs its own seed here.
+# which used to blow past pi-continue's default synthesisTimeoutMs and fail
+# the handoff. Even on the coder model, large (~65k+ token) handoff contexts
+# can burn 140s+ just on prompt processing before generation even starts, so
+# synthesisTimeoutMs is raised to 300s to leave headroom.
+#
+# summarizerModel points at "coder-continue-json", NOT the plain "coder"
+# role: qwen3.6-35b is a thinking model that reliably prepends prose before
+# the JSON, which fails pi-continue's strict JSON.parse() regardless of
+# timeout. "coder-continue-json" is a scoped litellm route (see
+# docker/litellm/config.yaml) that forces a full json_schema response_format
+# matching pi-continue's artifact shape, so the parseable "content" channel
+# comes back as clean, schema-exact JSON every time. pi-continue reads its
+# config from $PI_CODING_AGENT_DIR/extensions/pi-continue.json (NOT the
+# npm:pi-continue block in settings.json), so it needs its own seed here.
 COPY pi-continue.seed.json /app/.pi-web/pi-continue.seed.json
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
