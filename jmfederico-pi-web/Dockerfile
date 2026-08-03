@@ -84,6 +84,13 @@ COPY settings.seed.json /app/.pi-web/settings.seed.json
 # $PI_CODING_AGENT_DIR/extensions/pi-continue.json (NOT the npm:pi-continue
 # block in settings.json), so it needs its own seed here.
 COPY pi-continue.seed.json /app/.pi-web/pi-continue.seed.json
+
+# pi-continue-companion: our own PI WEB plugin (not user-editable via the UI),
+# baked into the image and always-synced (not seed-once) on every container
+# start so a stale on-disk copy from a previous image never lingers. See
+# docker-entrypoint.sh for the sync step.
+COPY plugins/pi-continue-companion /app/.pi-web/plugins-seed/pi-continue-companion
+
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
