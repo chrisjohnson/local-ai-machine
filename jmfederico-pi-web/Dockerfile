@@ -59,22 +59,30 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Seed-once model config (litellm provider) - JSON format for pi-web
 COPY models.seed.json.tmpl /app/.pi-web/models.seed.json.tmpl
 COPY settings.seed.json /app/.pi-web/settings.seed.json
-# Seed-once pi-continue extension config: synthesis/handoff must run on the
-# fast coder model (qwen3.6-35b) not the slow planner default (laguna-118B),
-# which used to blow past pi-continue's default synthesisTimeoutMs and fail
-# the handoff. Even on the coder model, large (~65k+ token) handoff contexts
-# can burn 140s+ just on prompt processing before generation even starts, so
-# synthesisTimeoutMs is raised to 300s to leave headroom.
+# Seed-once pi-continue extension config: synthesis/handoff originally had
+# to be pinned to the fast medium-moe model (qwen3.6-35b, formerly named
+# "coder") instead of the slow big-moe default (laguna-118B, formerly named
+# "planner"), because big-moe used to blow past pi-continue's default
+# synthesisTimeoutMs and fail the handoff. Even on medium-moe, large
+# (~65k+ token) handoff contexts can burn 140s+ just on prompt processing
+# before generation even starts, so synthesisTimeoutMs is raised to 300s to
+# leave headroom.
 #
-# summarizerModel points at "coder-continue-json", NOT the plain "coder"
-# role: qwen3.6-35b is a thinking model that reliably prepends prose before
-# the JSON, which fails pi-continue's strict JSON.parse() regardless of
-# timeout. "coder-continue-json" is a scoped litellm route (see
+# summarizerModel points at "big-moe-continue-json", NOT the plain "big-moe"
+# role: big-moe (laguna) is a thinking model that reliably prepends prose
+# before the JSON, which fails pi-continue's strict JSON.parse() regardless
+# of timeout. "big-moe-continue-json" is a scoped litellm route (see
 # docker/litellm/config.yaml) that forces a full json_schema response_format
 # matching pi-continue's artifact shape, so the parseable "content" channel
-# comes back as clean, schema-exact JSON every time. pi-continue reads its
-# config from $PI_CODING_AGENT_DIR/extensions/pi-continue.json (NOT the
-# npm:pi-continue block in settings.json), so it needs its own seed here.
+# comes back as clean, schema-exact JSON every time — empirically verified
+# on this backend (2026-08-03) before being adopted here; the timeout
+# blow-past that originally ruled out big-moe was solved by this fix
+# turning out to also run fast in practice (~19s in testing), not by the
+# timeout increase alone. A same-shape "medium-moe-continue-json" route
+# also exists (backed by qwen3.6-35b) as a known-good fallback if a future
+# big-moe backend swap regresses this. pi-continue reads its config from
+# $PI_CODING_AGENT_DIR/extensions/pi-continue.json (NOT the npm:pi-continue
+# block in settings.json), so it needs its own seed here.
 COPY pi-continue.seed.json /app/.pi-web/pi-continue.seed.json
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh

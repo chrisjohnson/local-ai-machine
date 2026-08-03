@@ -1,11 +1,11 @@
 {
   "defaultProvider": "local-litellm",
-  "defaultModel": "planner",
+  "defaultModel": "big-moe",
   "packages": [
     "npm:pi-continue"
   ],
   "npm:pi-continue": {
-    "summarizerModel": "local-litellm/coder-continue-json"
+    "summarizerModel": "local-litellm/big-moe-continue-json"
   },
   "compaction": {
     "enabled": true,
