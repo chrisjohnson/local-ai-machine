@@ -12,6 +12,7 @@ scrape_configs:
   # Prometheus's plain static_configs scraper never sends, and it was
   # showing as permanently "down" as a result.
   - job_name: "litellm"
+    metrics_path: "/metrics"
     static_configs:
       - targets: ["localhost:4000"]
 
@@ -59,6 +60,8 @@ scrape_configs:
           - "localhost:8100"
           - "localhost:8101"
           - "localhost:8102"
+          - "localhost:8108"
+          - "localhost:8109"
 
   # Was pointed at a node-exporter container that was never actually
   # defined anywhere in the compose stack — added the real thing below
