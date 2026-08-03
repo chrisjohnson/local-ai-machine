@@ -132,7 +132,7 @@ router_settings:
   routing_strategy: usage-based-routing-v2
 
 litellm_settings:
-  callbacks: ["prometheus"]
+  callbacks: ["prometheus", "jsonl_logger.JsonlFileLogger"]
   # The legacy `json` logging callback + `json_log_file_path` config key
   # were removed from litellm (crash at startup: `ValueError: Empty module
   # name`, `import_module("")`). This build's supported JSON-logging
@@ -142,6 +142,9 @@ litellm_settings:
   # backends it emits a complete log line per streamed chunk (insanely
   # noisy). For one-off body capture use the per-request
   # `litellm_request_debug: true` flag instead.
+  # Per-request usage + stop_reason (finish_reason) are written to
+  # docker/litellm/logs/litellm.jsonl by jsonl_logger.JsonlFileLogger
+  # (mounted at /app/jsonl_logger.py), one line per completed call.
   json_logs: true
   require_auth_for_metrics_endpoint: false
   # Turnstone (and likely other OpenAI-SDK clients) sends reasoning_effort
