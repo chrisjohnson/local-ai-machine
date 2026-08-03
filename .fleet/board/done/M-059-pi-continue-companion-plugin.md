@@ -334,6 +334,14 @@ either the build agent or me. Chris should open pi-web
 (`http://<box>:8080`) and check the "Continue" tab in the workspace side
 panel directly — that's the one thing this card cannot self-certify.
 
+### Visual confirmation (2026-08-03)
+
+Chris opened pi-web and confirmed the "Continue" tab looks and works
+great — fits the existing UI, renders the parsed handoff sections as
+intended. The one gap neither the build agent nor I could self-certify
+(actual rendering) is now closed. Nothing further outstanding on this
+card; ready to close.
+
 ## Signals
 <!-- append-only. Leave signals for other agents. Format:
      <!-- signal: <pet-name> <ISO8601-UTC> — <short message> -->
@@ -346,6 +354,11 @@ panel directly — that's the one thing this card cannot self-certify.
 - 2026-08-03 — filed directly in now/ per Chris's explicit request to track
   this planning work; captured the two parallel research agents' findings
   from the same conversation as the starting context.
+- 2026-08-03 — closed: built, tested (parser verified against real data,
+  one real bug found and fixed), deployed (merged to main, rebuilt from
+  the official checkout on the box, confirmed live in pi-web's own plugin
+  manifest), and now visually confirmed working by Chris in the actual
+  UI. All plan items complete, no open blockers.
 
 ## Handoff notes
 <!-- what's half-done, what the next agent picking this up should do first. -->
