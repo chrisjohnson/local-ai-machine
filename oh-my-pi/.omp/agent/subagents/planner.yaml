@@ -1,6 +1,6 @@
 name: planner
 description: High-level system architect for code layout, specs, and problem breakdown.
-model: litellm/planner
+model: litellm/big-moe
 systemPrompt: |
   You are a Lead Software Architect.
   Your job is to analyze codebases and create minimal, atomic implementation specs.
