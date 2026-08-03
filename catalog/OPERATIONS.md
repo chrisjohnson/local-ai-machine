@@ -133,8 +133,8 @@ As of M-001, deployment detail lives exclusively in `docker-compose.yml`:
 ### Always-up vs. exclusive/benchmarkable services
 
 Every service in `docker-compose.yml` is either **always-up** (infra: LiteLLM, its
-Postgres DB, Turnstone + its DB, Prometheus, node-exporter, Grafana, Open WebUI, the
-shared Ollama instance) or **exclusive** (any model-serving build — vLLM, llama.cpp-server,
+Postgres DB, Prometheus, node-exporter, Grafana, Open WebUI, the shared Ollama instance)
+or **exclusive** (any model-serving build — vLLM, llama.cpp-server,
 regardless of engine family). `scripts/benchmark_orchestrator.py` stops every exclusive
 service before running a candidate build (mandatory for full GPU budget/no contention)
 and restores exactly whichever ones were running beforehand.

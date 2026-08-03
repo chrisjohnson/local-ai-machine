@@ -10,8 +10,8 @@
 # allowed to drift without a git conflict", 2026-07-31 design). Without
 # this script, a fresh litellm DB would have no "coder"/"judge"/"vision"
 # roles at all until someone manually ran set-role.sh once - this closes
-# that gap, same shape as scripts/turnstone-bootstrap.sh for Turnstone's
-# own DB-only settings.
+# that gap (previously mirrored by scripts/turnstone-bootstrap.sh for the
+# now-decommissioned Turnstone service's own DB-only settings).
 #
 # The values this script seeds are DELIBERATELY non-functional stubs, not
 # real model references - a role only becomes actually useful after a

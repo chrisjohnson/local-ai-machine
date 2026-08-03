@@ -1,9 +1,0 @@
-{
-  "name": "agentic-fleet-printer-dashboard",
-  "content_file": "agentic-fleet-printer-dashboard.md",
-  "description": "Grounds the agent in /workspace/printer-dashboard, applies agentic-fleet board conventions. Spawning via spawn_workstream: new fleet workers (human-gated) vs internal Research/Implement/Review helpers (autonomous, matches AGENTS.md 2). Fleet conventions baked in as a 2026-07-30 snapshot, not live-synced.",
-  "category": "engineering",
-  "activation": "named",
-  "kind": "any",
-  "version": "1.3.0"
-}

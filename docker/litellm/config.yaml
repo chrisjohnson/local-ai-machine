@@ -35,12 +35,6 @@
 model_list:
   # Static roles — not managed by set-role.sh, not DB-backed. These ARE
   # meant to be read here as the current truth.
-  - model_name: governed_coder
-    litellm_params:
-      model: openai/coder
-      api_base: http://turnstone:8080/v1
-      api_key: "none"
-
   - model_name: claude-sonnet
     litellm_params:
       model: anthropic/claude-3-5-sonnet-20241022

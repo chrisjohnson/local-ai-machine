@@ -38,7 +38,7 @@ local-ai-machine/
 ├── secrets/                   # Gitignored credentials; .example templates tracked
 ├── docker/
 │   ├── docker-compose.yml     # One service per verified model+engine build, plus
-│   │                           # gateway/governance/observability infrastructure
+│   │                           # gateway/observability infrastructure
 │   ├── .env.example           # Template for the secrets docker-compose.yml needs
 │   ├── litellm/config.yaml    # Model routes, dynamic role aliases, virtual keys
 │   ├── prometheus/prometheus.yml
@@ -80,11 +80,6 @@ flowchart TD
         F --> H
         G --> H
         H --> R
-    end
-
-    subgraph Governance["Turnstone (port 8080)"]
-        I["Turnstone Server\nGoverned route in front of LiteLLM"]
-        I <--> H
     end
 
     subgraph Control["Control plane — user chris"]
@@ -169,16 +164,12 @@ Judge-sized models (roughly <25B total) carry an explicit low
 `--gpu-memory-utilization` cap so they don't starve whatever they're running alongside.
 
 **Gateway (LiteLLM, `docker/litellm/config.yaml`)**: routes every build's fixed port under
-its own model name, plus a small set of stable role aliases (`coder`, `judge`,
-`governed_coder`, a cloud fallback route). `scripts/set-role.sh <role> <service-name>`
-repoints a role at a different build by reading the port straight out of
-`docker-compose.yml` — no manual port lookup, no separate config format to keep in sync.
-Virtual keys (`sk-chris-master`, `sk-drew-edge`) are generated at runtime via LiteLLM's
-`/key/generate` API against the master key, not declared in `config.yaml`.
-
-**Governance (Turnstone)**: a governed route sits in front of LiteLLM for autonomous
-sub-agent traffic; safety-judge/reranker wiring is TOML-config/console-UI only (no
-env-var shortcut).
+its own model name, plus a small set of stable role aliases (`coder`, `judge`, a cloud
+fallback route). `scripts/set-role.sh <role> <service-name>` repoints a role at a different
+build by reading the port straight out of `docker-compose.yml` — no manual port lookup, no
+separate config format to keep in sync. Virtual keys (`sk-chris-master`, `sk-drew-edge`) are
+generated at runtime via LiteLLM's `/key/generate` API against the master key, not declared
+in `config.yaml`.
 
 **Observability**: Prometheus scrapes vLLM/LiteLLM/`node-exporter` targets; `node-exporter`
 combines its built-in hwmon collector (GPU temp/power/clock, free) with a custom
@@ -194,12 +185,13 @@ not any model server directly — every role/model alias is reachable from one p
 ## Hermes config & sub-agent delegation
 
 `~/.hermes/USER.md` on the box defines Hermes' provider routing and sub-agent delegation
-policy: a default provider (LiteLLM directly, for chat/session-memory/read-only queries)
-and a governed provider (through Turnstone, for autonomous background sub-agents that can
-modify files or run builds). Multi-file engineering or shell-modifying requests get
-delegated to a governed sub-agent rather than executed directly in the parent context;
-Herdr panes are spawned via socket API when live human visibility into a running agent is
-useful, and completion summaries/diffs get reported back to the originating Telegram topic.
+policy: LiteLLM directly, for chat/session-memory/read-only queries as well as autonomous
+background sub-agents that modify files or run builds (a separate governed route through
+Turnstone previously sat in front of LiteLLM for that autonomous-sub-agent traffic; Turnstone
+has since been decommissioned). Multi-file engineering or shell-modifying requests get
+delegated to a sub-agent rather than executed directly in the parent context; Herdr panes are
+spawned via socket API when live human visibility into a running agent is useful, and
+completion summaries/diffs get reported back to the originating Telegram topic.
 
 ## Operational scripts (`scripts/`)
 
@@ -272,7 +264,8 @@ This system has gone through several phases of build-out — initial NixOS/hardw
 provisioning, containerized stack deployment, observability wiring, an open-ended model
 research/benchmarking effort (still ongoing as new candidates surface), a move to a
 two-tier per-build Compose design with dynamic LiteLLM role aliasing, a versioned
-benchmark-catalog schema, and multi-tenant/control-plane verification (Turnstone, Drew's
-edge access, Herdr/Hermes). See `knowledge/decisions/` and `knowledge/context/` for the
+benchmark-catalog schema, and multi-tenant/control-plane verification (a governance layer
+via Turnstone, since decommissioned; Drew's edge access; Herdr/Hermes). See
+`knowledge/decisions/` and `knowledge/context/` for the
 full history and reasoning; use the fleet board (`.fleet/board/`) for current, in-progress
 work.
