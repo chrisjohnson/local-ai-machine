@@ -48,4 +48,16 @@ if [ ! -f "$CONFIG_ROOT/extensions/pi-continue.json" ]; then
   cp /app/.pi-web/pi-continue.seed.json "$CONFIG_ROOT/extensions/pi-continue.json"
 fi
 
+# Always sync pi-continue-companion (our own PI WEB plugin, not user-editable
+# via the UI) into place on every start, overwriting whatever was there
+# before. Unlike the seed-once files above, this should never go stale: it's
+# actively-developed code baked into the image, so a container restart must
+# always pick up the latest build rather than keep an old copy from a
+# previous image around.
+if [ -d /app/.pi-web/plugins-seed/pi-continue-companion ]; then
+  mkdir -p "$CONFIG_ROOT/plugins"
+  rm -rf "$CONFIG_ROOT/plugins/pi-continue-companion"
+  cp -r /app/.pi-web/plugins-seed/pi-continue-companion "$CONFIG_ROOT/plugins/pi-continue-companion"
+fi
+
 exec "$@"
