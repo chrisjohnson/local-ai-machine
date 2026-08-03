@@ -47,6 +47,10 @@ skipped. Confirmed still empty as of the 2026-07-22 audit.
      without a line here explaining why. -->
 - 2026-07-26 — filed by porting README.md §8 Phase 6, Task 6.1 into a fleet
   card during the fleet-bootstrap backlog migration.
+- 2026-08-03 — closed as moot: Chris decided to fully decommission Turnstone
+  (containers were already gone from the box; teardown of remaining
+  compose/config/docs/volume done same day). There is no governed_coder
+  route or Turnstone judge left to verify.
 
 ## Handoff notes
 <!-- what's half-done, what the next agent picking this up should do first. -->
