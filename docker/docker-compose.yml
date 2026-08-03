@@ -865,7 +865,6 @@ services:
       - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - DATABASE_URL=postgresql://litellm_user:${LITELLM_DB_PASSWORD}@127.0.0.1:5432/litellm
-      - LITELLM_LOG=DEBUG
     command: ["--config", "/app/config.yaml", "--port", "4000"]
     depends_on:
       - litellm-db

@@ -138,8 +138,10 @@ litellm_settings:
   # name`, `import_module("")`). This build's supported JSON-logging
   # switch is `json_logs: true` — emits one JSON object per log line to
   # stdout, which docker's default json-file driver persists on the box.
-  # For raw request/response bodies set env LITELLM_LOG=DEBUG (see
-  # docker-compose.yml) — equivalent to the old --detailed_debug flag.
+  # Do NOT set env LITELLM_LOG=DEBUG to chase raw bodies: with streaming
+  # backends it emits a complete log line per streamed chunk (insanely
+  # noisy). For one-off body capture use the per-request
+  # `litellm_request_debug: true` flag instead.
   json_logs: true
   require_auth_for_metrics_endpoint: false
   # Turnstone (and likely other OpenAI-SDK clients) sends reasoning_effort
