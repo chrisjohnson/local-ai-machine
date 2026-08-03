@@ -1,6 +1,6 @@
 {
   "enabled": true,
-  "summarizerModel": "local-litellm/big-moe-continue-json",
+  "summarizerModel": "local-litellm/medium-moe-continue-json",
   "reasoning": "inherit",
   "historyMaxTokens": null,
   "synthesisTimeoutMs": 300000,
