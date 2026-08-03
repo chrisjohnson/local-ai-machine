@@ -1177,6 +1177,19 @@ services:
       # Absolute path for pi-web config directory
       - PI_CODING_AGENT_DIR=/home/piweb/.pi-web
       - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
+      # @juicesharp/rpiv-web-tools (see settings.seed.json's packages
+      # array): reuses the SearxNG instance already running for the other
+      # pi-web variant (M-038) rather than a second search stack. That
+      # variant is network_mode: host and reaches searxng via its
+      # loopback-only host publish (127.0.0.1:8091) - this service is
+      # bridge-networked instead, and host.docker.internal can't see a
+      # 127.0.0.1-bound host port at all (confirmed live: ECONNREFUSED).
+      # Since both services already sit on the same default bridge network
+      # (br-localai), container-to-container DNS + searxng's actual
+      # internal port (8080, independent of how it's published to the
+      # host) works directly - confirmed live (200 from /healthz).
+      - WEB_SEARCH_PROVIDER=searxng
+      - SEARXNG_URL=http://searxng:8080
     working_dir: /work
     command: ["bash", "-c", "pi-web-sessiond & PI_WEB_HOST=0.0.0.0 PI_WEB_PORT=3000 pi-web-server"]
     extra_hosts:
