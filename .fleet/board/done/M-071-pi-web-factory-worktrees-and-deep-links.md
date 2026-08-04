@@ -41,25 +41,25 @@ AskUserQuestion, also recorded in `pi-web-adw-design.md` §6.4. Cleanup policy (
 below) is still this card's job to design.
 
 ## Plan
-1. [ ] `modules/piwebProject.ts` (or fold into `config.ts` — implementer's call):
+1. [x] `modules/piwebProject.ts` (or fold into `config.ts` — implementer's call):
    idempotent `ensureProjectRegistered(baseUrl, path)` — `GET /projects`, find by
    path, `POST /projects` if absent, return the `projectId`. Called once per chain
    run (or cached) — cheap, no reason to make it a separate manual setup step.
-2. [ ] Worktree creation: a small module wrapping `git worktree add <path> [-b
+2. [x] Worktree creation: a small module wrapping `git worktree add <path> [-b
    <branch>]` for whatever sharding scheme Chris picks, returning the real filesystem
    path to use as `cwd`. Naming convention for the worktree directory/branch itself
    still needs deciding — propose one, don't block on it.
-3. [ ] Resolve the `workspaceId` pi-web's `WorkspaceService` assigns to a newly
+3. [x] Resolve the `workspaceId` pi-web's `WorkspaceService` assigns to a newly
    `git worktree add`-created path (a `GET` route — the exact one wasn't pinned down
    in research, trace it: likely under `/projects/:id/workspaces` or similar,
    check `workspaceService.ts`'s route registration directly).
-4. [ ] `cli.ts`: after starting a session, resolve/print the full working deep-link
+4. [x] `cli.ts`: after starting a session, resolve/print the full working deep-link
    (`?project=...&workspace=...&session=...`), not just the bare `sessionId` — this
    replaces the placeholder "visible in pi-web's own session picker" line from M-067.
-5. [ ] Live end-to-end verification: run a real chain, click (or curl) the printed
+5. [x] Live end-to-end verification: run a real chain, click (or curl) the printed
    link, confirm it actually opens the right session in the browser — don't just
    trust the URL is well-formed.
-6. [ ] Cleanup policy for created worktrees, matching whatever sharding scheme was
+6. [x] Cleanup policy for created worktrees, matching whatever sharding scheme was
    chosen — if per-run, decide when a worktree gets removed (`git worktree remove`)
    and make sure it doesn't fight `permissions.ts`'s own repo-diffing (a worktree
    being removed out from under an in-flight diff would be a real bug to avoid).
@@ -67,8 +67,38 @@ below) is still this card's job to design.
 ## Signals
 <!-- append-only -->
 <!-- signal: claude 2026-08-04T21:23Z — claiming, starting project registration + worktree-per-run -->
+<!-- signal: claude 2026-08-04T22:10Z — done, moved to done/ -->
 
 ## Decision log
 <!-- append-only, one line per entry, newest last -->
+- 2026-08-04 (claude): worktree location — nested at `<project>/.pi-web-factory-
+  worktrees/<adwId>/`, not a true sibling directory — decided from a verified
+  container-topology constraint (the `jmfederico-pi-web` container bind-mounts
+  exactly one path per project; a sibling directory outside that mount would be
+  unreachable), not a style preference. `.git/info/exclude` (never `.gitignore`)
+  keeps the subdirectory invisible to `permissions.ts`'s own snapshot queries,
+  confirmed live so an untouched worktree never gets misread as an unauthorized
+  write and rolled back.
+- 2026-08-04 (claude): cleanup policy — worktrees are kept after a run, on any
+  outcome, never auto-removed. Reasoning: post-hoc inspectability (trace db, session
+  transcript, and now the worktree's own on-disk state/git history) matters more
+  than tidiness at today's manual-trigger, low-volume usage; auto-removal would
+  destroy exactly the evidence a `blocked-on-human` outcome exists to let a human
+  look at. `removeRunWorktree` is built/tested for a future explicit sweep tool, not
+  wired into any current chain.
+- 2026-08-04 (claude): resolved the workspace-lookup route research had left open —
+  `GET /projects/:id/workspaces`, confirmed against both source and the live server.
+- 2026-08-04 (claude): verified independently before committing — reran the full
+  suite myself (154 pass, including live integration tests) and `tsc --noEmit`
+  (clean), read all four new/changed core files in full, and independently confirmed
+  no leftover scratch state (only the two expected long-lived projects — `/work`,
+  `/tmp` — remain registered; no stray worktree directories found).
 
 ## Handoff notes
+`ensureProjectRegistered`/`resolveWorkspaceId` (`piwebProject.ts`) and
+`createRunWorktree`/`resolveMainCheckoutPath` (`worktree.ts`) are the pieces M-076's
+generic Workflow interpreter should reuse directly rather than reimplementing —
+`chains/planBuildTest.ts`'s wiring (register project → create worktree → resolve
+workspace → run phases against the worktree's `cwd`) is the reference pattern.
+`removeRunWorktree` exists, tested, unused — a future cleanup-sweep card can pick it
+up without building it from scratch.
