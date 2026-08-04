@@ -20,7 +20,7 @@ import { spawnSync } from "node:child_process";
 import { z } from "zod";
 import { Tracer } from "./tracer.ts";
 import { runAgentPhase, buildCorrectionMessage } from "./run.ts";
-import type { AgentConfig } from "./config.ts";
+import type { AgentRole } from "./roles.ts";
 import { jsonParses } from "./gates.ts";
 
 const BASE_URL = "http://fake-pi-web.test/api";
@@ -32,12 +32,15 @@ const TestEnvelopeSchema = z.object({
   notes_for_next_agent: z.string().default(""),
 });
 
-const agent: AgentConfig = {
+const agent: AgentRole = {
+  kind: "agent",
   name: "build",
   model: "local-litellm/medium-moe",
   modelRef: { provider: "local-litellm", modelId: "medium-moe" },
   thinking: "medium",
   writes: null,
+  systemPrompt: "You are the build agent.",
+  systemPromptPath: "prompts/build.md",
 };
 
 let dir: string;
@@ -389,7 +392,7 @@ describe("runAgentPhase — error result", () => {
 
 describe("runAgentPhase — permissions violation", () => {
   test("a write outside the agent's writes: allowlist fails the phase, not just logs it — regression for the M-066 review fix", async () => {
-    const readOnlyAgent: AgentConfig = { ...agent, writes: [] }; // read-only: nothing is permitted
+    const readOnlyAgent: AgentRole = { ...agent, writes: [] }; // read-only: nothing is permitted
     const validEnvelope = { status: "success", summary: "did it", artifacts: [], notes_for_next_agent: "" };
 
     globalThis.fetch = (async (input: string | URL, init?: RequestInit) => {
@@ -570,7 +573,7 @@ describe("runAgentPhase — M-074 output_summary / per-step token columns", () =
   });
 
   test("permissions-violation failure: output_summary names the violating file(s)", async () => {
-    const readOnlyAgent: AgentConfig = { ...agent, writes: [] };
+    const readOnlyAgent: AgentRole = { ...agent, writes: [] };
     const validEnvelope = { status: "success", summary: "did it", artifacts: [], notes_for_next_agent: "" };
 
     globalThis.fetch = (async (input: string | URL, init?: RequestInit) => {

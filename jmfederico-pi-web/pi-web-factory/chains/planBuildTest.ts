@@ -83,7 +83,7 @@ import { randomUUID } from "node:crypto";
 import { PlanOutputSchema, BuildOutputSchema, type BuildOutput, type PlanOutput } from "../modules/envelopes.ts";
 import { testsPass } from "../modules/gates.ts";
 import { DEFAULT_BASE_URL, startSession, roleMarker } from "../modules/piwebClient.ts";
-import { agentConfigFor, type FactoryConfig } from "../modules/config.ts";
+import { agentRoleFor, type RolesConfig } from "../modules/roles.ts";
 import { Tracer, type GateReport } from "../modules/tracer.ts";
 import { runAgentPhase, type RunAgentPhaseResult } from "../modules/run.ts";
 import type { PermissionsResult } from "../modules/permissions.ts";
@@ -92,7 +92,7 @@ import { createRunWorktree, resolveMainCheckoutPath } from "../modules/worktree.
 
 export interface PlanBuildTestOptions {
   tracer: Tracer;
-  config: FactoryConfig;
+  config: RolesConfig;
   /**
    * Absolute path to the target project's working tree — either the main
    * checkout or any existing worktree of it (normalized internally via
@@ -287,8 +287,8 @@ export async function planBuildTest(opts: PlanBuildTestOptions): Promise<PlanBui
   opts.tracer.sessionStart(adwId, { engineer: opts.engineer, projectCwd: sessionCwd, adwName: "planBuildTest" });
   opts.tracer.sessionRequest(adwId, opts.taskPrompt);
 
-  const planAgent = agentConfigFor(opts.config, "plan");
-  const buildAgent = agentConfigFor(opts.config, "build");
+  const planAgent = agentRoleFor(opts.config, "plan");
+  const buildAgent = agentRoleFor(opts.config, "build");
   const protectedFiles = opts.config.defaults.protectedFiles;
 
   const session = opts.sessionId

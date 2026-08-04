@@ -44,7 +44,7 @@ import {
 } from "./piwebClient.ts";
 import { enforceWrites, snapshotRepoState, type PermissionsResult } from "./permissions.ts";
 import type { Tracer } from "./tracer.ts";
-import type { AgentConfig } from "./config.ts";
+import type { AgentRole } from "./roles.ts";
 import type { ZodType, z } from "zod";
 
 const DEFAULT_MAX_PARSE_ATTEMPTS = 3;
@@ -57,7 +57,7 @@ export interface RunAgentPhaseOptions<Schema extends ZodType> {
   seq: number;
   /** Absolute path to the target project's working tree. */
   cwd: string;
-  agent: AgentConfig;
+  agent: AgentRole;
   /** Existing session to resume, or a freshly-minted one — caller decides (chain owns continuation policy). */
   sessionId: string;
   /**

@@ -71,7 +71,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Tracer } from "../modules/tracer.ts";
-import { loadConfig } from "../modules/config.ts";
+import { loadRolesConfig } from "../modules/roles.ts";
 import { DEFAULT_BASE_URL, startSession } from "../modules/piwebClient.ts";
 import { sessionDeepLink } from "../cli.ts";
 import { planBuildTest } from "./planBuildTest.ts";
@@ -141,7 +141,7 @@ describe("planBuildTest chain (live pi-web server)", () => {
   test(
     "plan -> build -> test end to end against a real scratch repo + pre-created worktree in the pi-web container, with real project/workspace registration and a verified deep-link",
     async () => {
-      const config = loadConfig(CONFIG_PATH);
+      const config = loadRolesConfig(CONFIG_PATH);
 
       // Start the session directly against the WORKTREE path (mirrors what
       // planBuildTest.ts itself does internally for a fresh run — see this

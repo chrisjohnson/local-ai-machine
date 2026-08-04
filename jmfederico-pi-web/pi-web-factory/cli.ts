@@ -38,7 +38,8 @@ import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { chainNames, chainRegistry, type ChainResultBase } from "./chains/registry.ts";
-import { ConfigError, loadConfig, projectConfigFor } from "./modules/config.ts";
+import { ConfigError, projectConfigFor } from "./modules/config.ts";
+import { loadRolesConfig } from "./modules/roles.ts";
 import { DEFAULT_BASE_URL } from "./modules/piwebClient.ts";
 import { Tracer } from "./modules/tracer.ts";
 
@@ -271,7 +272,7 @@ async function main(): Promise<number> {
   let config;
   let testCmd: string | undefined;
   try {
-    config = loadConfig(resolveConfigPath());
+    config = loadRolesConfig(resolveConfigPath());
     // projectConfigFor's own thrown ConfigError already names what IS
     // configured (config.ts) — surfaced verbatim, never rewrapped into
     // something less specific. Its `test` command (when present) is threaded

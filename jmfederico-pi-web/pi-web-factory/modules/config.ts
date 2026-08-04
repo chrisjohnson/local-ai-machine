@@ -1,28 +1,37 @@
 /**
- * Config: loader/validator for `factory.config.yaml`, TS port of upstream
- * SSSF's `sssf.config.yaml` roster concept
- * (`adws/adw_modules/agents.py:load_config`/`validate`).
+ * Config: shared config primitives used by `roles.ts` (the global `roles:`
+ * registry loader, M-075) and by this project's own per-project quality-gate
+ * lookup.
+ *
+ * ── M-075: the agent roster moved to roles.ts ────────────────────────────
+ * Earlier revisions of this module (M-065) owned `factory.config.yaml`'s
+ * entire shape: `defaults` + an `agents:` roster (`AgentEntrySchema`,
+ * `AgentConfig`, `RawFactoryConfigSchema`, `FactoryConfig`,
+ * `loadConfig`/`loadConfigFromString`, `agentConfigFor`). M-075 unifies that
+ * agent-only roster with a new "code Role" concept (e.g. "run the project's
+ * tests") into one `roles:` registry covering BOTH — see `roles.ts` for the
+ * new schema/loader/lookup (`RolesConfig`, `AgentRole`, `CodeRole`, `Role`,
+ * `loadRolesConfig`, `roleFor`). Everything agent-roster-specific has moved
+ * there; this file now keeps only the primitives `roles.ts` reuses
+ * (`ModelRef`/`parseModelRef`/`ModelStringSchema`/`ThinkingLevelSchema`/
+ * `ConfigError`) plus the project-local quality-gate lookup below, which was
+ * never part of the roster and is unaffected by this change.
  *
  * ── Per-project quality-gate config lives in the target project's own repo ─
- * Earlier revisions of this module (M-065) kept per-project quality-gate
- * commands (`test`/`typecheck`/`lint`) centralized here, in a `projects:` map
- * keyed by absolute path inside `factory.config.yaml`. M-070 moved that OUT:
- * each target project now owns and versions its own `<project>/.pi-web-
- * factory.yaml` file (same shape, no path key needed — the file's location
- * IS the key). `factory.config.yaml` itself keeps only what's genuinely
- * pi-web-factory's own config: the agent roster (`defaults` + `agents`). See
- * `projectConfigFor` below for the project-local lookup this replaced.
+ * M-070: each target project owns and versions its own `<project>/.pi-web-
+ * factory.yaml` file declaring its `test`/`typecheck`/`lint` commands. See
+ * `projectConfigFor` below.
  *
  * ── The provider/model-id bridge ────────────────────────────────────────
  * Upstream (and this project's own YAML, for human-readable authoring) writes
  * a model role as one combined string: `"local-litellm/big-moe"`. But
  * `piwebClient.ts`'s `setModel(baseUrl, sessionId, provider, modelId)` takes
  * TWO separate string parameters, not a combined string. Splitting that
- * string back apart ad hoc at every call site (M-066's chains, most likely)
- * would be exactly the kind of drift-prone duplication `envelopes.ts`'s
- * "synced triad" comment warns about elsewhere in this codebase — so the
- * split happens ONCE, here, at load time. Every agent entry in a loaded
- * `FactoryConfig` exposes both:
+ * string back apart ad hoc at every call site would be exactly the kind of
+ * drift-prone duplication `envelopes.ts`'s "synced triad" comment warns
+ * about elsewhere in this codebase — so the split happens ONCE, here, at
+ * load time, and `roles.ts` reuses `parseModelRef`/`ModelStringSchema`
+ * rather than duplicating the logic. A loaded agent Role exposes both:
  *   - `model` — the raw `"provider/model-id"` string, for logging/tracing
  *     (matches upstream's own `agent.model` field shape, e.g. the
  *     `agent_start` event payload in `agents.py:97`).
@@ -31,7 +40,7 @@
  *     with no further parsing at the call site.
  *
  * ── Known limitation: validated shape, not validated reachability ────────
- * `parseModelRef`/the schema below only check that a model string is
+ * `parseModelRef`/`ModelStringSchema` only check that a model string is
  * WELL-FORMED (`provider/model-id`, both halves non-empty) — never that the
  * modelId actually exists as a live litellm role. Confirming that would mean
  * a network call to litellm's Model Management API at config-load time, which
@@ -78,8 +87,8 @@ export function parseModelRef(raw: string): ModelRef {
   return { provider: parts[0], modelId: parts[1] };
 }
 
-/** Zod refinement: a string that `parseModelRef` accepts. */
-const ModelStringSchema = z.string().superRefine((value, ctx) => {
+/** Zod refinement: a string that `parseModelRef` accepts. Exported for reuse by `roles.ts`. */
+export const ModelStringSchema = z.string().superRefine((value, ctx) => {
   try {
     parseModelRef(value);
   } catch (error) {
@@ -90,30 +99,9 @@ const ModelStringSchema = z.string().superRefine((value, ctx) => {
   }
 });
 
-const ThinkingLevelSchema = z.enum(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
-
-// ── Raw YAML shape ───────────────────────────────────────────────────────
-
-const DefaultsSchema = z.object({
-  model: ModelStringSchema,
-  thinking: ThinkingLevelSchema,
-  protected_files: z.array(z.string()).default([]),
-});
-
-const AgentEntrySchema = z.object({
-  name: z.string().min(1),
-  model: ModelStringSchema.optional(),
-  thinking: ThinkingLevelSchema.optional(),
-  // null/omitted = unrestricted (matches permissions.ts's isWritePermitted:
-  // allowedWrites === null means unrestricted); [] = read-only; a populated
-  // list restricts to exactly those paths (subject to protected_files).
-  writes: z.array(z.string()).nullish(),
-});
-
-const RawFactoryConfigSchema = z.object({
-  defaults: DefaultsSchema,
-  agents: z.array(AgentEntrySchema).min(1),
-});
+/** Exported for reuse by `roles.ts`'s agent Role schema. */
+export const ThinkingLevelSchema = z.enum(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
+export type ThinkingLevel = z.infer<typeof ThinkingLevelSchema>;
 
 // ── project-local quality-gate config (`<project>/.pi-web-factory.yaml`) ──
 
@@ -126,18 +114,7 @@ const ProjectConfigFileSchema = z.object({
   lint: z.string().optional(),
 });
 
-// ── Loaded/validated shape (what M-066 consumes) ────────────────────────
-
-export interface AgentConfig {
-  name: string;
-  /** Raw "provider/model-id" string — logging/tracing, matches upstream's agent.model field. */
-  model: string;
-  /** Split form, ready for piwebClient.ts's setModel(baseUrl, sessionId, provider, modelId). */
-  modelRef: ModelRef;
-  thinking: z.infer<typeof ThinkingLevelSchema>;
-  /** null = unrestricted, [] = read-only, populated = allowlist. See permissions.ts. */
-  writes: string[] | null;
-}
+// ── Loaded/validated shape ───────────────────────────────────────────────
 
 export interface ProjectConfig {
   /** Absolute path to the project this config was read from. */
@@ -147,16 +124,6 @@ export interface ProjectConfig {
   lint?: string;
 }
 
-export interface FactoryConfig {
-  defaults: {
-    model: string;
-    modelRef: ModelRef;
-    thinking: z.infer<typeof ThinkingLevelSchema>;
-    protectedFiles: string[];
-  };
-  agents: AgentConfig[];
-}
-
 export class ConfigError extends Error {
   constructor(message: string) {
     super(message);
@@ -164,93 +131,16 @@ export class ConfigError extends Error {
   }
 }
 
-// ── load ─────────────────────────────────────────────────────────────────
-
-/**
- * Parses YAML text and validates it into a `FactoryConfig`. Unlike upstream's
- * `load_config` (which fills in each agent's missing fields from `defaults`
- * INSIDE the raw dict before Pydantic ever sees it, `agents.py:36-40`), the
- * default-fill here happens AFTER Zod validation of the raw shape, since Zod
- * v4's `.default()` only applies to a key that's `undefined`/absent, and an
- * agent entry legitimately omitting `model`/`thinking` should mean "inherit
- * defaults.*", not "field is missing, reject the config."
- */
-export function loadConfigFromString(text: string, sourceLabel = "<config>"): FactoryConfig {
-  let raw: unknown;
-  try {
-    raw = parseYaml(text);
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    throw new ConfigError(`${sourceLabel}: could not parse YAML: ${detail}`);
-  }
-
-  const result = RawFactoryConfigSchema.safeParse(raw);
-  if (!result.success) {
-    const issues = result.error.issues
-      .map((issue) => `  - ${issue.path.join(".") || "(root)"}: ${issue.message}`)
-      .join("\n");
-    throw new ConfigError(`${sourceLabel}: invalid config:\n${issues}`);
-  }
-  const parsed = result.data;
-
-  const defaults = {
-    model: parsed.defaults.model,
-    modelRef: parseModelRef(parsed.defaults.model),
-    thinking: parsed.defaults.thinking,
-    protectedFiles: parsed.defaults.protected_files,
-  };
-
-  const seenNames = new Set<string>();
-  const agents: AgentConfig[] = parsed.agents.map((entry) => {
-    if (seenNames.has(entry.name)) {
-      throw new ConfigError(`${sourceLabel}: duplicate agent name ${JSON.stringify(entry.name)}`);
-    }
-    seenNames.add(entry.name);
-    const model = entry.model ?? defaults.model;
-    return {
-      name: entry.name,
-      model,
-      modelRef: parseModelRef(model),
-      thinking: entry.thinking ?? defaults.thinking,
-      writes: entry.writes ?? null,
-    };
-  });
-
-  return { defaults, agents };
-}
-
-/** Loads and validates `factory.config.yaml` (or another path) from disk. */
-export function loadConfig(path = "factory.config.yaml"): FactoryConfig {
-  let text: string;
-  try {
-    text = readFileSync(path, "utf8");
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    throw new ConfigError(`could not read config file ${JSON.stringify(path)}: ${detail}`);
-  }
-  return loadConfigFromString(text, path);
-}
-
 // ── lookups ──────────────────────────────────────────────────────────────
-
-/** Resolves one agent's config by identity name (e.g. "plan", "build"). Throws — never falls back. */
-export function agentConfigFor(config: FactoryConfig, name: string): AgentConfig {
-  const agent = config.agents.find((a) => a.name === name);
-  if (!agent) {
-    const available = config.agents.map((a) => a.name).join(", ") || "(none configured)";
-    throw new ConfigError(`agent ${JSON.stringify(name)} is not defined in the config — available: ${available}`);
-  }
-  return agent;
-}
 
 /**
  * Resolves per-project quality-gate config by reading `<absolutePath>/
  * .pi-web-factory.yaml` — a file the TARGET PROJECT owns and versions
- * itself (M-070), not a centralized map inside pi-web-factory's own
- * `factory.config.yaml`. Takes no `FactoryConfig` — project-local lookup
- * doesn't depend on the agent roster at all, and threading an unused
- * parameter through just to preserve a signature shape would be more
- * disruptive than updating the (one) call site.
+ * itself (M-070), not a centralized map inside pi-web-factory's own global
+ * config. Takes no roles/config argument — project-local lookup doesn't
+ * depend on the Roles registry at all, and threading an unused parameter
+ * through just to preserve a signature shape would be more disruptive than
+ * updating the (one) call site.
  *
  * Missing file -> a specific `ConfigError` naming the expected path — same
  * discipline the old centralized lookup had for an unknown project key, just

@@ -24,13 +24,13 @@ import {
   type PlanBuildTestOptions,
   type PlanBuildTestResult,
 } from "./planBuildTest.ts";
-import type { FactoryConfig } from "../modules/config.ts";
+import type { RolesConfig } from "../modules/roles.ts";
 import type { Tracer } from "../modules/tracer.ts";
 
 /** Fields every registered chain runner accepts — the CLI only ever supplies these. */
 export interface ChainRunOptions {
   tracer: Tracer;
-  config: FactoryConfig;
+  config: RolesConfig;
   cwd: string;
   taskPrompt: string;
   sessionId?: string;
