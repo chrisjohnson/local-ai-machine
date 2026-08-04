@@ -2,8 +2,8 @@
 id: M-075
 title: pi-web-factory — global Roles config (agent + code, unified)
 initiative_id: null
-claimed_by: null
-claimed_at: null
+claimed_by: claude
+claimed_at: 2026-08-04T22:11:34Z
 blocks: null
 blocked_by: [M-069, M-074]
 status: null
@@ -60,6 +60,7 @@ from M-070's project-local `test`/`typecheck`/`lint` settings).
 
 ## Signals
 <!-- append-only -->
+<!-- signal: claude 2026-08-04T22:11Z — claiming, starting unified Roles config -->
 
 ## Decision log
 <!-- append-only, one line per entry, newest last -->
