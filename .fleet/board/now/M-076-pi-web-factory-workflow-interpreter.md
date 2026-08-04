@@ -2,8 +2,8 @@
 id: M-076
 title: pi-web-factory — generic Workflow interpreter (YAML step sequences + bounded loop)
 initiative_id: null
-claimed_by: null
-claimed_at: null
+claimed_by: claude
+claimed_at: 2026-08-04T22:29:36Z
 blocks: null
 blocked_by: [M-074, M-075]
 status: null
@@ -66,6 +66,7 @@ loop operates at the Step-sequence level, not inside one Step).
 
 ## Signals
 <!-- append-only -->
+<!-- signal: claude 2026-08-04T22:29Z — claiming, starting generic Workflow interpreter -->
 
 ## Decision log
 <!-- append-only, one line per entry, newest last -->
