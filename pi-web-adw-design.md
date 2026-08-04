@@ -537,3 +537,135 @@ policy), one shared worktree reused across all pipeline runs for a given project
 (simpler, no cleanup policy needed, but runs can collide with each other's
 uncommitted state), or something in between (e.g. one worktree per chain *type*), is
 Chris's call — asked directly, not decided here.
+
+**Resolved 2026-08-04**: one worktree per Workflow Run (§7.5) — closes the isolation
+gap; cleanup policy is M-071's job.
+
+## 7. Terminology formalized 2026-08-04 (second revision)
+
+Prompted by a clarifying question about how a run maps to phases/sessions/
+observability (§6's "chain"/"phase"/"adwId" language was never load-bearing outside
+this doc — worth locking down properly before more code or a visualizer gets built on
+top of loose terms). **These four terms replace "chain," "chain run," "phase," and
+"agent identity" everywhere going forward — in this doc, in code, in card titles.**
+§1–§6 above are left as the historical record of how the system was actually built and
+researched; they are not retroactively rewritten to the new vocabulary.
+
+### 7.1 Definitions
+
+- **Workflow Run** — one execution of a single, top-level, open-ended prompt. What
+  §1–§6 called a "chain run" / `adwId`. The prompt can be a literal task ("add a
+  /health endpoint") or, once durable ticket storage exists, something like "read
+  M-066 from durable storage and complete it, then update M-066 and move it to done if
+  successful" — the openness of the prompt is exactly what lets a future ticket-intake
+  step be built as an ordinary Workflow Run rather than a special case.
+- **Workflow** — a named, reusable *template* for an ordered sequence of Steps. What
+  §1–§6 called a "chain" (`chains/planBuildTest.ts`). The important shift: a Workflow
+  is now **YAML-configured data**, interpreted by one generic runner — not a
+  hand-written TS file per shape. Configured **globally for the whole machine** (not
+  per-project — same locality as the roster always had, §2/§6.3), since a Workflow
+  template (e.g. "plan → build → test") isn't a property of any one project.
+- **Step** — one unit of work inside a Workflow. What §1–§6 called a "phase." Two
+  kinds:
+  - **Agentic step** — one bounded agent turn (or retry-on-parse-failure sequence),
+    naming which **Role** it uses.
+  - **Code step** — a deterministic, non-agent action (e.g. running a project's test
+    command). Also names a **Role** — for a code step, "role" resolves to an internal
+    factory function reference, not a model/prompt. Same field, two meanings by kind;
+    the factory wires a code step's named role to the right function internally.
+- **Role** — the unified concept covering what §1–§6 split into "agent identity"
+  (`AgentConfig`: model, thinking, `writes:`) and an implicit, never-quite-named
+  concept for code steps. A Role is configured globally (same file as Workflows —
+  §7.2), and now also carries **the agent's system prompt** (folds in M-069 once that
+  extension mechanism exists — a Role's system prompt is real, first-class config,
+  not the M-066-era prepended-text workaround). A code Role has no model/prompt at
+  all — just a name the factory's internal function registry resolves.
+
+### 7.2 Global config, restated
+
+Two YAML documents, both global (machine-wide, not per-project — contrast M-070's
+project-local `test`/`typecheck`/`lint` settings, which stay per-project):
+
+- **Roles** (supersedes `factory.config.yaml`'s `agents:` list as designed in M-065):
+  one entry per Role name, `kind: agent | code`. Agent roles carry model, thinking,
+  `writes:`, and (once M-069 lands) a real system prompt. Code roles carry a reference
+  the factory resolves to an internal function (e.g. a role named `run-tests` wires to
+  `gates.ts`'s `testsPass`, parameterized by the project-local `test` command from
+  M-070).
+- **Workflows**: one entry per Workflow name, an ordered list of Steps. Each Step
+  names its `kind` and `role`. At least two shapes ship: a simple `plan → build →
+  review` (no loop — §6.1 point 4's "lightweight" ask) and a fuller one with a bounded
+  build↔review correction loop (§6.1 point 4's "complete run," max 3 rounds). The
+  bounded loop needs *some* control-flow expressiveness beyond a flat step list — the
+  plan is a native `loop` step kind the generic runner understands (`steps: [...],
+  until: <condition>, max_rounds: 3`), not a general scripting language. Scope stays
+  deliberately narrow: two known shapes, not a workflow DSL.
+
+### 7.3 Observability data model, restated
+
+Per Workflow Run, tracked (renames `sessions` → conceptually "workflow_runs";
+`phases` → "steps" — actual SQL/TS identifier renames are M-074's job, not decided
+character-by-character here):
+
+- **Workflow Run**: title, initial prompt, status, total cost/tokens, project cwd —
+  all of this already exists on the `sessions` table except **title**, which is new
+  (derived from the prompt when ad hoc, or from a ticket's own title once durable
+  storage exists).
+- **Step**: start time, stop time, `kind` (`agent` | `code` — narrower than today's
+  three-value `kind`, `"engineer"` was never actually used), which Role, status,
+  output (a short summary — an agent step's envelope `summary`, a code step's gate
+  result headline), and **token usage (input/output/cached), per step, when known** —
+  new: today's schema only accumulates tokens at the Workflow Run level
+  (`sessions.total_tokens`), not per-step. Needs new columns on the steps table, not
+  just reading `events.payload_json` on demand.
+
+### 7.4 Visualizer, un-deferred
+
+§3.5 explicitly deferred this ("no UI yet, query `factory.db` directly... a future
+panel inside pi-web itself"). Un-deferred now, with real requirements:
+
+- **One card per Workflow Run**, rendering that run's Steps as a Gantt-style
+  timeline — this was always the schema's shape (§7.3's Step start/stop times,
+  `parent_id`-nested tool calls within an agentic step), just never had a UI.
+- **Idle/paused time is collapsed, not drawn to scale.** A Workflow Run blocked on a
+  human, or simply waiting between steps, should not stretch the visual timeline —
+  only active time renders at scale. (Mechanically: render each Step's actual
+  start→stop span; gaps between a Step's `ended_at` and the next Step's `started_at`
+  compress to a fixed small gap rather than their real duration.)
+- **Real-time**: animation and highlight effects on whatever Step is currently
+  active — this needs a live data path, not just a page that renders once. `events`'
+  existing cursor-poll pattern (`select * from events where adw_id=? and rowid>?`,
+  §1.3's read transport) is the natural fit — same "no websocket, no ingest endpoint,
+  reads never block writers" design SSSF's own visualizer already proved out, just
+  needs an actual frontend now.
+- Not yet decided: framework/stack for this (SSSF's own is Vue+Vite+Bun; no reason to
+  deviate, but not committed here) — left to the implementing card.
+
+### 7.5 Card impact
+
+This reshapes cards filed in §6 that hadn't been built yet (M-066/M-073's *shipped*
+work stays historical, per §7's own opening note):
+
+- **M-066 (`done`)**: stays as the historical first Workflow Run implementation
+  (hand-written TS, not yet YAML-driven). Not rewritten.
+- **M-073 → superseded before any work started.** Its "write more TS chain files"
+  framing is now the wrong shape entirely — replaced by a generic Workflow
+  interpreter (new card, §7.6) that makes *adding* a Workflow a YAML edit, not a new
+  TS file. M-073 itself should be closed/withdrawn rather than worked as originally
+  scoped.
+- **M-069, M-070, M-071, M-072**: still valid in substance, need terminology
+  alignment in their bodies when picked up (Role instead of agent identity, Workflow
+  Run instead of chain run, etc.) but no architectural change.
+- New cards needed, filed in §7.6.
+
+### 7.6 New units of work
+
+| Card | Builds | Depends on |
+|---|---|---|
+| M-074 | Schema/terminology migration: `sessions`→workflow-run-shaped (+`title`), `phases`→step-shaped (narrow `kind`, rename `owner`→`role`, add per-step token columns + `output_summary`) in `modules/schema.ts`/`tracer.ts`. Foundation for everything below. | — |
+| M-075 | Global Roles config (§7.2) — unifies agent Roles (model/thinking/writes/system-prompt) and code Roles (internal function reference) in one YAML file, supersedes M-065's `agents:` roster shape. Folds in M-069's system prompt field once that mechanism exists. | M-069, M-074 |
+| M-076 | Generic Workflow interpreter — YAML-defined Step sequences (including the native `loop` step kind for the bounded build↔review cycle), one runner (extends `run.ts`) executing any Workflow definition against the Roles registry. Replaces M-073's withdrawn scope. | M-074, M-075 |
+| M-077 | Visualizer (§7.4) — one card per Workflow Run, Gantt-style Step timeline, idle-time collapsed, real-time animation via the existing cursor-poll pattern. | M-074 |
+
+M-068 (Docker) stays last, now also blocked on M-074/075/076/077 in addition to
+M-069/070/071/072 (§6.3) — still "docker last," the set it's waiting on just grew.
