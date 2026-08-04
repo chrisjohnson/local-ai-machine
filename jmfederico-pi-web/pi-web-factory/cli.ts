@@ -39,6 +39,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { chainNames, chainRegistry, type ChainResultBase } from "./chains/registry.ts";
 import { ConfigError, loadConfig, projectConfigFor } from "./modules/config.ts";
+import { DEFAULT_BASE_URL } from "./modules/piwebClient.ts";
 import { Tracer } from "./modules/tracer.ts";
 
 // ── argument parsing ────────────────────────────────────────────────────
@@ -124,48 +125,87 @@ export function resolvePrompt(promptArg: string): string {
   return promptArg;
 }
 
+// ── deep link (M-071) ────────────────────────────────────────────────────
+
+/**
+ * Derives pi-web's browser origin from its own API base URL. `DEFAULT_BASE_URL`
+ * (`piwebClient.ts`) is `http://<host>:<port>/api` — the API mount point, not
+ * where the browser UI itself is served — but confirmed (`pi-web-adw-design.md`
+ * §6.2, `app.ts`'s route registration) that pi-web serves both its static
+ * client AND its `/api` routes off the SAME host/port, just different path
+ * prefixes. So the browser origin is exactly `baseUrl` with a trailing
+ * `/api` (only) stripped — derived from the one existing source of truth
+ * rather than hardcoding a second copy of the host/port here, per this
+ * card's explicit instruction not to duplicate that string.
+ */
+export function browserOriginFromApiBaseUrl(baseUrl: string): string {
+  return baseUrl.endsWith("/api") ? baseUrl.slice(0, -"/api".length) : baseUrl;
+}
+
+/**
+ * Builds the working session deep-link — `?project=<id>&workspace=<id>&
+ * session=<id>` (confirmed against pi-web's client router, `route.ts`/
+ * `PiWebApp.ts`: `session` alone does nothing, `project` is read first and
+ * short-circuits if absent — pi-web-adw-design.md §6.2/§6.3). `workspaceId`
+ * is optional in the URL (an absent `workspace` param still opens the
+ * project, just not pinned to a specific worktree) since
+ * `resolveWorkspaceId` can itself come back `undefined` in an edge case
+ * (e.g. the workspace list hasn't caught up yet) — never block printing a
+ * link over one missing piece when the other two are real.
+ */
+export function sessionDeepLink(baseUrl: string, link: { projectId: string; workspaceId?: string }, sessionId: string): string {
+  const origin = browserOriginFromApiBaseUrl(baseUrl);
+  const params = new URLSearchParams({ project: link.projectId, session: sessionId });
+  if (link.workspaceId) params.set("workspace", link.workspaceId);
+  return `${origin}/?${params.toString()}`;
+}
+
 // ── status line ──────────────────────────────────────────────────────────
 
 /**
  * Renders the final status line for any registered chain's result. Handles
  * every branch of planBuildTest.ts's discriminated union (and, structurally,
- * any future chain's result carrying the same {status, adwId, sessionId}
- * base) distinctly — never collapsed into a generic pass/fail. Returns the
- * message plus the process exit code that should follow it.
+ * any future chain's result carrying the same {status, adwId, sessionId,
+ * link} base) distinctly — never collapsed into a generic pass/fail. Returns
+ * the message plus the process exit code that should follow it. `baseUrl`
+ * defaults to `DEFAULT_BASE_URL` (the same base every chain run itself
+ * defaults to when the caller doesn't override it) so the printed link
+ * always points at the SAME server the run actually used.
  */
-export function describeResult(result: ChainResultBase): { message: string; exitCode: number } {
+export function describeResult(result: ChainResultBase, baseUrl: string = DEFAULT_BASE_URL): { message: string; exitCode: number } {
   const idLine = `adwId=${result.adwId} sessionId=${result.sessionId}`;
+  const link = `link=${sessionDeepLink(baseUrl, result.link, result.sessionId)}`;
   switch (result.status) {
     case "success":
-      return { message: `SUCCESS — ${idLine}`, exitCode: 0 };
+      return { message: `SUCCESS — ${idLine} — ${link}`, exitCode: 0 };
     case "blocked-on-human": {
       const phase = "phase" in result ? String((result as { phase?: unknown }).phase) : "unknown";
       return {
-        message: `BLOCKED-ON-HUMAN (phase=${phase}) — ${idLine} — the agent asked a question and is waiting; resume with --session-id ${result.sessionId} once answered in pi-web's UI`,
+        message: `BLOCKED-ON-HUMAN (phase=${phase}) — ${idLine} — ${link} — the agent asked a question and is waiting; resume with --session-id ${result.sessionId} once answered in pi-web's UI`,
         exitCode: 2,
       };
     }
     case "unparseable": {
       const phase = "phase" in result ? String((result as { phase?: unknown }).phase) : "unknown";
       return {
-        message: `UNPARSEABLE (phase=${phase}) — ${idLine} — the agent's response never matched the required envelope schema after retries`,
+        message: `UNPARSEABLE (phase=${phase}) — ${idLine} — ${link} — the agent's response never matched the required envelope schema after retries`,
         exitCode: 3,
       };
     }
     case "permissions-violation": {
       const phase = "phase" in result ? String((result as { phase?: unknown }).phase) : "unknown";
       return {
-        message: `PERMISSIONS-VIOLATION (phase=${phase}) — ${idLine} — the agent wrote outside its allowed paths; changes were rolled back`,
+        message: `PERMISSIONS-VIOLATION (phase=${phase}) — ${idLine} — ${link} — the agent wrote outside its allowed paths; changes were rolled back`,
         exitCode: 4,
       };
     }
     case "failed": {
       const phase = "phase" in result ? String((result as { phase?: unknown }).phase) : "unknown";
       const reason = "reason" in result ? String((result as { reason?: unknown }).reason) : "(no reason given)";
-      return { message: `FAILED (phase=${phase}) — ${idLine} — ${reason}`, exitCode: 1 };
+      return { message: `FAILED (phase=${phase}) — ${idLine} — ${link} — ${reason}`, exitCode: 1 };
     }
     default:
-      return { message: `UNKNOWN STATUS ${JSON.stringify(result.status)} — ${idLine}`, exitCode: 1 };
+      return { message: `UNKNOWN STATUS ${JSON.stringify(result.status)} — ${idLine} — ${link}`, exitCode: 1 };
   }
 }
 
@@ -256,16 +296,18 @@ async function main(): Promise<number> {
   // Mint the adwId here (same shape planBuildTest.ts mints internally when
   // omitted) so it can be printed and handed to the chain via `adwId`,
   // rather than waiting for the chain to finish to learn it. When resuming
-  // (--session-id given), the sessionId is already known too, so both ids
-  // print immediately, before any network call happens. When minting a
-  // fresh session, only the adwId is knowable up front — the real sessionId
-  // is reported the moment the chain returns it, not withheld until the
-  // whole chain (plan+build+test) completes.
+  // (--session-id given), the sessionId is already known too, but the real
+  // working deep-link (project/workspace ids, M-071) is NOT knowable until
+  // the chain itself resolves them (workspace resolution needs a real,
+  // already-created worktree path to query pi-web for) — so this line stays
+  // a short "starting/resuming" progress note, and the full link prints once
+  // via `describeResult` after the chain returns (both success and every
+  // failure branch — replaces the M-067-era "visible in pi-web's own
+  // session picker" placeholder, which was never a REAL working link).
   const adwId = `adw_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
   console.log(
     `${args.sessionId ? "resuming" : "starting"} chain ${JSON.stringify(args.chain)}: adwId=${adwId}` +
-      (args.sessionId ? ` sessionId=${args.sessionId}` : " sessionId=(minting a fresh pi-web session...)") +
-      " — visible in pi-web's own session picker",
+      (args.sessionId ? ` sessionId=${args.sessionId}` : " sessionId=(minting a fresh pi-web session...)"),
   );
 
   const tracer = new Tracer(DEFAULT_DB_PATH);

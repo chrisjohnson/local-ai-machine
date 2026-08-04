@@ -11,8 +11,10 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { PlanBuildTestResult } from "./chains/planBuildTest.ts";
-import { CliUsageError, describeResult, parseArgs, resolvePrompt } from "./cli.ts";
+import type { PlanBuildTestLinkInfo, PlanBuildTestResult } from "./chains/planBuildTest.ts";
+import { browserOriginFromApiBaseUrl, CliUsageError, describeResult, parseArgs, resolvePrompt, sessionDeepLink } from "./cli.ts";
+
+const TEST_LINK: PlanBuildTestLinkInfo = { projectId: "proj_1", workspaceId: "ws_1", cwd: "/tmp/whatever" };
 
 // ── parseArgs ────────────────────────────────────────────────────────────
 
@@ -103,29 +105,59 @@ describe("resolvePrompt", () => {
   });
 });
 
+// ── browserOriginFromApiBaseUrl / sessionDeepLink (M-071) ──────────────────
+
+describe("browserOriginFromApiBaseUrl", () => {
+  test("strips a trailing /api from the API base URL", () => {
+    expect(browserOriginFromApiBaseUrl("http://192.168.1.21:8080/api")).toBe("http://192.168.1.21:8080");
+  });
+
+  test("leaves a base URL without a trailing /api unchanged", () => {
+    expect(browserOriginFromApiBaseUrl("http://192.168.1.21:8080")).toBe("http://192.168.1.21:8080");
+  });
+});
+
+describe("sessionDeepLink", () => {
+  test("builds a link with project, workspace, and session query params", () => {
+    const link = sessionDeepLink("http://192.168.1.21:8080/api", { projectId: "proj_1", workspaceId: "ws_1" }, "sess_1");
+    expect(link).toBe("http://192.168.1.21:8080/?project=proj_1&session=sess_1&workspace=ws_1");
+  });
+
+  test("omits the workspace param when workspaceId is undefined, but still includes project+session", () => {
+    const link = sessionDeepLink("http://192.168.1.21:8080/api", { projectId: "proj_1" }, "sess_1");
+    expect(link).toBe("http://192.168.1.21:8080/?project=proj_1&session=sess_1");
+    expect(link).not.toContain("workspace");
+  });
+});
+
 // ── describeResult ───────────────────────────────────────────────────────
 
 describe("describeResult", () => {
-  test("success -> exit code 0", () => {
-    const { message, exitCode } = describeResult({ status: "success", adwId: "adw_1", sessionId: "sess_1" });
+  test("success -> exit code 0, includes a real deep-link", () => {
+    const { message, exitCode } = describeResult({ status: "success", adwId: "adw_1", sessionId: "sess_1", link: TEST_LINK });
     expect(exitCode).toBe(0);
     expect(message).toContain("SUCCESS");
     expect(message).toContain("adw_1");
     expect(message).toContain("sess_1");
+    expect(message).toContain("project=proj_1");
+    expect(message).toContain("workspace=ws_1");
+    expect(message).toContain("session=sess_1");
   });
 
-  test("blocked-on-human -> distinct message, non-zero exit code", () => {
+  test("blocked-on-human -> distinct message, non-zero exit code, includes deep-link", () => {
     const result: PlanBuildTestResult = {
       status: "blocked-on-human",
       adwId: "adw_1",
       sessionId: "sess_1",
       phase: "plan",
       pendingAsk: {},
+      link: TEST_LINK,
     };
     const { message, exitCode } = describeResult(result);
     expect(exitCode).not.toBe(0);
     expect(message).toContain("BLOCKED-ON-HUMAN");
     expect(message).toContain("--session-id sess_1");
+    expect(message).toContain("project=proj_1");
   });
 
   test("unparseable -> distinct message, non-zero exit code", () => {
@@ -135,6 +167,7 @@ describe("describeResult", () => {
       sessionId: "sess_1",
       phase: "build",
       lastReport: { checks: [] },
+      link: TEST_LINK,
     };
     const { message, exitCode } = describeResult(result);
     expect(exitCode).not.toBe(0);
@@ -148,6 +181,7 @@ describe("describeResult", () => {
       sessionId: "sess_1",
       phase: "build",
       permissions: { touched: [], allowed: [], violations: [], rollbacks: [], clean: true },
+      link: TEST_LINK,
     };
     const { message, exitCode } = describeResult(result);
     expect(exitCode).not.toBe(0);
@@ -161,6 +195,7 @@ describe("describeResult", () => {
       sessionId: "sess_1",
       phase: "test",
       reason: "tests failed: 2 of 5",
+      link: TEST_LINK,
     };
     const { message, exitCode } = describeResult(result);
     expect(exitCode).not.toBe(0);
@@ -169,13 +204,14 @@ describe("describeResult", () => {
   });
 
   test("every non-success status yields a different exit code from success and from each other where distinguishable", () => {
-    const success = describeResult({ status: "success", adwId: "a", sessionId: "s" }).exitCode;
+    const success = describeResult({ status: "success", adwId: "a", sessionId: "s", link: TEST_LINK }).exitCode;
     const failedResult: PlanBuildTestResult = {
       status: "failed",
       adwId: "a",
       sessionId: "s",
       phase: "test",
       reason: "x",
+      link: TEST_LINK,
     };
     const blockedResult: PlanBuildTestResult = {
       status: "blocked-on-human",
@@ -183,6 +219,7 @@ describe("describeResult", () => {
       sessionId: "s",
       phase: "plan",
       pendingAsk: {},
+      link: TEST_LINK,
     };
     const failed = describeResult(failedResult).exitCode;
     const blocked = describeResult(blockedResult).exitCode;

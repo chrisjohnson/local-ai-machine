@@ -18,7 +18,12 @@
  * can register here without widening this file's own types.
  */
 
-import { planBuildTest, type PlanBuildTestOptions, type PlanBuildTestResult } from "./planBuildTest.ts";
+import {
+  planBuildTest,
+  type PlanBuildTestLinkInfo,
+  type PlanBuildTestOptions,
+  type PlanBuildTestResult,
+} from "./planBuildTest.ts";
 import type { FactoryConfig } from "../modules/config.ts";
 import type { Tracer } from "../modules/tracer.ts";
 
@@ -38,11 +43,19 @@ export interface ChainRunOptions {
   testCwd?: string;
 }
 
-/** Fields every registered chain result carries, regardless of its own status union. */
+/**
+ * Fields every registered chain result carries, regardless of its own status
+ * union. `link` (M-071) carries the pi-web `projectId`/`workspaceId`/`cwd`
+ * this run resolved — present on every branch of `PlanBuildTestResult`
+ * (success AND every failure mode), since `cli.ts` prints a deep-link
+ * regardless of outcome (a failed/blocked run is exactly when a human most
+ * wants a working link straight to the session).
+ */
 export interface ChainResultBase {
   status: string;
   adwId: string;
   sessionId: string;
+  link: PlanBuildTestLinkInfo;
 }
 
 export type ChainRunner = (opts: ChainRunOptions) => Promise<ChainResultBase>;
@@ -57,4 +70,4 @@ export function chainNames(): string[] {
 }
 
 /** Re-exported so callers that need the concrete, non-widened types can get them from one place. */
-export type { PlanBuildTestOptions, PlanBuildTestResult };
+export type { PlanBuildTestLinkInfo, PlanBuildTestOptions, PlanBuildTestResult };
