@@ -2,8 +2,8 @@
 id: M-063
 title: pi-web-factory — envelopes.ts (Zod) + gates.ts
 initiative_id: null
-claimed_by: null
-claimed_at: null
+claimed_by: claude
+claimed_at: 2026-08-04T04:36:20Z
 blocks: null
 blocked_by: null
 status: null
@@ -46,6 +46,7 @@ contract as SSSF's `gates.py`. A gate is `(envelope, runContext) -> GateReport` 
 
 ## Signals
 <!-- append-only -->
+<!-- signal: claude 2026-08-04T04:36Z — claiming, starting envelopes.ts + gates.ts -->
 
 ## Decision log
 <!-- append-only, one line per entry, newest last -->
