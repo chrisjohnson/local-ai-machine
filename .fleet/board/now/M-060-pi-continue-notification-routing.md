@@ -92,16 +92,82 @@ point exists:
 3. [ ] Investigate pi-web's server-side `sessionUiContext` Proxy
    (`piSessionService.js`) in more depth — patch feasibility, surface
    size, and how it'd actually get maintained given the Dockerfile builds
-   from the published image, not a source checkout. **Not done** — the
-   dedicated research agent for this failed to launch (session rate
-   limit / classifier unavailable, 2026-08-03 ~22:15). Needs to be
-   resumed once agent capacity returns; see Handoff notes.
+   from the published image, not a source checkout. **Done** (agent
+   capacity recovered) — findings below.
 4. [x] Investigate the browser/client side as a second candidate seam.
    **Verdict: a real "notifications inbox" architecture exists
    client-side, but confirmed its only filtering logic is unrelated
    transport deduplication, not content-based — no usable seam found
    here either.** Findings below.
-5. [ ] Write up findings and a recommendation — blocked on item 3.
+5. [x] Write up findings and a recommendation — below.
+
+### Findings: server-side patch feasibility (item 3, 2026-08-03)
+
+- **What `notify` does today**: `sessionUiContext`'s `notify` closure
+  (`piSessionService.js:2312-2379`) records the message into a
+  `notificationStore` (drives the persistent inbox) and publishes it as a
+  `command.output` event (drives the toast). No branching on message
+  content or source today — every call takes the identical path.
+- **The diversion logic itself would be small**: wrapping the closure body
+  in a pattern-match check before the existing store/publish calls is
+  genuinely a ~5-10 line, single-function change. Confirmed nothing else
+  in the 3526-line file needs to move.
+- **The real blocker isn't the patch, it's identity.** Traced the full
+  call chain into `@earendil-works/pi-coding-agent`'s `ExtensionRunner`
+  (a *separate* npm dependency, not pi-web's own code):
+  `createContext()` builds one shared `ctx` object reused across every
+  extension, and `emit()` loops that same `ctx` over all extensions
+  without ever threading the emitting extension's identity into `ctx.ui`
+  or into `notify`'s arguments. **Confirmed, not inferred, by reading both
+  files directly: there is no source-extension identifier available at
+  the point a `notify()` call reaches pi-web's Proxy, today, at all.**
+  So "scope this to only pi-continue's notifications" is unavoidably
+  message-text-pattern matching — the exact fragility already flagged in
+  the item-2 inventory — regardless of where the patch lives. A patch
+  doesn't buy a clean identity-based guarantee; getting one would require
+  *also* patching `pi-coding-agent` itself, a materially bigger ask.
+- **Correction to this card's earlier assumption**: `jmfederico-pi-web/Dockerfile`
+  does `RUN bun install -g @jmfederico/pi-web` (the published npm
+  package) — not `FROM ghcr.io/jmfederico/pi-web:latest` as this card
+  previously assumed by analogy with the base image tag used elsewhere.
+  No existing vendoring/patch infrastructure exists in the Dockerfile or
+  entrypoint today.
+- **Patch mechanism, if pursued**: a build-time `RUN node -e "..."` (or
+  `sed`) step against the installed `dist/server/sessions/piSessionService.js`,
+  appended after the existing install step — matches this repo's existing
+  "thin wrapper + seed files" pattern far better than forking pi-web's
+  actual source repo and replicating their build toolchain. Real,
+  bounded fragility: anchored to specific line/string content that WILL
+  drift on pi-web version bumps, but fails loudly (build breaks) rather
+  than silently.
+
+### Recommendation
+
+**Ship what's already built (M-059's panel) and do not patch pi-web's
+notify pipeline right now.** Reasoning:
+
+1. No amount of patching gets a *clean* guarantee — even patched, this
+   stays message-text matching, same fragility class already documented
+   in the item-2 inventory (overlapping prefixes, dynamic interpolation).
+   A patch buys "the pattern-match logic lives server-side" but not
+   "reliably scoped to pi-continue only."
+2. The actual user-facing goal — a real, persistent place to see handoff
+   status instead of only a transient toast — is **already fully met** by
+   the Continue panel (M-059), independent of whether the redundant toast
+   also fires.
+3. The cost side is real and ongoing: a version-anchored dist-patch that
+   needs re-verification on every pi-web upgrade, for a benefit that's
+   "one fewer duplicate toast," not new functionality.
+4. This is a legitimate "ship now, revisit if it's actually annoying in
+   practice" situation, not a "don't bother ever" — if toast duplication
+   turns out to bother Chris day-to-day once he's lived with the panel a
+   while, this card's research (the full notify() inventory + the patch
+   mechanism assessment) is already done and ready to act on later.
+
+Recommending this card close as "researched, deliberately not building
+right now" pending Chris's sign-off — not because the question wasn't
+answerable, but because the honest answer is "possible but not worth the
+ongoing maintenance cost for what it actually buys."
 
 ### Findings: no interception hook exists (items 1 & 4, 2026-08-03)
 
