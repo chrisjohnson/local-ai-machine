@@ -415,6 +415,138 @@ describe("runAgentPhase — permissions violation", () => {
   });
 });
 
+describe("runAgentPhase — M-074 output_summary / per-step token columns", () => {
+  test("success: output_summary comes from the envelope's summary field, and input/output/cached token columns populate from the post-turn status snapshot", async () => {
+    const validEnvelope = { status: "success", summary: "implemented the health endpoint", artifacts: [], notes_for_next_agent: "" };
+    mockFetchSequence({
+      statusSequence: [
+        {
+          isStreaming: false,
+          tokens: { input: 1200, output: 340, cacheRead: 80, cacheWrite: 0, total: 1540 },
+          cost: 0.021,
+        },
+      ],
+      assistantTexts: [JSON.stringify(validEnvelope)],
+    });
+
+    const phaseId = "adw_test_tok_build";
+    const result = await runAgentPhase({
+      tracer,
+      baseUrl: BASE_URL,
+      adwId: "adw_test_tok",
+      phaseId,
+      seq: 1,
+      cwd,
+      agent,
+      sessionId: "sess_tok",
+      modelAlreadySet: false,
+      promptText: "do the thing",
+      envelopeSchema: TestEnvelopeSchema,
+      outputTypeName: "build",
+      protectedFiles: [],
+      waitOptions: { forcePollOnly: true },
+    });
+
+    expect(result.status).toBe("success");
+
+    const row = tracer.db
+      .query<
+        {
+          output_summary: string | null;
+          input_tokens: number | null;
+          output_tokens: number | null;
+          cached_tokens: number | null;
+        },
+        [string]
+      >("select output_summary, input_tokens, output_tokens, cached_tokens from phases where phase_id=?")
+      .get(phaseId);
+    expect(row?.output_summary).toBe("implemented the health endpoint");
+    expect(row?.input_tokens).toBe(1200);
+    expect(row?.output_tokens).toBe(340);
+    expect(row?.cached_tokens).toBe(80);
+  });
+
+  test("unparseable failure: output_summary is populated with a real short string, not left null", async () => {
+    mockFetchSequence({
+      statusSequence: [{ isStreaming: false }, { isStreaming: false }, { isStreaming: false }],
+      assistantTexts: ["nope 1", "nope 2", "nope 3"],
+    });
+
+    const phaseId = "adw_test_sumfail_build";
+    const result = await runAgentPhase({
+      tracer,
+      baseUrl: BASE_URL,
+      adwId: "adw_test_sumfail",
+      phaseId,
+      seq: 1,
+      cwd,
+      agent,
+      sessionId: "sess_sumfail",
+      modelAlreadySet: false,
+      promptText: "do the thing",
+      envelopeSchema: TestEnvelopeSchema,
+      outputTypeName: "build",
+      protectedFiles: [],
+      maxParseAttempts: 3,
+      waitOptions: { forcePollOnly: true },
+    });
+
+    expect(result.status).toBe("unparseable");
+
+    const row = tracer.db
+      .query<{ output_summary: string | null }, [string]>("select output_summary from phases where phase_id=?")
+      .get(phaseId);
+    expect(row?.output_summary).toBe("unparseable after 3 attempts");
+  });
+
+  test("permissions-violation failure: output_summary names the violating file(s)", async () => {
+    const readOnlyAgent: AgentConfig = { ...agent, writes: [] };
+    const validEnvelope = { status: "success", summary: "did it", artifacts: [], notes_for_next_agent: "" };
+
+    globalThis.fetch = (async (input: string | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.endsWith("/model")) return new Response("{}", { status: 200 });
+      if (url.endsWith("/prompt")) {
+        writeFileSync(join(cwd, "unauthorized2.txt"), "nope\n");
+        return new Response(JSON.stringify({ accepted: true }), { status: 200 });
+      }
+      if (url.endsWith("/status")) return new Response(JSON.stringify({ isStreaming: false }), { status: 200 });
+      if (url.endsWith("/messages")) {
+        return new Response(
+          JSON.stringify([{ role: "assistant", content: [{ type: "text", text: JSON.stringify(validEnvelope) }] }]),
+          { status: 200 },
+        );
+      }
+      throw new Error(`unexpected fetch to ${url}`);
+    }) as typeof fetch;
+
+    const phaseId = "adw_test_sumperm_build";
+    const result = await runAgentPhase({
+      tracer,
+      baseUrl: BASE_URL,
+      adwId: "adw_test_sumperm",
+      phaseId,
+      seq: 1,
+      cwd,
+      agent: readOnlyAgent,
+      sessionId: "sess_sumperm",
+      modelAlreadySet: false,
+      promptText: "do the thing",
+      envelopeSchema: TestEnvelopeSchema,
+      outputTypeName: "build",
+      protectedFiles: [],
+      waitOptions: { forcePollOnly: true },
+    });
+
+    expect(result.status).toBe("permissions-violation");
+
+    const row = tracer.db
+      .query<{ output_summary: string | null }, [string]>("select output_summary from phases where phase_id=?")
+      .get(phaseId);
+    expect(row?.output_summary).toContain("unauthorized2.txt");
+  });
+});
+
 describe("buildCorrectionMessage", () => {
   test("names exactly what was wrong, not a generic 'try again'", () => {
     const report = jsonParses("not json", TestEnvelopeSchema);

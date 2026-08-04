@@ -146,12 +146,41 @@ describe("planBuildTest chain (live pi-web server)", () => {
       const adwId = result.adwId;
 
       const phases = tracer.db
-        .query<{ name: string; status: string; seq: number }, [string]>(
-          "select name, status, seq from phases where adw_id=? order by seq",
+        .query<
+          {
+            name: string;
+            status: string;
+            seq: number;
+            kind: string;
+            output_summary: string | null;
+            input_tokens: number | null;
+            output_tokens: number | null;
+          },
+          [string]
+        >(
+          "select name, status, seq, kind, output_summary, input_tokens, output_tokens from phases where adw_id=? order by seq",
         )
         .all(adwId);
       expect(phases.map((p) => p.name)).toEqual(["plan", "build", "test"]);
       expect(phases.every((p) => p.status === "success")).toBe(true);
+
+      // M-074: agentic steps (plan, build) narrow to kind='agent'; the code
+      // step (test) narrows to kind='code' — the narrowed StepKind type
+      // round-tripping through a REAL run, not just a unit test.
+      const [planPhase, buildPhase, testPhase] = phases;
+      expect(planPhase?.kind).toBe("agent");
+      expect(buildPhase?.kind).toBe("agent");
+      expect(testPhase?.kind).toBe("code");
+
+      // M-074: run.ts now populates output_summary (from the envelope's own
+      // `summary` field) and per-step token columns for real agent steps —
+      // confirmed here against a real agent turn, not a mocked one.
+      expect(planPhase?.output_summary).toBe(result.plan.summary);
+      expect(buildPhase?.output_summary).toBe(result.build.summary);
+      expect(planPhase?.input_tokens).toBeGreaterThan(0);
+      expect(planPhase?.output_tokens).toBeGreaterThan(0);
+      expect(buildPhase?.input_tokens).toBeGreaterThan(0);
+      expect(buildPhase?.output_tokens).toBeGreaterThan(0);
 
       const eventTypes = tracer.db
         .query<{ type: string; phase_id: string }, [string]>(

@@ -254,3 +254,190 @@ describe("Tracer", () => {
     expect(JSON.parse(row?.violations_json ?? "[]")).toEqual(["npm test: 2 failing"]);
   });
 });
+
+// ── M-074: schema/terminology migration coverage ──────────────────────────
+// SQL table/column names stay `sessions`/`phases`/`owner` (see schema.ts's
+// and tracer.ts's header comments — the rename is TS-level only), so these
+// tests still query those physical names directly; what's new is the
+// columns themselves and the `role`-named TS call sites that populate them.
+describe("Tracer — M-074 schema additions", () => {
+  test("sessions.title is a new, nullable column, settable via sessionSetTitle", () => {
+    const adwId = "adw_title001";
+    tracer.sessionStart(adwId, { projectCwd: "/tmp/proj" });
+
+    const beforeRow = tracer.db
+      .query<{ title: string | null }, [string]>("select title from sessions where adw_id=?")
+      .get(adwId);
+    expect(beforeRow?.title).toBeNull();
+
+    tracer.sessionSetTitle(adwId, "add a /health endpoint");
+    const afterRow = tracer.db
+      .query<{ title: string | null }, [string]>("select title from sessions where adw_id=?")
+      .get(adwId);
+    expect(afterRow?.title).toBe("add a /health endpoint");
+  });
+
+  test("phases.kind is narrowed to 'agent' | 'code' — a code step round-trips correctly", () => {
+    const adwId = "adw_kind001";
+    tracer.sessionStart(adwId, { projectCwd: "/tmp/proj" });
+    tracer.event({
+      adwId,
+      phaseId: "phase_test",
+      type: "phase_start",
+      name: "test",
+      payload: { kind: "code", owner: "gates.testsPass", description: "run the test suite" },
+    });
+
+    const row = tracer.db
+      .query<{ kind: string }, [string]>("select kind from phases where phase_id=?")
+      .get("phase_test");
+    expect(row?.kind).toBe("code");
+  });
+
+  test("phases token columns (input/output/cached) populate from an agent_end event's usage payload, additive to sessions.total_tokens", () => {
+    const adwId = "adw_tokens001";
+    const phaseId = "phase_build_tok";
+    tracer.sessionStart(adwId, { projectCwd: "/tmp/proj" });
+
+    tracer.event({
+      adwId,
+      phaseId,
+      type: "phase_start",
+      name: "build",
+      payload: { kind: "agent", owner: "builder", description: "..." },
+    });
+    tracer.event({
+      adwId,
+      phaseId,
+      type: "agent_end",
+      name: "builder",
+      tokens: 900,
+      payload: {
+        agent: "builder",
+        cost: 0.05,
+        tokens: 900,
+        usage: { input: 600, output: 250, cached: 50 },
+      },
+    });
+
+    const stepRow = tracer.db
+      .query<
+        { input_tokens: number | null; output_tokens: number | null; cached_tokens: number | null },
+        [string]
+      >("select input_tokens, output_tokens, cached_tokens from phases where phase_id=?")
+      .get(phaseId);
+    expect(stepRow?.input_tokens).toBe(600);
+    expect(stepRow?.output_tokens).toBe(250);
+    expect(stepRow?.cached_tokens).toBe(50);
+
+    // additive, not a replacement — sessions.total_tokens still accumulates
+    // exactly as it did before M-074.
+    const sessionRow = tracer.db
+      .query<{ total_tokens: number }, [string]>("select total_tokens from sessions where adw_id=?")
+      .get(adwId);
+    expect(sessionRow?.total_tokens).toBe(900);
+  });
+
+  test("agent_end's token-column upsert never clobbers a terminal status back to 'running' — ordering-independence regression", () => {
+    // run.ts always emits agent_end BEFORE phase_end, so this never manifests
+    // through that caller — but the underlying phaseUpsert bug this guards
+    // against was real: agent_end's side effect used to hardcode
+    // `status: "running"` unconditionally, which would have silently reverted
+    // an already-terminal Step back to non-terminal if a future caller (e.g.
+    // M-076's generic Workflow interpreter) ever emitted these two events in
+    // the other order. Simulate that other order directly here.
+    const adwId = "adw_order001";
+    const phaseId = "phase_order_test";
+    tracer.sessionStart(adwId, { projectCwd: "/tmp/proj" });
+
+    tracer.event({
+      adwId,
+      phaseId,
+      type: "phase_start",
+      name: "build",
+      payload: { kind: "agent", owner: "builder", description: "..." },
+    });
+    // phase_end BEFORE agent_end — the reversed order.
+    tracer.event({
+      adwId,
+      phaseId,
+      type: "phase_end",
+      name: "build",
+      payload: { status: "success" },
+    });
+    tracer.event({
+      adwId,
+      phaseId,
+      type: "agent_end",
+      name: "builder",
+      tokens: 900,
+      payload: { agent: "builder", cost: 0.05, tokens: 900, usage: { input: 600, output: 250, cached: 50 } },
+    });
+
+    const row = tracer.db
+      .query<{ status: string; input_tokens: number | null }, [string]>(
+        "select status, input_tokens from phases where phase_id=?",
+      )
+      .get(phaseId);
+    // Status must still be "success" — NOT reverted to "running" by the
+    // later agent_end upsert — while the token data still lands correctly.
+    expect(row?.status).toBe("success");
+    expect(row?.input_tokens).toBe(600);
+  });
+
+  test("phases.output_summary populates on a successful phase_end (code-step style, via payload.outputSummary)", () => {
+    const adwId = "adw_summary_ok";
+    const phaseId = "phase_test_ok";
+    tracer.sessionStart(adwId, { projectCwd: "/tmp/proj" });
+    tracer.event({
+      adwId,
+      phaseId,
+      type: "phase_start",
+      name: "test",
+      payload: { kind: "code", owner: "gates.testsPass", description: "run tests" },
+    });
+    tracer.event({
+      adwId,
+      phaseId,
+      type: "phase_end",
+      name: "test",
+      payload: { status: "success", outputSummary: "3/3 checks passed" },
+    });
+
+    const row = tracer.db
+      .query<{ output_summary: string | null; status: string }, [string]>(
+        "select output_summary, status from phases where phase_id=?",
+      )
+      .get(phaseId);
+    expect(row?.status).toBe("success");
+    expect(row?.output_summary).toBe("3/3 checks passed");
+  });
+
+  test("phases.output_summary populates on a failing phase_end too — not left null on failure paths", () => {
+    const adwId = "adw_summary_fail";
+    const phaseId = "phase_test_fail";
+    tracer.sessionStart(adwId, { projectCwd: "/tmp/proj" });
+    tracer.event({
+      adwId,
+      phaseId,
+      type: "phase_start",
+      name: "test",
+      payload: { kind: "code", owner: "gates.testsPass", description: "run tests" },
+    });
+    tracer.event({
+      adwId,
+      phaseId,
+      type: "phase_end",
+      name: "test",
+      payload: { status: "fail", error: "2 failing", outputSummary: "2 failing" },
+    });
+
+    const row = tracer.db
+      .query<{ output_summary: string | null; status: string }, [string]>(
+        "select output_summary, status from phases where phase_id=?",
+      )
+      .get(phaseId);
+    expect(row?.status).toBe("fail");
+    expect(row?.output_summary).toBe("2 failing");
+  });
+});

@@ -34,6 +34,7 @@
 
 import { jsonParses, type GateReport } from "./gates.ts";
 import {
+  getStatus,
   lastAssistantText,
   prompt as sendPrompt,
   setModel,
@@ -140,8 +141,18 @@ export async function runAgentPhase<Schema extends ZodType>(
     payload: { kind: "agent", owner: agent.name, description: promptText.slice(0, 200), seq },
   });
 
-  const failPhase = (error: string): void => {
-    tracer.event({ adwId, phaseId, type: "phase_end", name: outputTypeName, payload: { status: "fail", error } });
+  // M-074: failure paths get a short, real `output_summary` rather than a
+  // perpetually-null column — `reason` is whatever short string the caller
+  // already has in hand at each failure site (blocked-on-human, error,
+  // unparseable-after-N-attempts, permissions violation list).
+  const failPhase = (error: string, outputSummary?: string): void => {
+    tracer.event({
+      adwId,
+      phaseId,
+      type: "phase_end",
+      name: outputTypeName,
+      payload: { status: "fail", error, outputSummary: outputSummary ?? error },
+    });
   };
 
   if (!modelAlreadySet) {
@@ -178,7 +189,8 @@ export async function runAgentPhase<Schema extends ZodType>(
         parentId: phaseStartId,
         payload: { pendingAsk: result.pendingAsk },
       });
-      failPhase("blocked-on-human");
+      const question = result.pendingAsk.questions[0]?.question;
+      failPhase("blocked-on-human", question ? `blocked on human: ${question}` : "blocked on human");
       return { status: "blocked-on-human", pendingAsk: result.pendingAsk, attempts };
     }
 
@@ -191,7 +203,7 @@ export async function runAgentPhase<Schema extends ZodType>(
         parentId: phaseStartId,
         payload: { detail: result.detail },
       });
-      failPhase(result.detail);
+      failPhase(result.detail, `error: ${result.detail}`);
       return { status: "error", reason: result.detail, attempts };
     }
 
@@ -225,6 +237,8 @@ export async function runAgentPhase<Schema extends ZodType>(
         payload: { attempt: attempts, checks: parseReport.checks },
       });
       failPhase(`unparseable after ${String(attempts)} attempts`);
+      // failPhase's default `outputSummary` (= `error`) is already exactly
+      // right here — "unparseable after N attempts" — no override needed.
       return { status: "unparseable", lastReport: parseReport, attempts };
     }
 
@@ -246,13 +260,44 @@ export async function runAgentPhase<Schema extends ZodType>(
     attempt: attempts,
   });
 
+  // M-074: fetch the session's current usage snapshot so agent_end's payload
+  // can carry real `usage`/`cost` (previously omitted entirely) — this both
+  // keeps `sessions.total_tokens` accumulating (via `_sideEffects`'s
+  // existing `sessionAddUsage` call, unchanged) and, new here, threads the
+  // same numbers into this Step's own input/output/cached token columns.
+  // Best-effort: a status fetch failing here must not fail an otherwise-
+  // successful phase, so `usage` is simply omitted (columns stay null) if
+  // this call throws.
+  let usage: { input: number; output: number; cached: number } | undefined;
+  let statusTokens = 0;
+  let statusCost = 0;
+  try {
+    const status = await getStatus(baseUrl, sessionId);
+    statusTokens = status.tokens.total;
+    statusCost = status.cost;
+    usage = { input: status.tokens.input, output: status.tokens.output, cached: status.tokens.cacheRead };
+  } catch {
+    // best-effort — see comment above
+  }
+
+  const envelopeRecord = envelope as unknown as Record<string, unknown>;
+  const outputSummary = typeof envelopeRecord["summary"] === "string" ? envelopeRecord["summary"] : undefined;
+
   tracer.event({
     adwId,
     phaseId,
     type: "agent_end",
     name: agent.name,
     parentId: phaseStartId,
-    payload: { agent: agent.name, session_id: sessionId },
+    tokens: statusTokens,
+    payload: {
+      agent: agent.name,
+      session_id: sessionId,
+      cost: statusCost,
+      tokens: statusTokens,
+      usage,
+      outputSummary,
+    },
   });
 
   tracer.event({
@@ -292,12 +337,15 @@ export async function runAgentPhase<Schema extends ZodType>(
   });
 
   if (hasViolation) {
+    // M-074: the permission violation list IS the obvious short summary for
+    // this failure path — no need to invent one.
+    const violationSummary = `permissions violation: ${permissions.violations.join(", ")}`;
     tracer.event({
       adwId,
       phaseId,
       type: "phase_end",
       name: outputTypeName,
-      payload: { status: "fail", error: `permissions violation: ${permissions.violations.join(", ")}` },
+      payload: { status: "fail", error: violationSummary, outputSummary: violationSummary },
     });
     void agentStartId;
     void lastReport;
@@ -309,6 +357,11 @@ export async function runAgentPhase<Schema extends ZodType>(
     phaseId,
     type: "phase_end",
     name: outputTypeName,
+    // M-074: on success, output_summary comes from the envelope's own
+    // `summary` field (already computed above as `outputSummary`) — the
+    // agent_end event already wrote it into the Step row via
+    // `_sideEffects`'s agent_end handling; this phase_end payload doesn't
+    // need to repeat it (phaseUpsert's COALESCE keeps the column's value).
     payload: { status: "success" },
   });
 

@@ -11,6 +11,29 @@
  *
  * WAL mode, per observability.md's "WAL pragmas" section — open on every
  * connection, writer and reader alike.
+ *
+ * ── Terminology migration (M-074, pi-web-adw-design.md §7) ────────────────
+ * §7 formalizes new vocabulary: "Workflow Run" (was "session"/"chain run"),
+ * "Step" (was "phase"), "Role" (was "owner"/"agent identity"). §7.3 leaves
+ * the exact identifier characters to the implementer, with a recommendation:
+ * keep the physical SQL table/column names stable (`sessions`, `phases`,
+ * `owner`) and do the rename at the TypeScript level only. This module
+ * follows that recommendation — lower risk (no destructive `ALTER TABLE`,
+ * no need to touch every raw SQL string across the codebase and its tests)
+ * — so:
+ *   - SQL table names stay `sessions`/`phases`; the SQL column stays `owner`.
+ *   - TS-facing types/fields are named `WorkflowRun`/`Step`/`role` (see
+ *     tracer.ts) — the rename is entirely in how TypeScript code refers to
+ *     these tables and columns, never in the schema strings below.
+ * New columns added by M-074, all nullable / additive, no migration of
+ * existing rows required:
+ *   - `sessions.title` — a Workflow Run's title (§7.3), not populated by
+ *     M-074 itself; later cards derive it from the prompt or a ticket title.
+ *   - `phases.input_tokens` / `output_tokens` / `cached_tokens` — per-Step
+ *     token usage (§7.3: "today's schema only accumulates tokens at the
+ *     [Workflow Run] level... needs new columns on the steps table").
+ *   - `phases.output_summary` — a Step's short outcome summary (§7.3: "an
+ *     agent step's envelope `summary`, a code step's gate result headline").
  */
 
 export const SCHEMA = `
@@ -18,6 +41,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   adw_id        TEXT PRIMARY KEY,
   adw_name      TEXT,                -- ADW script(s) run, e.g. "adw_plan + adw_build_test"
   project_cwd   TEXT,                -- DEVIATION FROM UPSTREAM: which project this run targeted (abs path) — required since one db spans N projects, unlike upstream's per-repo db
+  title         TEXT,                -- M-074: Workflow Run title — derived from the prompt or a future ticket's title; NOT populated by M-074 itself
   request       TEXT,
   status        TEXT,                -- running | success | fail
   engineer      TEXT,
@@ -33,6 +57,10 @@ CREATE TABLE IF NOT EXISTS phases (
   status        TEXT DEFAULT 'fail', -- success must be earned
   attempt       INTEGER DEFAULT 0, retries INTEGER DEFAULT 0,
   error         TEXT,
+  input_tokens  INTEGER,             -- M-074: per-Step token usage, nullable (code steps never populate)
+  output_tokens INTEGER,
+  cached_tokens INTEGER,
+  output_summary TEXT,               -- M-074: short outcome summary (agent step's envelope summary, or a code step's gate headline)
   started_at    TEXT, ended_at TEXT
 );
 CREATE TABLE IF NOT EXISTS events (

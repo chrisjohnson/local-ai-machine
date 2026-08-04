@@ -17,6 +17,30 @@
  * `parent_id` nests spans exactly as upstream: the caller passes the parent
  * event's id (e.g. an `agent_start` event id as the `parent_id` for the
  * `tool_call` events that happen inside that agent's turn).
+ *
+ * ── Terminology migration (M-074, pi-web-adw-design.md §7) ────────────────
+ * Per schema.ts's header comment, this module renames its TS-facing surface
+ * to the new vocabulary while the underlying SQL (`sessions`/`phases`
+ * tables, the `owner` column) stays exactly as it was:
+ *   - `WorkflowRun` is the new TS name for what this module used to call a
+ *     "session" (still the `sessions` SQL table underneath).
+ *   - `Step` is the new TS name for what this module used to call a "phase"
+ *     (still the `phases` SQL table underneath) — `StepKind`/`StepStatus`
+ *     replace `PhaseKind`/`PhaseStatus`, narrowed to `'agent' | 'code'`
+ *     (`'engineer'` dropped — confirmed unused anywhere in this codebase).
+ *   - `role` is the new TS field/parameter name for what this module used to
+ *     call `owner` — `phaseUpsert`'s options object and `Tracer`'s other
+ *     public methods now take `role`, and write it into the SQL `owner`
+ *     column internally. The raw JSON `payload` object accepted by
+ *     `event()`/written by callers (including out-of-scope `chains/
+ *     planBuildTest.ts`) still uses the key `"owner"` — that's a wire-format
+ *     convention for the event payload blob, not a TS type, and is left
+ *     alone here; `_upsertPhaseFromEvent` reads `payload["owner"]` and
+ *     threads it into the new `role` field.
+ *   - New optional write support: `phaseUpsert` (and `event()`'s
+ *     `phase_end`/`agent_end` side effects) can now also set
+ *     `input_tokens`/`output_tokens`/`cached_tokens`/`output_summary` on a
+ *     Step — additive, `sessions.total_tokens` accumulation is unchanged.
  */
 
 import { Database } from "bun:sqlite";
@@ -34,9 +58,63 @@ export type EventType =
   | "phase_end"
   | "error";
 
-export type PhaseKind = "engineer" | "agent" | "code";
-export type PhaseStatus = "queued" | "running" | "success" | "fail";
-export type SessionStatus = "running" | "success" | "fail";
+/** A Step's kind (§7.1: agentic step vs code step). `'engineer'` dropped — never constructed anywhere in this codebase (confirmed via grep, M-074). */
+export type StepKind = "agent" | "code";
+export type StepStatus = "queued" | "running" | "success" | "fail";
+export type WorkflowRunStatus = "running" | "success" | "fail";
+
+/** @deprecated Old name for {@link StepKind}, kept as an alias during the M-074 migration window. Prefer StepKind. */
+export type PhaseKind = StepKind;
+/** @deprecated Old name for {@link StepStatus}. Prefer StepStatus. */
+export type PhaseStatus = StepStatus;
+/** @deprecated Old name for {@link WorkflowRunStatus}. Prefer WorkflowRunStatus. */
+export type SessionStatus = WorkflowRunStatus;
+
+/**
+ * TS-level row shape for one `sessions` row (§7.1: "Workflow Run" — one
+ * execution of a single, top-level, open-ended prompt). The SQL table
+ * backing this is still named `sessions` — see module header.
+ */
+export interface WorkflowRun {
+  adwId: string;
+  adwName: string | null;
+  projectCwd: string | null;
+  title: string | null;
+  request: string | null;
+  status: WorkflowRunStatus;
+  engineer: string | null;
+  startedAt: string | null;
+  endedAt: string | null;
+  totalTokens: number;
+  totalCost: number;
+  archived: boolean;
+}
+
+/**
+ * TS-level row shape for one `phases` row (§7.1: "Step" — one unit of work
+ * inside a Workflow, agentic or code). The SQL table backing this is still
+ * named `phases`, and its `role` field is still the SQL `owner` column —
+ * see module header.
+ */
+export interface Step {
+  phaseId: string;
+  adwId: string;
+  seq: number;
+  name: string;
+  kind: StepKind;
+  role: string;
+  description: string;
+  status: StepStatus;
+  attempt: number;
+  retries: number;
+  error: string | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  cachedTokens: number | null;
+  outputSummary: string | null;
+  startedAt: string | null;
+  endedAt: string | null;
+}
 
 export interface EventRecord {
   adwId: string;
@@ -121,6 +199,15 @@ export class Tracer {
     this.db.run("UPDATE sessions SET request=? WHERE adw_id=?", [request.slice(0, 500), adwId]);
   }
 
+  /**
+   * Sets a Workflow Run's title (M-074: `sessions.title`, new column — not
+   * populated by any caller in this card, just made settable for later
+   * cards, e.g. deriving it from the prompt or a future ticket's title).
+   */
+  sessionSetTitle(adwId: string, title: string): void {
+    this.db.run("UPDATE sessions SET title=? WHERE adw_id=?", [title.slice(0, 500), adwId]);
+  }
+
   sessionFinish(adwId: string, ok: boolean): void {
     this.db.run("UPDATE sessions SET status=?, ended_at=? WHERE adw_id=?", [
       ok ? "success" : "fail",
@@ -172,34 +259,55 @@ export class Tracer {
     return row?.["MAX(seq)"] ?? 0;
   }
 
+  /**
+   * Upserts a Step row (`phases` table underneath — see module header).
+   * `role` is the new TS-facing name for what the SQL column still calls
+   * `owner`; it's written into that column here, at this one boundary.
+   *
+   * `inputTokens`/`outputTokens`/`cachedTokens`/`outputSummary` are the
+   * M-074 additions — all optional. When omitted on an UPDATE (the
+   * conflict-branch), the existing column value is preserved via
+   * `COALESCE(excluded.x, phases.x)` rather than being clobbered back to
+   * NULL, since `phase_start` and `phase_end` both upsert the same row and
+   * only `phase_end` (via run.ts) has the data to set them.
+   */
   phaseUpsert(phase: {
     phaseId: string;
     adwId: string;
     seq: number;
     name: string;
-    kind: PhaseKind;
-    owner: string;
+    kind: StepKind;
+    role: string;
     description: string;
-    status: PhaseStatus;
+    status: StepStatus;
     attempt?: number;
     retries?: number;
     error?: string | null;
     startedAt?: string | null;
     endedAt?: string | null;
+    inputTokens?: number | null;
+    outputTokens?: number | null;
+    cachedTokens?: number | null;
+    outputSummary?: string | null;
   }): void {
     this.db.run(
       `INSERT INTO phases (phase_id, adw_id, seq, name, kind, owner, description,
-         status, attempt, retries, error, started_at, ended_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+         status, attempt, retries, error, started_at, ended_at,
+         input_tokens, output_tokens, cached_tokens, output_summary)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON CONFLICT(phase_id) DO UPDATE SET status=excluded.status,
-         attempt=excluded.attempt, error=excluded.error, ended_at=excluded.ended_at`,
+         attempt=excluded.attempt, error=excluded.error, ended_at=excluded.ended_at,
+         input_tokens=COALESCE(excluded.input_tokens, phases.input_tokens),
+         output_tokens=COALESCE(excluded.output_tokens, phases.output_tokens),
+         cached_tokens=COALESCE(excluded.cached_tokens, phases.cached_tokens),
+         output_summary=COALESCE(excluded.output_summary, phases.output_summary)`,
       [
         phase.phaseId,
         phase.adwId,
         phase.seq,
         phase.name,
         phase.kind,
-        phase.owner,
+        phase.role,
         phase.description,
         phase.status,
         phase.attempt ?? 0,
@@ -207,6 +315,10 @@ export class Tracer {
         phase.error ?? null,
         phase.startedAt ?? null,
         phase.endedAt ?? null,
+        phase.inputTokens ?? null,
+        phase.outputTokens ?? null,
+        phase.cachedTokens ?? null,
+        phase.outputSummary ?? null,
       ],
     );
   }
@@ -327,7 +439,7 @@ export class Tracer {
         break;
       }
       case "phase_end": {
-        const status = (payload["status"] as PhaseStatus | undefined) ?? "fail";
+        const status = (payload["status"] as StepStatus | undefined) ?? "fail";
         this._upsertPhaseFromEvent(record, status, payload);
         break;
       }
@@ -345,6 +457,10 @@ export class Tracer {
         break;
       }
       case "agent_end": {
+        // M-074: usage is already carried verbatim in payload_json (below),
+        // but is now ALSO threaded into per-Step token columns — additive,
+        // not a replacement for the existing sessions.total_tokens
+        // accumulation (`sessionAddUsage`, unchanged).
         const usage = (payload["usage"] as Record<string, unknown> | undefined) ?? {};
         const cost = (payload["cost"] as number | undefined) ?? 0;
         const tokens = (payload["tokens"] as number | undefined) ?? record.tokens ?? 0;
@@ -357,6 +473,48 @@ export class Tracer {
             contextWindow: payload["context_window"] as number | undefined,
             sessionId: payload["session_id"] as string | undefined,
           });
+        }
+        if (record.phaseId) {
+          const inputTokens = usage["input"] as number | undefined;
+          const outputTokens = usage["output"] as number | undefined;
+          const cachedTokens = usage["cached"] as number | undefined;
+          const outputSummary = payload["outputSummary"] as string | undefined;
+          if (
+            inputTokens !== undefined ||
+            outputTokens !== undefined ||
+            cachedTokens !== undefined ||
+            outputSummary !== undefined
+          ) {
+            const existing = this.db
+              .query<
+                { seq: number; kind: StepKind; owner: string; description: string; name: string; status: StepStatus },
+                [string]
+              >("SELECT seq, kind, owner, description, name, status FROM phases WHERE phase_id=?")
+              .get(record.phaseId);
+            this.phaseUpsert({
+              phaseId: record.phaseId,
+              adwId: record.adwId,
+              seq: existing?.seq ?? this.maxPhaseSeq(record.adwId) + 1,
+              name: existing?.name ?? record.name ?? "",
+              kind: existing?.kind ?? "agent",
+              role: existing?.owner ?? "",
+              description: existing?.description ?? "",
+              // Preserve the row's actual current status rather than asserting
+              // "running" — this upsert's only job is attaching token/summary
+              // data to an existing Step row. `run.ts` happens to always emit
+              // agent_end before phase_end today, so this never manifested, but
+              // hardcoding "running" here would silently clobber a terminal
+              // status back to non-terminal for any future caller (e.g. M-076's
+              // generic interpreter) that orders events differently. Unlike
+              // token/summary columns, `status` has no COALESCE protection in
+              // the upsert SQL itself, so it must be supplied correctly here.
+              status: existing?.status ?? "running",
+              inputTokens: inputTokens ?? null,
+              outputTokens: outputTokens ?? null,
+              cachedTokens: cachedTokens ?? null,
+              outputSummary: outputSummary ?? null,
+            });
+          }
         }
         void usage; // usage breakdown is preserved verbatim in payload_json; not further decomposed here
         break;
@@ -386,7 +544,7 @@ export class Tracer {
 
   private _upsertPhaseFromEvent(
     record: EventRecord,
-    status: PhaseStatus,
+    status: StepStatus,
     payload: Record<string, unknown>,
   ): void {
     if (!record.phaseId) return;
@@ -394,19 +552,27 @@ export class Tracer {
       .query<{ seq: number }, [string]>("SELECT seq FROM phases WHERE phase_id=?")
       .get(record.phaseId);
     const seq = existing?.seq ?? this.maxPhaseSeq(record.adwId) + 1;
+    // `payload["owner"]` is the event-payload wire-format key (still written
+    // by callers, e.g. chains/planBuildTest.ts's `payload: {kind, owner,
+    // description}`) — read here and threaded into the new `role` field.
     this.phaseUpsert({
       phaseId: record.phaseId,
       adwId: record.adwId,
       seq,
       name: record.name ?? (payload["name"] as string) ?? "",
-      kind: (payload["kind"] as PhaseKind | undefined) ?? "agent",
-      owner: (payload["owner"] as string | undefined) ?? "",
+      kind: (payload["kind"] as StepKind | undefined) ?? "agent",
+      role: (payload["owner"] as string | undefined) ?? "",
       description: (payload["description"] as string | undefined) ?? "",
       status,
       attempt: payload["attempt"] as number | undefined,
       error: payload["error"] as string | undefined,
       startedAt: status === "running" ? (record.startedAt ?? nowIso()) : undefined,
       endedAt: status !== "running" ? nowIso() : undefined,
+      // M-074: a phase_end event can carry its own outputSummary directly in
+      // payload (the natural path for code steps, e.g. planBuildTest.ts's
+      // test phase, which never emits an agent_end event) — agent steps'
+      // summary is threaded in separately via agent_end (above).
+      outputSummary: payload["outputSummary"] as string | undefined,
     });
   }
 }
