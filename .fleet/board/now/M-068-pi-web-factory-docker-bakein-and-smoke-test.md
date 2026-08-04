@@ -5,20 +5,20 @@ initiative_id: null
 claimed_by: null
 claimed_at: null
 blocks: null
-blocked_by: [M-069, M-070, M-071, M-072, M-073]
+blocked_by: [M-069, M-070, M-071, M-072, M-074, M-075, M-076, M-077]
 status: null
-related_cards: [M-061, M-062, M-063, M-064, M-065, M-066, M-067, M-069, M-070, M-071, M-072, M-073]
+related_cards: [M-061, M-062, M-063, M-064, M-065, M-066, M-067, M-069, M-070, M-071, M-072, M-074, M-075, M-076, M-077]
 ---
 
 # M-068 — pi-web-factory — Docker bake-in + first live end-to-end smoke test
 
 ## Context
-**Re-sequenced 2026-08-04**: originally blocked only on M-067; Chris's explicit
-instruction that day was "docker last" (`pi-web-adw-design.md` §6.1 point 6, §6.3) —
-now blocked on the full revision (M-069 system prompts, M-070 project-local config,
-M-071 worktrees/deep-links, M-072 the Skill, M-073 more chain shapes) so what gets
-baked in is the real, final shape of the system, not an intermediate one that needs a
-second bake-in pass later.
+**Re-sequenced 2026-08-04, twice.** Originally blocked only on M-067. First revision:
+Chris's "docker last" instruction (`pi-web-adw-design.md` §6.1 point 6, §6.3) added
+M-069/070/071/072/073. Second revision, same day: the terminology/architecture pass
+(§7) withdrew M-073 (superseded by M-076) and added M-074 (schema migration),
+M-075 (global Roles config), M-076 (Workflow interpreter), M-077 (visualizer) — all
+now blocking, so what gets baked in is the real, final shape of the system.
 
 Gets `pi-web-factory/` actually running inside the `jmfederico-pi-web` container,
 per design doc §0 point 1 and §3.1's "always-synced" note. Mirror the existing

@@ -60,8 +60,22 @@ plan → build → test, no review, no loop).
 
 ## Signals
 <!-- append-only -->
+<!-- signal: claude 2026-08-04T00:00Z — withdrawn, superseded by M-076 before any work started -->
 
 ## Decision log
 <!-- append-only, one line per entry, newest last -->
+- 2026-08-04 (claude): **withdrawn, not completed.** Chris formalized new terminology
+  (`pi-web-adw-design.md` §7 — Workflow / Workflow Run / Step / Role) and specified
+  that Workflows should be YAML-configured Step sequences interpreted by one generic
+  runner, not hand-written TS files per shape. This card's own framing ("write
+  `chains/planImplementReview.ts`", "write `chains/buildReview.ts`") is exactly the
+  shape that's now wrong. No work had started on this card (claimed_by was still
+  null) — replaced outright by M-076 (generic Workflow interpreter, including a
+  native `loop` step kind for the bounded build↔review cycle this card also wanted)
+  rather than partially reused. Filed to `done/` per fleet convention (no "withdrawn"
+  column exists) — this entry is the record of why, not a claim that the work
+  described above happened.
 
 ## Handoff notes
+Superseded by M-076. Nothing here was built. See `pi-web-adw-design.md` §7.6 for the
+actual plan.
