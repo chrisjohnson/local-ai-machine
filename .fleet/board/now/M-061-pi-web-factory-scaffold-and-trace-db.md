@@ -2,8 +2,8 @@
 id: M-061
 title: pi-web-factory — Bun/TS project scaffold + shared trace db
 initiative_id: null
-claimed_by: null
-claimed_at: null
+claimed_by: claude
+claimed_at: 2026-08-04T04:14:44Z
 blocks: null
 blocked_by: null
 status: null
@@ -42,6 +42,7 @@ be built and unit-tested standalone.
 
 ## Signals
 <!-- append-only -->
+<!-- signal: claude 2026-08-04T04:14Z — claiming, starting scaffold + trace db -->
 
 ## Decision log
 <!-- append-only, one line per entry, newest last -->
