@@ -268,35 +268,21 @@ real failure.
   of specific known messages, never a blanket suppression — genuine
   pi-continue failures (already observed multiple times this session) must
   keep surfacing as normal toasts.
+- 2026-08-03 — closed: research complete (hook hunt, full notify()
+  inventory, server-side patch feasibility all done, see findings
+  sections above). Recommendation was to defer building this — no clean
+  identity-based scoping exists at the notify() call site even with a
+  patch, the actual goal (persistent handoff status) is already met by
+  M-059's Continue panel, and the ongoing cost of maintaining a
+  version-anchored dist-patch isn't worth it for "one fewer duplicate
+  toast." Chris confirmed: passing on implementation. Research stays here
+  for later if toast duplication proves actually annoying in practice.
 
 ## Handoff notes
 <!-- what's half-done, what the next agent picking this up should do first. -->
-Plan items 1, 2, and 4 are done (see findings sections above) — done by
-hand via direct ssh/grep against the box after three research agents were
-launched but two failed outright ("claude-sonnet-5 is temporarily
-unavailable, so auto mode cannot determine the safety of Agent") and the
-third returned essentially nothing (6 tool calls, no real findings,
-apparently cut short by the same rate-limit event) — this was a session
-capacity issue, not a real finding, so don't treat that agent's
-"completed" status as informative.
-
-**Next step**: plan item 3 — pi-web's server-side `sessionUiContext`
-Proxy patch feasibility. The prompt already written for this (in this
-conversation's history, agent description "Assess pi-web server-side
-notify patch feasibility") is still valid and can be reused verbatim once
-agent capacity returns; it wasn't wrong, it just never got to run. Key
-questions it needs to answer: (1) is there already a per-notify
-"which extension" identifier available in `sessionUiContext`'s call
-chain (needed to scope any patch to "only pi-continue," not every
-extension's notifications), (2) how large/invasive would the actual patch
-be, (3) given `jmfederico-pi-web/Dockerfile` builds from the *published*
-`ghcr.io/jmfederico/pi-web:latest` image (not a source checkout) — would
-this require a real upstream source fork + our own image build, or is a
-build-time dist-patching step (sed/node against the installed `dist/` JS)
-realistic, and (4) the honest "is this worth it at all" comparison against
-just letting redundant toasts fire alongside the now-working Continue
-panel (M-059) without touching pi-web's notify pipeline.
-
-Once item 3 has real findings, item 5 (write up a recommendation) should
-be quick — the hard research is the patch-feasibility question, everything
-else is already in hand.
+Nothing left to do — research complete, Chris declined to implement. If
+this gets picked up again later, everything needed is already in this
+card: the full notify() message inventory/classification table, the
+pattern-matching-not-exact-matching risk, and the server-side patch
+mechanism (build-time dist-patch against `piSessionService.js`, not a
+source fork) with its exact file/line anchors as of pi-web@1.202607.3.
