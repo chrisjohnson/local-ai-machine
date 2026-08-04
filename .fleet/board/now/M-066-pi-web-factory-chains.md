@@ -2,8 +2,8 @@
 id: M-066
 title: pi-web-factory — chains/ (phase orchestration)
 initiative_id: null
-claimed_by: null
-claimed_at: null
+claimed_by: claude
+claimed_at: 2026-08-04T04:56:03Z
 blocks: null
 blocked_by: [M-062, M-063, M-064, M-065]
 status: null
@@ -47,6 +47,7 @@ which chains matter.
 
 ## Signals
 <!-- append-only -->
+<!-- signal: claude 2026-08-04T04:56Z — claiming, starting run.phase() + first chain -->
 
 ## Decision log
 <!-- append-only, one line per entry, newest last -->
