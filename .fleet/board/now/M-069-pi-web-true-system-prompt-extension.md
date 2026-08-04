@@ -2,8 +2,8 @@
 id: M-069
 title: pi-web-factory — true per-role system prompt via before_agent_start extension
 initiative_id: null
-claimed_by: null
-claimed_at: null
+claimed_by: claude
+claimed_at: 2026-08-04T17:17:54Z
 blocks: null
 blocked_by: null
 status: null
@@ -16,10 +16,6 @@ related_cards: [M-062, M-063, M-066]
 **Unblocked 2026-08-04** — Chris: "fold that in before we do docker" (see
 `pi-web-adw-design.md` §6.1 point 5, §6.3). Moved from `blocked/` to `now/`, ahead of
 M-068 in the build sequence.
-
-Full evidence trail is in `pi-web-adw-design.md` §1.4 at repo root — read that section
-before touching this card, don't rediscover it. Summary: SSSF's source gives each agent
-identity a true system prompt (bare `pi` CLI's `--system-prompt` flag). Going through
 
 Full evidence trail is in `pi-web-adw-design.md` §1.4 at repo root — read that section
 before touching this card, don't rediscover it. Summary: SSSF's source gives each agent
@@ -84,6 +80,7 @@ plan.
 
 ## Signals
 <!-- append-only -->
+<!-- signal: claude 2026-08-04T17:17Z — claiming, starting before_agent_start extension investigation -->
 
 ## Decision log
 <!-- append-only, one line per entry, newest last -->
