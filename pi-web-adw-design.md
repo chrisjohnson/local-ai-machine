@@ -163,7 +163,72 @@ This is at least as good as — arguably better than — SSSF's own `--session-i
 create-or-continue semantics, since it survives a full pi-web process restart, not just
 within one run.
 
-### 1.4 No native queue/kanban/ticket system in pi-web, and nothing runs autonomously
+### 1.4 System prompts: architecturally separate from message history, and pi-web's API doesn't expose one
+
+Checked directly against the installed `@earendil-works/pi-coding-agent@0.82.1` SDK
+(`npm install`ed into `/tmp/pi-web-research` to read real `.d.ts` files, not guessed)
+and pi-continue's actual installed source on the box
+(`/home/piweb/.pi-web/npm/node_modules/pi-continue/`).
+
+**SSSF (source) has a true per-agent system prompt.** `sssf.config.yaml`'s roster gives
+each agent its own `system.md`, and `agent_pi.py:224` passes it straight to the bare
+`pi` CLI's real `--system-prompt` flag.
+
+**pi-web's session API has no equivalent, confirmed at the SDK level, not just the HTTP
+layer:**
+- `SessionManager.create(cwd, sessionDir?, options?)`'s `NewSessionOptions` type is
+  `{id?, parentSession?}` — no `systemPrompt` field. `piSessionService.ts`'s `start()`
+  (the method `POST /sessions` calls) only ever forwards `parentSession` to it.
+- The persisted session message model has exactly three roles — `"user" | "assistant" |
+  "toolResult"` — there is no `"system"` role to inject one into via the message history
+  at all.
+- `systemPrompt` **is** a real, separate, structurally distinct construct elsewhere in
+  the stack — `AgentSession._baseSystemPrompt`, sourced from `ResourceLoaderOptions`
+  (`resource-loader.d.ts:76`), which is itself populated from **CLI args**
+  (`cli/args.d.ts:11`), not from any persisted/discoverable config file `SessionManager`
+  or pi-web's HTTP layer touches. It's recomputed live at session bootstrap, not stored
+  as a message, and there's a dedicated extension hook to override it per turn:
+  `BeforeAgentStartEventResult.systemPrompt?: string` — "Replace the system prompt for
+  this turn. If multiple extensions return this, they are chained"
+  (`extensions/types.d.ts:797`, fired on `before_agent_start`).
+- **This is load-bearing elsewhere in the stack, not incidental**: pi-continue's own
+  prompt-construction code (`extensions/continue/src/prompt.ts:41`) builds
+  `{systemPrompt: assets.system.content, userPrompt: sections.join(...)}` as two
+  genuinely separate fields for its own summarizer calls.
+
+**Why this is a real gap, not a cosmetic one.** Compaction only ever acts on message
+history — a true system prompt is structurally immune to it. Our workaround (folding
+role identity into the first `POST /sessions/:id/prompt` text) puts it in ordinary
+message history instead, exposed to: (a) pi's own auto-compaction on a long-running
+phase, and (b) a pi-continue handoff, whose `brief` schema (`task`, `done_when`,
+`forbid`, `established`, `learned`, `open`, `next`) has **no slot for agent
+persona/identity** — a continuation session isn't guaranteed to inherit our role framing
+at all, since a true system prompt gets recomputed fresh at bootstrap regardless of
+history, and our substitute doesn't. Risk is low for short, single-turn phases (the
+common case) and real for phases with multi-turn gate-correction loops or anything long
+enough to approach a compaction/handoff trigger.
+
+**Decided 2026-08-03**: ship with the prepended-text workaround for now (§3.2/§3.3
+unchanged), accept the risk described above as a known limitation, and track the proper
+fix as **M-069**, filed to `blocked/` pending Chris's go/no-go — see §5.
+
+**A promising correction to how M-069 should actually be scoped**, found while digging
+into the mechanism above: the fix likely does **not** require patching pi-web's REST
+routes or its `SessionManager`/`AgentSession` construction internals at all. The
+`before_agent_start` → `systemPrompt` override hook (above) is an already-stable,
+sanctioned **extension** integration point — the same mechanism `pi-continue` itself
+uses to hook the agent loop, and the same "bake in a small extension" pattern already
+proven in this stack via `pi-continue-companion` (§1.2). A small pi-web-factory-owned
+extension that recognizes a factory-started session (e.g. via the `startupToken` field
+`POST /sessions` already accepts, described in its own source as "an opaque label the
+caller uses to recognise its own construction's startup reports" — exactly the kind of
+marker this needs) and returns the right role's `systemPrompt` on `before_agent_start`
+would get a true system prompt with **zero changes to `@jmfederico/pi-web`'s own
+source** — a better fit for the "preserve pi-web as-is" constraint than the REST-route
+patch this was originally framed as. M-069 records this as the primary approach to
+investigate first, not a REST patch as Plan A.
+
+### 1.5 No native queue/kanban/ticket system in pi-web, and nothing runs autonomously
 
 Grepped the full pi-web source for `cron`, `scheduler`, `chokidar`/`fs.watch`, `ticket`,
 `kanban`, `backlog`, `todo` — nothing resembling an autonomous work-picker exists.
@@ -241,7 +306,9 @@ One phase call, sketched as pseudocode regardless of eventual language:
 ```
 session_id = POST /sessions { cwd: project_path, startupToken: adw_id+phase_name }
 POST /sessions/{id}/model { provider: "local-litellm", modelId: role_for(agent_identity) }
-POST /sessions/{id}/prompt { text: phase_prompt }
+POST /sessions/{id}/prompt { text: role_identity_preamble(agent_identity) + "\n\n" + phase_prompt }
+  # role_identity_preamble = today's substitute for a true system prompt (§1.4) — decided
+  # 2026-08-03 to accept this for now rather than block on M-069
 wait_for_agent_end(session_id)      # WebSocket agent.end, or poll /status until isStreaming==false
   # if pendingAsk appears instead of a clean end: this phase is BLOCKED-ON-HUMAN, not
   # failed — surface it distinctly (maps naturally onto a future "needs-input" queue
@@ -328,11 +395,15 @@ default) to porting SSSF's Vue visualizer, to a future panel inside pi-web itsel
 - The `docker-compose.yml` `container_name: pi-web` collision between the `pi-web` and
   `jmfederico-pi-web` services (§1.2) — explicitly deferred, Chris will clean up later,
   not tracked as a card.
+- True per-role system prompts (§1.4) — decided to ship the prepended-text workaround
+  for now; the proper fix is filed as M-069, blocked on Chris's go/no-go, not on any
+  other card.
 
 ## 5. Units of work
 
-Broken out on the fleet board (`.fleet/board/`) as `M-061` through `M-068`, one card per
-module boundary in §3.1's tree, sequenced by real dependency (not arbitrary):
+Broken out on the fleet board (`.fleet/board/`) as `M-061` through `M-069`, one card per
+module boundary in §3.1's tree (plus M-069, the deferred system-prompt fix), sequenced
+by real dependency (not arbitrary):
 
 | Card | Builds | Depends on |
 |---|---|---|
@@ -344,6 +415,7 @@ module boundary in §3.1's tree, sequenced by real dependency (not arbitrary):
 | M-066 | `chains/` — phase orchestration wiring client + envelopes + gates + permissions + config together, mirroring SSSF's `adw_*.py` shape | M-062, M-063, M-064, M-065 |
 | M-067 | `cli.ts` — `factory run --project <path> --chain <name> [--session-id <id>] "<prompt>"` entrypoint | M-066 |
 | M-068 | Docker bake-in (`jmfederico-pi-web/Dockerfile` `COPY` + always-synced entrypoint step, mirroring the `pi-continue-companion` plugin pattern) + first live end-to-end smoke test | M-067 |
+| M-069 | True per-role system prompts via a `before_agent_start` pi extension (§1.4) — filed to `blocked/`, pending Chris's decision, not sequenced into the main build | none (independent; touches M-063's prompt construction and M-066's chain orchestration if/when picked up) |
 
 M-061 through M-065 have no dependencies on each other and can be worked in any order
 (or in parallel by separate sessions/worktrees) before M-066 wires them together. Card
