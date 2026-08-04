@@ -2,8 +2,8 @@
 id: M-065
 title: pi-web-factory — factory.config.yaml schema + config.ts loader
 initiative_id: null
-claimed_by: null
-claimed_at: null
+claimed_by: claude
+claimed_at: 2026-08-04T04:50:04Z
 blocks: null
 blocked_by: null
 status: null
@@ -45,6 +45,7 @@ needed for the roster itself.
 
 ## Signals
 <!-- append-only -->
+<!-- signal: claude 2026-08-04T04:50Z — claiming, starting factory.config.yaml + config.ts -->
 
 ## Decision log
 <!-- append-only, one line per entry, newest last -->
