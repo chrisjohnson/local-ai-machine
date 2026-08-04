@@ -36,15 +36,15 @@ gone):
   race (both come from the same in-memory session object, published synchronously).
 
 ## Plan
-1. [ ] `modules/piwebClient.ts`: `startSession(cwd, startupToken?)`,
+1. [x] `modules/piwebClient.ts`: `startSession(cwd, startupToken?)`,
    `setModel(sessionId, provider, modelId)`, `prompt(sessionId, text)`.
-2. [ ] Completion wait-loop: prefer the `/events` WebSocket for `agent.end`; fall back to
+2. [x] Completion wait-loop: prefer the `/events` WebSocket for `agent.end`; fall back to
    polling `/status` on a short interval if the socket drops. Return a discriminated
    result: `{status: "done", messages}` | `{status: "blocked-on-human", pendingAsk}` |
    `{status: "error", detail}`.
-3. [ ] `getMessages(sessionId)` wrapper + a helper to pull the last assistant message's
+3. [x] `getMessages(sessionId)` wrapper + a helper to pull the last assistant message's
    text back out (for envelope parsing in M-063/M-066).
-4. [ ] Integration test against the real, running `pi-web` container on
+4. [x] Integration test against the real, running `pi-web` container on
    `local-ai-machine` (not a mock) — start a session, set model to
    `local-litellm`/`medium-moe`, send a trivial prompt, confirm the wait-loop returns
    `done` with the expected message content. Use a scratch/throwaway `cwd` so this
@@ -53,8 +53,35 @@ gone):
 ## Signals
 <!-- append-only -->
 <!-- signal: claude 2026-08-04T04:25Z — claiming, starting piwebClient.ts -->
+<!-- signal: claude 2026-08-04T05:05Z — done, moved to done/ -->
 
 ## Decision log
 <!-- append-only, one line per entry, newest last -->
+- 2026-08-04 (claude): confirmed live against the real server (not just source-read)
+  that `POST /model` returns a full `SessionStatus`, not a bare ack, and that `GET
+  /messages` with no query params returns a bare `SessionMessage[]` (paging params
+  switch it to a `{messages,start,total}` shape) — neither was fully nailed down in
+  the design doc, both now encoded in the client's return types.
+- 2026-08-04 (claude): found and handled a real Bun-specific wrinkle not mentioned
+  anywhere in prior research — Bun delivers WebSocket text frames as `Buffer`
+  payloads, not JS strings, so `event.data` needed explicit decoding
+  (`bufferLikeToText`, handling `ArrayBuffer`/typed-array/`Blob`/Node-`Buffer` shapes).
+  Without this the WebSocket path would have silently never matched `agent.end` and
+  always fallen through to polling — verified the poll-only path independently too
+  (`forcePollOnly: true`) so the fallback itself is proven, not just assumed correct.
+- 2026-08-04 (claude): `DEFAULT_BASE_URL` hardcodes this box's LAN IP
+  (`http://192.168.1.21:8080/api`) as a dev-time convenience — `baseUrl` is a
+  parameter on every function, so this is not load-bearing; M-066/M-068 will supply
+  the real value (loopback, once baked into the container) rather than relying on
+  this default.
+- 2026-08-04 (claude): verified independently before committing — reran `tsc --noEmit`
+  (clean), the unit tests (4 pass), and the live integration test myself (1 pass,
+  3.95s), then confirmed via `GET /sessions?cwd=/tmp` that the test's scratch session
+  was actually archived+deleted afterward, not just claimed to be.
 
 ## Handoff notes
+`waitForCompletion(baseUrl, sessionId, opts?)` is the main entrypoint M-066's chain
+orchestration will call after `prompt(...)`. `lastAssistantText(result.messages)` is
+what M-063's envelope parsing will feed its JSON parser. Not yet wired to
+`tracer.ts` (M-061) — that wiring is M-066's job, this card intentionally kept the
+client standalone/testable in isolation.
