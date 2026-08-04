@@ -1,9 +1,17 @@
 /**
  * Config: loader/validator for `factory.config.yaml`, TS port of upstream
  * SSSF's `sssf.config.yaml` roster concept
- * (`adws/adw_modules/agents.py:load_config`/`validate`), extended with what a
- * *shared, multi-project* factory needs that a per-repo one didn't:
- * `projects:`, a map of per-project quality-gate commands (design doc §4).
+ * (`adws/adw_modules/agents.py:load_config`/`validate`).
+ *
+ * ── Per-project quality-gate config lives in the target project's own repo ─
+ * Earlier revisions of this module (M-065) kept per-project quality-gate
+ * commands (`test`/`typecheck`/`lint`) centralized here, in a `projects:` map
+ * keyed by absolute path inside `factory.config.yaml`. M-070 moved that OUT:
+ * each target project now owns and versions its own `<project>/.pi-web-
+ * factory.yaml` file (same shape, no path key needed — the file's location
+ * IS the key). `factory.config.yaml` itself keeps only what's genuinely
+ * pi-web-factory's own config: the agent roster (`defaults` + `agents`). See
+ * `projectConfigFor` below for the project-local lookup this replaced.
  *
  * ── The provider/model-id bridge ────────────────────────────────────────
  * Upstream (and this project's own YAML, for human-readable authoring) writes
@@ -41,6 +49,7 @@
  */
 
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 
@@ -101,16 +110,20 @@ const AgentEntrySchema = z.object({
   writes: z.array(z.string()).nullish(),
 });
 
-const ProjectEntrySchema = z.object({
-  test: z.string().optional(),
-  typecheck: z.string().optional(),
-  lint: z.string().optional(),
-});
-
 const RawFactoryConfigSchema = z.object({
   defaults: DefaultsSchema,
   agents: z.array(AgentEntrySchema).min(1),
-  projects: z.record(z.string(), ProjectEntrySchema).default({}),
+});
+
+// ── project-local quality-gate config (`<project>/.pi-web-factory.yaml`) ──
+
+/** Filename each target project owns, at its own repo root (M-070). */
+export const PROJECT_CONFIG_FILENAME = ".pi-web-factory.yaml";
+
+const ProjectConfigFileSchema = z.object({
+  test: z.string().optional(),
+  typecheck: z.string().optional(),
+  lint: z.string().optional(),
 });
 
 // ── Loaded/validated shape (what M-066 consumes) ────────────────────────
@@ -127,7 +140,7 @@ export interface AgentConfig {
 }
 
 export interface ProjectConfig {
-  /** Absolute path this entry was keyed under in factory.config.yaml. */
+  /** Absolute path to the project this config was read from. */
   path: string;
   test?: string;
   typecheck?: string;
@@ -142,8 +155,6 @@ export interface FactoryConfig {
     protectedFiles: string[];
   };
   agents: AgentConfig[];
-  /** Keyed by the same absolute path as the source YAML. Use projectConfigFor, not direct indexing. */
-  projects: Record<string, ProjectConfig>;
 }
 
 export class ConfigError extends Error {
@@ -205,12 +216,7 @@ export function loadConfigFromString(text: string, sourceLabel = "<config>"): Fa
     };
   });
 
-  const projects: Record<string, ProjectConfig> = {};
-  for (const [path, entry] of Object.entries(parsed.projects)) {
-    projects[path] = { path, ...entry };
-  }
-
-  return { defaults, agents, projects };
+  return { defaults, agents };
 }
 
 /** Loads and validates `factory.config.yaml` (or another path) from disk. */
@@ -238,21 +244,53 @@ export function agentConfigFor(config: FactoryConfig, name: string): AgentConfig
 }
 
 /**
- * Resolves per-project quality-gate config for an absolute project path.
- * Unknown path -> a specific, actionable error naming what WAS configured —
- * never a silent fallback to some default project's commands, since running
+ * Resolves per-project quality-gate config by reading `<absolutePath>/
+ * .pi-web-factory.yaml` — a file the TARGET PROJECT owns and versions
+ * itself (M-070), not a centralized map inside pi-web-factory's own
+ * `factory.config.yaml`. Takes no `FactoryConfig` — project-local lookup
+ * doesn't depend on the agent roster at all, and threading an unused
+ * parameter through just to preserve a signature shape would be more
+ * disruptive than updating the (one) call site.
+ *
+ * Missing file -> a specific `ConfigError` naming the expected path — same
+ * discipline the old centralized lookup had for an unknown project key, just
+ * a different failure mode now (file-not-found instead of key-not-in-map),
+ * never a silent fallback to some default project's commands (running
  * project A's test command against project B's cwd would be a worse failure
- * mode than refusing to run at all.
+ * mode than refusing to run at all). Malformed file -> a specific
+ * `ConfigError` carrying the actual Zod validation detail, same as every
+ * other parse failure in this module.
  */
-export function projectConfigFor(config: FactoryConfig, absolutePath: string): ProjectConfig {
-  const project = config.projects[absolutePath];
-  if (!project) {
-    const known = Object.keys(config.projects);
-    const knownList = known.length > 0 ? known.join(", ") : "(none configured)";
+export function projectConfigFor(absolutePath: string): ProjectConfig {
+  const configPath = join(absolutePath, PROJECT_CONFIG_FILENAME);
+
+  let text: string;
+  try {
+    text = readFileSync(configPath, "utf8");
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
     throw new ConfigError(
-      `project ${JSON.stringify(absolutePath)} is not in factory.config.yaml's projects: map — ` +
-        `known projects: ${knownList}`,
+      `${configPath} does not exist — every project driven by pi-web-factory must have its own ` +
+        `${PROJECT_CONFIG_FILENAME} at its repo root, declaring its test/typecheck/lint commands ` +
+        `(${detail})`,
     );
   }
-  return project;
+
+  let raw: unknown;
+  try {
+    raw = parseYaml(text);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new ConfigError(`${configPath}: could not parse YAML: ${detail}`);
+  }
+
+  const result = ProjectConfigFileSchema.safeParse(raw);
+  if (!result.success) {
+    const issues = result.error.issues
+      .map((issue) => `  - ${issue.path.join(".") || "(root)"}: ${issue.message}`)
+      .join("\n");
+    throw new ConfigError(`${configPath}: invalid config:\n${issues}`);
+  }
+
+  return { path: absolutePath, ...result.data };
 }

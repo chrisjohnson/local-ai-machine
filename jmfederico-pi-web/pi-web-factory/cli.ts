@@ -238,8 +238,11 @@ async function main(): Promise<number> {
     // through to the chain explicitly: planBuildTest.ts's own `testCmd`
     // option does not look this up itself (see that file's doc comment on
     // `testCmd` vs its actual behavior) — cli.ts, as the thin wrapper, is
-    // where "look up this project's configured test command" belongs.
-    testCmd = projectConfigFor(config, args.project).test;
+    // where "look up this project's configured test command" belongs. As of
+    // M-070 this reads `<project>/.pi-web-factory.yaml` (a file the target
+    // project owns) rather than a centralized map in `config` — `config`
+    // itself is no longer a parameter here.
+    testCmd = projectConfigFor(args.project).test;
   } catch (error) {
     if (error instanceof ConfigError) {
       console.error(error.message);

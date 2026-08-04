@@ -1,9 +1,9 @@
-# factory.config.yaml — pi-web-factory's agent roster + per-project config.
+# factory.config.yaml — pi-web-factory's agent roster.
 #
 # Shape ported from upstream SSSF's `sssf.config.yaml` (agent identity -> model/
-# thinking/writes), with one addition upstream doesn't need: `projects:`, a map
-# keyed by absolute path, since one factory instance spans N target projects
-# instead of upstream's one-config-per-repo model (pi-web-adw-design.md §4).
+# thinking/writes). Per-project quality-gate config (test/typecheck/lint) is
+# NOT here — as of M-070, each target project owns and versions its own
+# `<project>/.pi-web-factory.yaml` (see modules/config.ts's projectConfigFor).
 #
 # Model values are `provider/model-id` strings against this box's real,
 # already-seeded `local-litellm` provider (`jmfederico-pi-web`'s own
@@ -72,22 +72,3 @@ agents:
       - app_docs/
       - "**/*.md"
       - "*.md"
-
-# Per-project overrides, keyed by absolute path — what M-063's tests_pass gate
-# (modules/gates.ts) needs per target project, since a shared factory can't
-# hardcode one repo's quality commands (design doc §4).
-#
-# printer-dashboard is a REAL project on this box (the same one
-# jmfederico-pi-web's own docker-compose.yml working_dir already targets) —
-# not a fictional worked example. Its actual package.json (confirmed
-# 2026-08-04) has only test:e2e (playwright test) / test:e2e:headed /
-# test:e2e:debug / test:e2e:ui — no plain `test` or `lint` script. `lint` is
-# therefore omitted below rather than invented; a real eslint/lint command
-# does not exist in this repo today. `typecheck` uses `npx tsc --noEmit`
-# directly since `typescript` is a real devDependency even without a
-# package.json script wrapping it.
-projects:
-  /home/chris/turnstone-workspace/printer-dashboard:
-    test: npx playwright test
-    typecheck: npx tsc --noEmit
-    # lint: intentionally omitted — no lint script configured in this repo.

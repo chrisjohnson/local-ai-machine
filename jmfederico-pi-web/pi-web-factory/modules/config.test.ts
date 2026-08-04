@@ -1,12 +1,14 @@
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   agentConfigFor,
   ConfigError,
   loadConfig,
   loadConfigFromString,
   parseModelRef,
+  PROJECT_CONFIG_FILENAME,
   projectConfigFor,
 } from "./config.ts";
 
@@ -59,15 +61,6 @@ describe("the shipped factory.config.yaml", () => {
     }
   });
 
-  test("includes the real printer-dashboard project with honest quality commands", () => {
-    const config = loadConfig(REAL_CONFIG_PATH);
-    const project = projectConfigFor(config, "/home/chris/turnstone-workspace/printer-dashboard");
-    expect(project.test).toBeTruthy();
-    expect(project.typecheck).toBeTruthy();
-    // No lint script exists in the real repo — must not be invented.
-    expect(project.lint).toBeUndefined();
-  });
-
   test("declares protected_files covering this project's own machinery", () => {
     const config = loadConfig(REAL_CONFIG_PATH);
     expect(config.defaults.protectedFiles).toContain("modules/");
@@ -97,10 +90,6 @@ agents:
       - specs/
   - name: build
     thinking: low
-projects:
-  /abs/path/to/project:
-    test: npm test
-    lint: npm run lint
 `;
 
 describe("a synthetic valid config", () => {
@@ -208,38 +197,85 @@ agents:
   });
 });
 
-// ── unknown project path ────────────────────────────────────────────────
+// ── projectConfigFor: project-local .pi-web-factory.yaml ────────────────
+//
+// M-070: per-project quality-gate config moved out of factory.config.yaml's
+// centralized `projects:` map into a file the target project owns itself,
+// at <project>/.pi-web-factory.yaml. These tests use a real temp dir with a
+// real file on disk, matching this project's established real-filesystem
+// testing style (see gates.test.ts).
 
-describe("projectConfigFor with an unknown project path", () => {
-  test("throws a clear, specific error rather than a silent fallback", () => {
-    const config = loadConfigFromString(MINIMAL_VALID_YAML);
-    expect(() => projectConfigFor(config, "/nonexistent/project")).toThrow(ConfigError);
+describe("projectConfigFor reading a project-local .pi-web-factory.yaml", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "pi-web-factory-config-test-"));
   });
 
-  test("error message names the requested path and lists known projects", () => {
-    const config = loadConfigFromString(MINIMAL_VALID_YAML);
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("loads a valid project-local file from disk", () => {
+    writeFileSync(
+      join(dir, PROJECT_CONFIG_FILENAME),
+      "test: npm test\ntypecheck: npx tsc --noEmit\nlint: npm run lint\n",
+    );
+
+    const project = projectConfigFor(dir);
+    expect(project.path).toBe(dir);
+    expect(project.test).toBe("npm test");
+    expect(project.typecheck).toBe("npx tsc --noEmit");
+    expect(project.lint).toBe("npm run lint");
+  });
+
+  test("a field can be legitimately omitted (e.g. no lint command configured)", () => {
+    writeFileSync(join(dir, PROJECT_CONFIG_FILENAME), "test: go test ./...\ntypecheck: go vet ./...\n");
+
+    const project = projectConfigFor(dir);
+    expect(project.test).toBe("go test ./...");
+    expect(project.typecheck).toBe("go vet ./...");
+    expect(project.lint).toBeUndefined();
+  });
+
+  test("missing file throws a specific ConfigError naming the expected path", () => {
     try {
-      projectConfigFor(config, "/nonexistent/project");
+      projectConfigFor(dir);
       throw new Error("expected projectConfigFor to throw");
     } catch (error) {
       expect(error).toBeInstanceOf(ConfigError);
       const message = (error as Error).message;
-      expect(message).toContain("/nonexistent/project");
-      expect(message).toContain("/abs/path/to/project");
+      expect(message).toContain(join(dir, PROJECT_CONFIG_FILENAME));
+      expect(message).toContain("does not exist");
     }
   });
 
-  test("a config with no projects at all still names the requested path, not silently pass", () => {
-    const yaml = `
-defaults:
-  model: local-litellm/medium-moe
-  thinking: medium
-agents:
-  - name: plan
-    model: local-litellm/big-moe
-`;
-    const config = loadConfigFromString(yaml);
-    expect(() => projectConfigFor(config, "/anything")).toThrow(/none configured/);
+  test("malformed YAML throws a specific ConfigError with the parse detail", () => {
+    writeFileSync(join(dir, PROJECT_CONFIG_FILENAME), "{ this: is not: valid: yaml");
+
+    try {
+      projectConfigFor(dir);
+      throw new Error("expected projectConfigFor to throw");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ConfigError);
+      const message = (error as Error).message;
+      expect(message).toContain(join(dir, PROJECT_CONFIG_FILENAME));
+      expect(message).toContain("could not parse YAML");
+    }
+  });
+
+  test("a field with the wrong type throws with the actual Zod validation detail", () => {
+    writeFileSync(join(dir, PROJECT_CONFIG_FILENAME), "test:\n  - not-a-string\n");
+
+    try {
+      projectConfigFor(dir);
+      throw new Error("expected projectConfigFor to throw");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ConfigError);
+      const message = (error as Error).message;
+      expect(message).toContain(join(dir, PROJECT_CONFIG_FILENAME));
+      expect(message).toContain("test");
+    }
   });
 });
 

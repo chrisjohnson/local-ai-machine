@@ -35,7 +35,7 @@ export interface PlanBuildTestOptions {
   cwd: string;
   /** The task description handed to the `plan` agent. */
   taskPrompt: string;
-  /** Test command to gate on. Falls back to `projectConfigFor(config, cwd).test` when omitted — pass explicitly for a project not registered in factory.config.yaml's `projects:` map (e.g. a scratch test repo). */
+  /** Test command to gate on. Falls back to `projectConfigFor(cwd).test` when omitted — pass explicitly for a project without a `<project>/.pi-web-factory.yaml` (e.g. a scratch test repo). */
   testCmd?: string;
   /**
    * Local filesystem cwd for the `testsPass` gate's `sh -c` shell-out
