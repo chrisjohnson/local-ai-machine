@@ -186,6 +186,76 @@ describe("runAgentPhase — retry-on-parse-failure loop", () => {
     expect(promptCalls[1]).toContain("build");
   });
 
+  // M-069: before_agent_start (the hook pi-web-factory-prompts uses to
+  // inject a true per-role system prompt) fires on EVERY prompt submission,
+  // not just a phase's first — so a role marker passed as promptPrefix must
+  // survive a retry-on-parse-failure correction too, not just the initial
+  // prompt. See run.ts's promptPrefix doc comment and piwebClient.ts's
+  // roleMarker for the full context.
+  test("promptPrefix rides on every prompt in the phase, including retry corrections", async () => {
+    const validEnvelope = { status: "success", summary: "fixed", artifacts: [], notes_for_next_agent: "" };
+    const { promptCalls } = mockFetchSequence({
+      statusSequence: [{ isStreaming: false }, { isStreaming: false }],
+      assistantTexts: ["this is not json at all", JSON.stringify(validEnvelope)],
+    });
+
+    const result = await runAgentPhase({
+      tracer,
+      baseUrl: BASE_URL,
+      adwId: "adw_test2b",
+      phaseId: "adw_test2b_build",
+      seq: 1,
+      cwd,
+      agent,
+      sessionId: "sess_2b",
+      modelAlreadySet: false,
+      promptText: "do the thing",
+      promptPrefix: "[[pi-web-factory:role=build]]",
+      envelopeSchema: TestEnvelopeSchema,
+      outputTypeName: "build",
+      protectedFiles: [],
+      waitOptions: { forcePollOnly: true },
+    });
+
+    expect(result.status).toBe("success");
+    if (result.status !== "success") throw new Error("expected success");
+    expect(result.attempts).toBe(2);
+
+    expect(promptCalls.length).toBe(2);
+    // Prefix present on the initial prompt...
+    expect(promptCalls[0]).toBe("[[pi-web-factory:role=build]]\ndo the thing");
+    // ...AND on the retry correction, not dropped.
+    expect(promptCalls[1]?.startsWith("[[pi-web-factory:role=build]]\n")).toBe(true);
+    expect(promptCalls[1]).toContain("did not parse as valid JSON");
+  });
+
+  test("no promptPrefix: prompt text is sent unmodified (backward-compatible default)", async () => {
+    const validEnvelope = { status: "success", summary: "did it", artifacts: [], notes_for_next_agent: "" };
+    const { promptCalls } = mockFetchSequence({
+      statusSequence: [{ isStreaming: false }],
+      assistantTexts: [JSON.stringify(validEnvelope)],
+    });
+
+    await runAgentPhase({
+      tracer,
+      baseUrl: BASE_URL,
+      adwId: "adw_test2c",
+      phaseId: "adw_test2c_build",
+      seq: 1,
+      cwd,
+      agent,
+      sessionId: "sess_2c",
+      modelAlreadySet: false,
+      promptText: "do the thing",
+      envelopeSchema: TestEnvelopeSchema,
+      outputTypeName: "build",
+      protectedFiles: [],
+      waitOptions: { forcePollOnly: true },
+    });
+
+    expect(promptCalls[0]).toBe("do the thing");
+  });
+
   test("bounded attempts: fails as 'unparseable' with the last gate report attached after maxParseAttempts", async () => {
     const { promptCalls } = mockFetchSequence({
       statusSequence: [{ isStreaming: false }, { isStreaming: false }, { isStreaming: false }],

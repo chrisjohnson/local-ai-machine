@@ -60,4 +60,19 @@ if [ -d /app/.pi-web/plugins-seed/pi-continue-companion ]; then
   cp -r /app/.pi-web/plugins-seed/pi-continue-companion "$CONFIG_ROOT/plugins/pi-continue-companion"
 fi
 
+# Always sync pi-web-factory-prompts (our own pi-coding-agent EXTENSION, not
+# user-editable via the UI, and not a PI WEB plugin like the one above -- see
+# plugins/pi-web-factory-prompts/index.ts) into place on every start, same
+# reasoning as pi-continue-companion's sync above: actively-developed code
+# baked into the image, a container restart must always pick up the latest
+# build. Lands in extensions/ (one of pi-coding-agent's own auto-discovered
+# global extension locations, *.ts or */index.ts under
+# $PI_CODING_AGENT_DIR/extensions/), not plugins/ -- these are two genuinely
+# different mechanisms (M-069).
+if [ -d /app/.pi-web/extensions-seed/pi-web-factory-prompts ]; then
+  mkdir -p "$CONFIG_ROOT/extensions"
+  rm -rf "$CONFIG_ROOT/extensions/pi-web-factory-prompts"
+  cp -r /app/.pi-web/extensions-seed/pi-web-factory-prompts "$CONFIG_ROOT/extensions/pi-web-factory-prompts"
+fi
+
 exec "$@"

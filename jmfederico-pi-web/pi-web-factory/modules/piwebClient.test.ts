@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { lastAssistantText, type SessionMessage } from "./piwebClient.ts";
+import { lastAssistantText, roleMarker, roleMarkerPrompt, type SessionMessage } from "./piwebClient.ts";
 
 describe("lastAssistantText", () => {
   test("returns undefined when there is no assistant message", () => {
@@ -48,5 +48,21 @@ describe("lastAssistantText", () => {
       },
     ];
     expect(lastAssistantText(messages)).toBe("part one part two");
+  });
+});
+
+// M-069: role marker helpers — the counterpart of
+// plugins/pi-web-factory-prompts/index.ts's parseRoleMarker. Keep these two
+// tests' expectations in sync with that file's ROLE_MARKER_PREFIX/SUFFIX if
+// either side's format ever changes.
+describe("roleMarker / roleMarkerPrompt", () => {
+  test("roleMarker wraps the role name in the exact bracket format the extension parses", () => {
+    expect(roleMarker("build")).toBe("[[pi-web-factory:role=build]]");
+  });
+
+  test("roleMarkerPrompt prepends the marker on its own line, ahead of the prompt text", () => {
+    expect(roleMarkerPrompt("plan", "Task: do the thing")).toBe(
+      "[[pi-web-factory:role=plan]]\nTask: do the thing",
+    );
   });
 });

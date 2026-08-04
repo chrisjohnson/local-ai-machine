@@ -22,7 +22,7 @@
 import { randomUUID } from "node:crypto";
 import { PlanOutputSchema, BuildOutputSchema, type BuildOutput, type PlanOutput } from "../modules/envelopes.ts";
 import { testsPass } from "../modules/gates.ts";
-import { DEFAULT_BASE_URL, startSession } from "../modules/piwebClient.ts";
+import { DEFAULT_BASE_URL, startSession, roleMarker } from "../modules/piwebClient.ts";
 import { agentConfigFor, type FactoryConfig } from "../modules/config.ts";
 import { Tracer, type GateReport } from "../modules/tracer.ts";
 import { runAgentPhase, type RunAgentPhaseResult } from "../modules/run.ts";
@@ -116,8 +116,25 @@ export async function planBuildTest(opts: PlanBuildTestOptions): Promise<PlanBui
   const session = opts.sessionId
     ? { id: opts.sessionId }
     : await startSession(baseUrl, opts.cwd, `${adwId}:planBuildTest`);
+  // Every phase's prompt carries a role marker (M-069) so
+  // pi-web-factory-prompts' before_agent_start hook can inject the right
+  // role's true system prompt for THAT turn — see piwebClient.ts's
+  // roleMarker doc comment. before_agent_start fires on every user prompt,
+  // not just a session's first (confirmed against the pi-coding-agent
+  // extensions.md lifecycle diagram), so this applies uniformly whether the
+  // session is freshly started here or resumed via opts.sessionId — a
+  // resumed session's next phase still needs its own role's system prompt
+  // re-injected for its own turn. Passed as runAgentPhase's promptPrefix
+  // (not pre-concatenated into promptText) so it also rides on every
+  // retry-on-parse-failure correction within a phase, not just that phase's
+  // first prompt — run.ts's promptPrefix doc comment explains why that
+  // distinction matters here.
 
   // ── phase 1: plan ──────────────────────────────────────────────────────
+  const planPromptText = `Task: ${opts.taskPrompt}\n\n` +
+    `Reply with ONLY a single valid JSON object matching this schema (no prose, no markdown fences):\n` +
+    `{"status": "success"|"fail", "summary": string, "artifacts": string[], ` +
+    `"notes_for_next_agent": string, "commit_message": string}`;
   const planResult = await runAgentPhase({
     tracer: opts.tracer,
     baseUrl,
@@ -128,11 +145,11 @@ export async function planBuildTest(opts: PlanBuildTestOptions): Promise<PlanBui
     agent: planAgent,
     sessionId: session.id,
     modelAlreadySet: false,
-    promptText:
-      `You are the "plan" agent. Task: ${opts.taskPrompt}\n\n` +
-      `Reply with ONLY a single valid JSON object matching this schema (no prose, no markdown fences):\n` +
-      `{"status": "success"|"fail", "summary": string, "artifacts": string[], ` +
-      `"notes_for_next_agent": string, "commit_message": string}`,
+    // Role identity ("you are the plan agent...") now comes from a true
+    // system prompt (M-069), delivered via the role marker prefix below —
+    // promptText itself is just the task, no more prepended role paragraph.
+    promptText: planPromptText,
+    promptPrefix: roleMarker("plan"),
     envelopeSchema: PlanOutputSchema,
     outputTypeName: "plan",
     protectedFiles,
@@ -146,6 +163,16 @@ export async function planBuildTest(opts: PlanBuildTestOptions): Promise<PlanBui
   if (planResult.status !== "success") throw new Error("unreachable: non-success plan result without an outcome");
 
   // ── phase 2: build (same session — continuation, not a fresh session) ──
+  // Still marked (M-069): before_agent_start fires on EVERY prompt, not just
+  // a session's first, so the build phase's turn needs its own role marker
+  // to swap the injected system prompt from "plan" to "build" even though
+  // it's the same underlying pi-web session/model-continuation.
+  const buildPromptText =
+    `Continuing from the plan you just produced, using your available tools, actually implement ` +
+    `the task now (write real files to disk). Plan summary: ${planResult.envelope.summary}\n\n` +
+    `Once done, reply with ONLY a single valid JSON object matching this schema (no prose, no markdown fences):\n` +
+    `{"status": "success"|"fail", "summary": string, "artifacts": string[], ` +
+    `"notes_for_next_agent": string, "changed_files": string[], "commit_message": string}`;
   const buildResult = await runAgentPhase({
     tracer: opts.tracer,
     baseUrl,
@@ -156,13 +183,8 @@ export async function planBuildTest(opts: PlanBuildTestOptions): Promise<PlanBui
     agent: buildAgent,
     sessionId: session.id,
     modelAlreadySet: false, // different agent identity => different model, must be (re-)set
-    promptText:
-      `You are the "build" agent, continuing from the plan you just produced. ` +
-      `Using your available tools, actually implement the task now (write real files to disk). ` +
-      `Plan summary: ${planResult.envelope.summary}\n\n` +
-      `Once done, reply with ONLY a single valid JSON object matching this schema (no prose, no markdown fences):\n` +
-      `{"status": "success"|"fail", "summary": string, "artifacts": string[], ` +
-      `"notes_for_next_agent": string, "changed_files": string[], "commit_message": string}`,
+    promptText: buildPromptText,
+    promptPrefix: roleMarker("build"),
     envelopeSchema: BuildOutputSchema,
     outputTypeName: "build",
     protectedFiles,

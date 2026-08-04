@@ -91,6 +91,19 @@ COPY pi-continue.seed.json /app/.pi-web/pi-continue.seed.json
 # docker-entrypoint.sh for the sync step.
 COPY plugins/pi-continue-companion /app/.pi-web/plugins-seed/pi-continue-companion
 
+# pi-web-factory-prompts: our own pi-coding-agent EXTENSION (a different
+# mechanism from the PI WEB plugin above -- see plugins/pi-web-factory-prompts/
+# index.ts's header comment for the distinction). Gives pi-web-factory agent
+# sessions a true per-role system prompt via the before_agent_start hook
+# (M-069). Baked into the image and always-synced (not seed-once) on every
+# container start, same reasoning as pi-continue-companion above. Lands at
+# $PI_CODING_AGENT_DIR/extensions/pi-web-factory-prompts/index.ts, one of
+# pi-coding-agent's own auto-discovered global extension locations
+# (~/.pi/agent/extensions/*/index.ts, here rooted at PI_CODING_AGENT_DIR
+# instead of the default ~/.pi/agent -- see docker-entrypoint.sh) -- no
+# settings.json packages: entry needed, unlike npm:pi-continue.
+COPY plugins/pi-web-factory-prompts /app/.pi-web/extensions-seed/pi-web-factory-prompts
+
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 

@@ -158,6 +158,52 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+// ── Role marker (M-069: true system prompt via before_agent_start) ───────
+
+/**
+ * Builds the `[[pi-web-factory:role=<name>]]` marker `pi-web-factory-prompts`
+ * (the pi-coding-agent EXTENSION at
+ * `jmfederico-pi-web/plugins/pi-web-factory-prompts/index.ts`, baked into
+ * the `jmfederico-pi-web` container) matches against a prompt's text to
+ * decide which role's system prompt to inject via `before_agent_start` for
+ * that turn — the extension only sees `event.prompt` at that hook, there is
+ * no separate out-of-band channel (`startupToken`, `POST /sessions`' own
+ * opaque label field, does not reach the pi-coding-agent extension runtime
+ * at all — confirmed absent, zero references, in the installed
+ * `@earendil-works/pi-coding-agent@0.82.1` SDK — see `pi-web-adw-design.md`
+ * §1.4 and the extension's own header comment for the full trail).
+ *
+ * `before_agent_start` fires on EVERY prompt submission, not just a
+ * session's first (confirmed against the pi-coding-agent SDK's own
+ * `extensions.md` lifecycle diagram) — the injected system prompt from a
+ * previous turn does not persist automatically. So this marker must ride on
+ * every prompt for a given role's turn, including retry-on-parse-failure
+ * corrections within the same phase, not just a session's opening prompt.
+ * `run.ts`'s `runAgentPhase` takes this as `promptPrefix` and re-applies it
+ * on every `sendPrompt` call within a phase (its own doc comment explains
+ * why) — call sites should generally use that rather than pre-concatenating
+ * with `roleMarkerPrompt` below, which only covers a single prompt.
+ *
+ * This is the real system-prompt delivery mechanism now — chain code no
+ * longer prepends full role-identity paragraphs to prompt text itself (that
+ * text now lives once, in `plugins/pi-web-factory-prompts/roles.json`, kept
+ * in sync with this constant by hand until M-075 unifies config).
+ */
+export function roleMarker(role: string): string {
+  return `[[pi-web-factory:role=${role}]]`;
+}
+
+/**
+ * Prepends `roleMarker(role)` to `promptText` on its own line, for the rare
+ * one-shot call site that sends a single prompt outside `runAgentPhase`'s
+ * `promptPrefix` machinery. Most chain code should prefer passing
+ * `promptPrefix: roleMarker(role)` to `runAgentPhase` instead, so the marker
+ * survives retries within a phase too.
+ */
+export function roleMarkerPrompt(role: string, promptText: string): string {
+  return `${roleMarker(role)}\n${promptText}`;
+}
+
 // ── Session lifecycle ───────────────────────────────────────────────────
 
 /**

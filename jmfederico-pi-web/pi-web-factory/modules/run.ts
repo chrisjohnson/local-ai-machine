@@ -67,6 +67,19 @@ export interface RunAgentPhaseOptions<Schema extends ZodType> {
    */
    modelAlreadySet: boolean;
   promptText: string;
+  /**
+   * Optional text prepended to EVERY prompt this phase sends to pi-web,
+   * including retry-on-parse-failure corrections — not just the first one.
+   * Added for M-069's role marker (`piwebClient.ts`'s `roleMarker`/
+   * `roleMarkerPrompt`): `before_agent_start` (the hook
+   * `pi-web-factory-prompts` uses to inject a true system prompt) fires on
+   * EVERY prompt submission, not just a session's first, so a marker that
+   * only rides on the initial `promptText` would silently lose the injected
+   * system prompt on any retry attempt. `run.ts` stays otherwise agnostic to
+   * what this prefix means (chain code owns that) — it just guarantees it's
+   * never dropped mid-phase.
+   */
+  promptPrefix?: string;
   envelopeSchema: Schema;
   /** Human-readable name of the envelope's output type, for tracing/db columns (e.g. "plan", "build"). */
   outputTypeName: string;
@@ -126,6 +139,7 @@ export async function runAgentPhase<Schema extends ZodType>(
     sessionId,
     modelAlreadySet,
     promptText,
+    promptPrefix,
     envelopeSchema,
     outputTypeName,
     protectedFiles,
@@ -170,6 +184,8 @@ export async function runAgentPhase<Schema extends ZodType>(
     payload: { coding_agent: "pi", model: agent.model, session_id: sessionId },
   });
 
+  const withPrefix = (text: string): string => (promptPrefix ? `${promptPrefix}\n${text}` : text);
+
   let currentPromptText = promptText;
   let attempts = 0;
   let messages: SessionMessage[] | undefined;
@@ -177,7 +193,7 @@ export async function runAgentPhase<Schema extends ZodType>(
 
   for (;;) {
     attempts += 1;
-    await sendPrompt(baseUrl, sessionId, currentPromptText);
+    await sendPrompt(baseUrl, sessionId, withPrefix(currentPromptText));
     const result = await waitForCompletion(baseUrl, sessionId, waitOptions);
 
     if (result.status === "blocked-on-human") {
