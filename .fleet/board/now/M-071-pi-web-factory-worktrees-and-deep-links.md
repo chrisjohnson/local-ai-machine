@@ -2,8 +2,8 @@
 id: M-071
 title: pi-web-factory — git-worktree sessions, pi-web Project registration, real deep-links
 initiative_id: null
-claimed_by: null
-claimed_at: null
+claimed_by: claude
+claimed_at: 2026-08-04T21:23:44Z
 blocks: null
 blocked_by: null
 status: null
@@ -35,11 +35,10 @@ This also happens to close a design gap flagged since the very first pass of thi
 design doc (§0/§4): no branch-per-run isolation. Worktree-per-run (or whatever
 sharding Chris picks, see below) gets that for free.
 
-**Open question, Chris's call, not decided by this card:** worktree sharding scheme —
-one worktree per chain run (max isolation, needs a cleanup policy), one shared
-worktree per project reused across runs (simpler, no cleanup, but runs can collide),
-or per chain-type. Ask before implementing step 2 below; everything else can proceed
-regardless of the answer.
+**Resolved 2026-08-04**: one worktree per Workflow Run (max isolation — closes the
+long-standing "no branch-per-run isolation" gap directly). Chris's explicit choice via
+AskUserQuestion, also recorded in `pi-web-adw-design.md` §6.4. Cleanup policy (item 6
+below) is still this card's job to design.
 
 ## Plan
 1. [ ] `modules/piwebProject.ts` (or fold into `config.ts` — implementer's call):
@@ -67,6 +66,7 @@ regardless of the answer.
 
 ## Signals
 <!-- append-only -->
+<!-- signal: claude 2026-08-04T21:23Z — claiming, starting project registration + worktree-per-run -->
 
 ## Decision log
 <!-- append-only, one line per entry, newest last -->
