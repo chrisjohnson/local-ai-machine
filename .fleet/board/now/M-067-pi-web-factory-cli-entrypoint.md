@@ -2,8 +2,8 @@
 id: M-067
 title: pi-web-factory — cli.ts entrypoint
 initiative_id: null
-claimed_by: null
-claimed_at: null
+claimed_by: claude
+claimed_at: 2026-08-04T05:15:32Z
 blocks: null
 blocked_by: [M-066]
 status: null
@@ -34,6 +34,7 @@ card's design drift from that shape without updating §3.4 to match.
 
 ## Signals
 <!-- append-only -->
+<!-- signal: claude 2026-08-04T05:15Z — claiming, starting cli.ts -->
 
 ## Decision log
 <!-- append-only, one line per entry, newest last -->
