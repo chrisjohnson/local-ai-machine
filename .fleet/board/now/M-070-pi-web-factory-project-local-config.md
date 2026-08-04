@@ -2,8 +2,8 @@
 id: M-070
 title: pi-web-factory — move per-project config into the target project's own repo
 initiative_id: null
-claimed_by: null
-claimed_at: null
+claimed_by: claude
+claimed_at: 2026-08-04T20:45:31Z
 blocks: null
 blocked_by: null
 status: null
@@ -55,6 +55,8 @@ registry is still used, for an unrelated reason — see M-071).
 
 ## Signals
 <!-- append-only -->
+<!-- signal: claude 2026-08-04T20:45Z — claiming, starting project-local config lookup -->
+<!-- signal: claude 2026-08-04T21:15Z — printer-dashboard's .pi-web-factory.yaml landed via PR (github.com/chrisjohnson/printer-dashboard#30), includes real go test/go vet commands (project is Go, not pure JS/TS as first assumed) -->
 
 ## Decision log
 <!-- append-only, one line per entry, newest last -->
