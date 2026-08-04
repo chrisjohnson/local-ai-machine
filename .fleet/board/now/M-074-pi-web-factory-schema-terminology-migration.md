@@ -2,8 +2,8 @@
 id: M-074
 title: pi-web-factory — schema migration to Workflow Run / Step terminology
 initiative_id: null
-claimed_by: null
-claimed_at: null
+claimed_by: claude
+claimed_at: 2026-08-04T16:57:25Z
 blocks: null
 blocked_by: null
 status: null
@@ -53,6 +53,7 @@ specifies; this is a rename + a few real additions, not a rethink.
 
 ## Signals
 <!-- append-only -->
+<!-- signal: claude 2026-08-04T16:57Z — claiming, starting schema/terminology migration -->
 
 ## Decision log
 <!-- append-only, one line per entry, newest last -->
