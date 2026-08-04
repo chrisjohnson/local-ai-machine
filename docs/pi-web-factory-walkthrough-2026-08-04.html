@@ -1,0 +1,489 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pi-web-factory — walkthrough</title>
+<style>
+  :root {
+    --bg: #0b0e14;
+    --panel: #131722;
+    --panel2: #1a1f2e;
+    --border: #262c3d;
+    --text: #e6e9f0;
+    --muted: #8b93a8;
+    --accent: #7c9fff;
+    --accent2: #62d6a0;
+    --warn: #f2b866;
+    --danger: #ef7a7a;
+    --code-bg: #0e1219;
+    --plan: #a78bfa;
+    --build: #62d6a0;
+    --test: #f2b866;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+  }
+  .layout { display: flex; min-height: 100vh; }
+  nav.side {
+    width: 240px;
+    flex: none;
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    padding: 24px 16px;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+  }
+  nav.side .brand {
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--accent);
+    margin-bottom: 4px;
+  }
+  nav.side .subbrand {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 24px;
+  }
+  nav.side a {
+    display: block;
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 13px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    margin-bottom: 2px;
+  }
+  nav.side a:hover { background: var(--panel2); color: var(--text); }
+  main {
+    flex: 1;
+    max-width: 920px;
+    padding: 48px 56px 120px;
+  }
+  h1 { font-size: 32px; margin: 0 0 8px; }
+  h2 {
+    font-size: 22px;
+    margin: 56px 0 16px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+  }
+  h2:first-of-type { border-top: none; margin-top: 24px; }
+  h3 { font-size: 16px; margin: 28px 0 10px; color: var(--accent); }
+  p { color: var(--text); }
+  .lede { color: var(--muted); font-size: 16px; margin-bottom: 32px; }
+  .pill {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: var(--panel2);
+    color: var(--accent2);
+    border: 1px solid var(--border);
+  }
+  code {
+    font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+    background: var(--code-bg);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 0.88em;
+    color: #d6dcea;
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 18px;
+    overflow-x: auto;
+    font-size: 13px;
+  }
+  pre code { background: none; padding: 0; }
+  .callout {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin: 18px 0;
+    font-size: 14px;
+  }
+  .callout.warn { border-left-color: var(--warn); }
+  .callout.danger { border-left-color: var(--danger); }
+  .callout b { color: var(--text); }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13.5px;
+    margin: 16px 0;
+  }
+  th, td {
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; }
+  .arch {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin: 20px 0;
+  }
+  .box {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .box .name { font-weight: 600; font-size: 13.5px; color: var(--text); }
+  .box .desc { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .flow {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin: 24px 0;
+  }
+  .step {
+    display: flex;
+    gap: 16px;
+    position: relative;
+    padding-bottom: 28px;
+  }
+  .step:last-child { padding-bottom: 0; }
+  .step .rail {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex: none;
+  }
+  .step .dot {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: var(--panel2);
+    border: 2px solid var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; color: var(--accent);
+    flex: none;
+  }
+  .step .line {
+    flex: 1;
+    width: 2px;
+    background: var(--border);
+    margin-top: 2px;
+  }
+  .step:last-child .line { display: none; }
+  .step .content { flex: 1; padding-top: 2px; }
+  .step .content h4 { margin: 0 0 4px; font-size: 14.5px; }
+  .step .content p { margin: 0; font-size: 13.5px; color: var(--muted); }
+  .step.branch .dot { border-color: var(--warn); color: var(--warn); }
+  .badge-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .badge {
+    font-size: 10.5px;
+    padding: 2px 7px;
+    border-radius: 5px;
+    background: var(--panel2);
+    color: var(--muted);
+    border: 1px solid var(--border);
+  }
+  .badge.ok { color: var(--accent2); border-color: #2a4a3a; }
+  .badge.err { color: var(--danger); border-color: #4a2a2a; }
+  .badge.wait { color: var(--warn); border-color: #4a3a2a; }
+  a.btn {
+    display: inline-block;
+    background: var(--accent);
+    color: #0b0e14;
+    font-weight: 600;
+    font-size: 13px;
+    padding: 9px 16px;
+    border-radius: 8px;
+    text-decoration: none;
+    margin-top: 8px;
+  }
+  a.btn.secondary {
+    background: var(--panel2);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  ul, ol { padding-left: 22px; }
+  li { margin-bottom: 6px; }
+  .statusgrid {
+    display: grid;
+    grid-template-columns: 90px 1fr auto;
+    gap: 8px 14px;
+    align-items: center;
+    margin: 16px 0;
+  }
+  .statusgrid .id { font-family: ui-monospace, monospace; font-size: 12.5px; color: var(--muted); }
+  .statusgrid .title { font-size: 13.5px; }
+  .status-done { color: var(--accent2); font-size: 11px; font-weight: 700; text-transform: uppercase; }
+  .status-next { color: var(--accent); font-size: 11px; font-weight: 700; text-transform: uppercase; }
+  .status-deferred { color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase; }
+  footer { color: var(--muted); font-size: 12px; margin-top: 80px; padding-top: 20px; border-top: 1px solid var(--border); }
+</style>
+</head>
+<body>
+<div class="layout">
+  <nav class="side">
+    <div class="brand">pi-web-factory</div>
+    <div class="subbrand">walkthrough — 2026-08-04</div>
+    <a href="#what">What is this?</a>
+    <a href="#why">Why it exists</a>
+    <a href="#architecture">Architecture</a>
+    <a href="#flow">How work flows</a>
+    <a href="#usage">How to use it</a>
+    <a href="#config">The roster</a>
+    <a href="#dashboard">Connecting to pi-web</a>
+    <a href="#trace">Watching a run's trace</a>
+    <a href="#status">What's built / what's next</a>
+  </nav>
+  <main>
+    <span class="pill">local-ai-machine</span>
+    <h1>pi-web-factory</h1>
+    <p class="lede">A deterministic control plane for AI coding agents, built on top of your existing
+    <code>jmfederico-pi-web</code> stack. This page is a guided walkthrough of what got built this
+    session (cards M-061 through M-067), how it works, and how to drive it yourself.</p>
+
+    <h2 id="what">What is this?</h2>
+    <p><b>pi-web-factory</b> brings the <a href="https://github.com/disler/super-simple-software-factory"
+    style="color:var(--accent)">SSSF</a> pattern — deterministic code owns sequencing, retries, and
+    acceptance; an AI agent works inside one bounded, typed phase at a time — to your running pi-web
+    deployment. Instead of spawning a bare <code>pi</code> CLI subprocess (which doesn't exist on PATH
+    anywhere in the <code>jmfederico-pi-web</code> container), it drives real pi-web sessions over the
+    same HTTP/WebSocket API your browser uses.</p>
+    <div class="callout">
+      <b>The practical upshot:</b> every session pi-web-factory starts is a completely ordinary pi-web
+      session. It shows up in the browser UI exactly like one you started by hand. You can watch an
+      agent work in real time, and if something needs a human, you can even answer it there — something
+      the upstream SSSF tool can't do at all, since it has no equivalent UI.
+    </div>
+
+    <h2 id="why">Why it exists</h2>
+    <p>Prompting a coding agent once and hoping is fine for a one-off. It stops being fine the moment you
+    want the same request to work the same way <i>every</i> time — with retries that don't throw away
+    context, a record of what each phase actually did, and a hard boundary on what a phase is allowed to
+    touch. That's what this adds on top of pi-web:</p>
+    <ul>
+      <li><b>Typed output, every time.</b> An agent's only real output is one JSON object matching a
+        schema declared up front. If it doesn't parse, the harness re-prompts the <i>same</i> session
+        with a correction naming exactly what was wrong — never a cold restart.</li>
+      <li><b>Enforced write boundaries.</b> Every agent identity has a <code>writes:</code> allowlist.
+        Anything it touches outside that allowlist gets rolled back automatically, and — importantly —
+        the phase is reported as <i>failed</i>, not silently patched up.</li>
+      <li><b>A full trace.</b> Every phase, every tool call, every gate result lands in a local SQLite
+        db (<code>factory.db</code>) as it happens, queryable independently of pi-web's own session
+        history.</li>
+      <li><b>One shared control plane, many projects.</b> Unlike upstream SSSF (one install per repo),
+        pi-web-factory is one install that can target any project by absolute path.</li>
+    </ul>
+
+    <h2 id="architecture">Architecture</h2>
+    <p>Seven small modules, each independently tested, plus a thin chain layer and a CLI on top. Only
+    one of them — <code>piwebClient.ts</code> — actually talks to pi-web.</p>
+    <div class="arch">
+      <div class="box"><div class="name">tracer.ts</div><div class="desc">Writes every phase/event/gate result to <code>factory.db</code> (SQLite, WAL mode).</div></div>
+      <div class="box"><div class="name">piwebClient.ts</div><div class="desc">The only module that talks to pi-web. Starts sessions, sends prompts, waits for completion.</div></div>
+      <div class="box"><div class="name">envelopes.ts</div><div class="desc">Zod schemas for each agent identity's required JSON output shape.</div></div>
+      <div class="box"><div class="name">gates.ts</div><div class="desc">Verifies claims after the fact: files exist, JSON parses, tests pass, diff matches claims.</div></div>
+      <div class="box"><div class="name">permissions.ts</div><div class="desc">Snapshots the repo before/after a turn; rolls back anything outside the allowlist.</div></div>
+      <div class="box"><div class="name">config.ts</div><div class="desc">Loads <code>factory.config.yaml</code>: the agent roster and per-project settings.</div></div>
+      <div class="box"><div class="name">run.ts</div><div class="desc">The shared phase-runner every chain calls — wires all of the above together.</div></div>
+      <div class="box"><div class="name">chains/planBuildTest.ts</div><div class="desc">The first real chain: plan → build → test.</div></div>
+      <div class="box"><div class="name">cli.ts</div><div class="desc">The command you actually type. Argument parsing and I/O only.</div></div>
+    </div>
+    <div class="callout warn">
+      <b>Where this lives:</b> <code>jmfederico-pi-web/pi-web-factory/</code> in this repo — a sibling
+      of pi-web itself, not stamped inside any target project's repo. Today it runs from a dev machine
+      over the network (<code>http://192.168.1.21:8080</code>); once baked into the container image
+      (M-068, not yet done), it'll run co-located as a sibling process, talking to pi-web over loopback.
+    </div>
+
+    <h2 id="flow">How work flows through it</h2>
+    <p>This is what actually happens, step by step, when you run the <code>plan-build-test</code> chain
+    against a project — the exact sequence <code>chains/planBuildTest.ts</code> and <code>modules/run.ts</code>
+    execute together.</p>
+    <div class="flow">
+      <div class="step">
+        <div class="rail"><div class="dot">1</div><div class="line"></div></div>
+        <div class="content">
+          <h4>cli.ts parses your command and loads the roster</h4>
+          <p><code>--project</code>, <code>--chain</code>, an optional <code>--session-id</code>, and your
+          prompt (literal text or a path to a file) get validated. <code>factory.config.yaml</code> loads;
+          an unknown project or chain name fails immediately with a specific message, not a stack trace.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="rail"><div class="dot">2</div><div class="line"></div></div>
+        <div class="content">
+          <h4>A pi-web session starts (or an existing one resumes)</h4>
+          <p>One real session against your target project's working directory. This is the exact same
+          kind of session the browser UI creates — nothing distinguishes an API-started session from a
+          hand-started one.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="rail"><div class="dot">3</div><div class="line"></div></div>
+        <div class="content">
+          <h4>Phase 1 — <span style="color:var(--plan)">plan</span></h4>
+          <p>The <code>plan</code> agent (big-moe, high thinking) gets the task and a required JSON
+          schema. The repo is snapshotted <i>before</i> the prompt is sent.</p>
+          <div class="badge-row"><span class="badge">setModel</span><span class="badge">prompt</span><span class="badge">wait for agent.end</span></div>
+        </div>
+      </div>
+      <div class="step branch">
+        <div class="rail"><div class="dot">?</div><div class="line"></div></div>
+        <div class="content">
+          <h4>Did it parse?</h4>
+          <p>If the response isn't valid JSON matching the schema, the harness re-prompts the <i>same</i>
+          session with a correction naming exactly what was wrong — up to 3 attempts before the phase
+          fails as <code>unparseable</code>. In live testing, both agents got it right on the first try
+          every time — but the retry path is real and covered by its own tests.</p>
+          <div class="badge-row"><span class="badge wait">retry ≤ 3×</span></div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="rail"><div class="dot">4</div><div class="line"></div></div>
+        <div class="content">
+          <h4>Permissions are enforced</h4>
+          <p>The repo is diffed against the pre-prompt snapshot. Anything outside the agent's
+          <code>writes:</code> allowlist is rolled back — tracked-file edits via <code>git checkout --</code>,
+          new untracked files by deletion. If <i>anything</i> was unauthorized, the phase is marked
+          <code>permissions-violation</code> and the chain stops — even though the rollback itself
+          succeeded. A violation always fails the phase; that's not optional.</p>
+          <div class="badge-row"><span class="badge err">any violation → phase fails</span></div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="rail"><div class="dot">5</div><div class="line"></div></div>
+        <div class="content">
+          <h4>Phase 2 — <span style="color:var(--build)">build</span>, same session</h4>
+          <p>The <code>build</code> agent (medium-moe) continues the <i>same</i> pi-web session — not a
+          fresh one — with the plan's summary in context, and actually writes files using its real tools.
+          Same parse-retry and permissions-enforcement steps apply.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="rail"><div class="dot">6</div><div class="line"></div></div>
+        <div class="content">
+          <h4>Phase 3 — <span style="color:var(--test)">test</span>, no agent involved</h4>
+          <p>A plain code phase: your project's configured test command runs as a subprocess. No model
+          call — this is exactly the kind of step SSSF's own philosophy says shouldn't cost a token.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="rail"><div class="dot">✓</div></div>
+        <div class="content">
+          <h4>Result</h4>
+          <p>One of five outcomes, always carrying the <code>adwId</code>/<code>sessionId</code> so you
+          can always find the run again: <code>success</code>, <code>blocked-on-human</code> (the agent
+          asked a question — go answer it in pi-web's UI, then resume with <code>--session-id</code>),
+          <code>unparseable</code>, <code>permissions-violation</code>, or <code>failed</code>.</p>
+        </div>
+      </div>
+    </div>
+
+    <h2 id="usage">How to use it</h2>
+    <p>From <code>jmfederico-pi-web/pi-web-factory/</code>:</p>
+    <pre><code>bun cli.ts --project /home/chris/turnstone-workspace/printer-dashboard \
+  --chain plan-build-test \
+  "Add a /health endpoint that returns 200 OK"</code></pre>
+    <p>The prompt can also be a path to a file:</p>
+    <pre><code>bun cli.ts --project /home/chris/turnstone-workspace/printer-dashboard \
+  --chain plan-build-test \
+  ./specs/health-endpoint.md</code></pre>
+    <p>Resume a session that got blocked waiting on a question (answer it in pi-web's UI first):</p>
+    <pre><code>bun cli.ts --project /home/chris/turnstone-workspace/printer-dashboard \
+  --chain plan-build-test \
+  --session-id 019fcb42-c0f9-73fb-881f-b80c1b232778 \
+  "continue"</code></pre>
+    <h3>Exit codes</h3>
+    <table>
+      <tr><th>Code</th><th>Meaning</th></tr>
+      <tr><td><code>0</code></td><td>Success — plan, build, and test all passed.</td></tr>
+      <tr><td><code>1</code></td><td>Failed (e.g. the test command failed).</td></tr>
+      <tr><td><code>2</code></td><td>Blocked on a human — the agent asked a question mid-turn.</td></tr>
+      <tr><td><code>3</code></td><td>Unparseable — the agent never produced valid JSON after 3 attempts.</td></tr>
+      <tr><td><code>4</code></td><td>Permissions violation — the agent wrote outside its allowlist (rolled back).</td></tr>
+      <tr><td><code>64</code></td><td>Usage/config error — bad flags, unknown project, or unknown chain.</td></tr>
+    </table>
+
+    <h2 id="config">The roster — <code>factory.config.yaml</code></h2>
+    <p>One agent identity per row. Models point at your box's already-seeded <code>local-litellm</code>
+    provider — <code>big-moe</code> and <code>medium-moe</code> are live model roles today, not placeholders.</p>
+    <table>
+      <tr><th>Agent</th><th>Model</th><th>Writes</th><th>Why</th></tr>
+      <tr><td><code>plan</code></td><td>big-moe</td><td><code>specs/</code></td><td>A bad plan corrupts every phase built on it.</td></tr>
+      <tr><td><code>build</code></td><td>medium-moe</td><td>unrestricted*</td><td>Mechanical given a good plan; runs most often.</td></tr>
+      <tr><td><code>review</code></td><td>big-moe</td><td>none (read-only)</td><td>Last judgment checkpoint before success.</td></tr>
+      <tr><td><code>scout</code></td><td>medium-moe</td><td>none (read-only)</td><td>Pure recon.</td></tr>
+      <tr><td><code>document</code></td><td>medium-moe</td><td><code>docs/</code>, <code>*.md</code></td><td>Mechanical write-up of a known change.</td></tr>
+    </table>
+    <p style="font-size:12.5px;color:var(--muted)">* still can't touch <code>defaults.protected_files</code>
+    (pi-web-factory's own machinery) — permissions.ts enforces that regardless of an agent's own <code>writes:</code>.</p>
+    <p>Per-project quality commands live in the same file's <code>projects:</code> map, keyed by absolute
+    path — this is what the <code>test</code> phase runs.</p>
+
+    <h2 id="dashboard">Connecting to pi-web's own dashboard</h2>
+    <p>There's no separate UI for pi-web-factory itself (yet) — and honestly, you may not need one. Every
+    session it starts is a normal pi-web session, so <b>pi-web's own browser UI is your dashboard</b>:</p>
+    <a class="btn" href="http://192.168.1.21:8080" target="_blank">Open pi-web → http://192.168.1.21:8080</a>
+    <div class="callout">
+      Print the <code>sessionId</code> from your <code>cli.ts</code> run (it's shown immediately, before
+      the chain even finishes) and find it in pi-web's session list on the LAN. You can watch tokens
+      stream in live, exactly as if you'd started the session by hand — because you didn't do anything
+      pi-web itself would treat differently.
+    </div>
+    <p style="font-size:12.5px;color:var(--muted)">LAN-only, no auth — same explicit choice as the rest
+    of this stack. Don't expose this port past your network boundary.</p>
+
+    <h2 id="trace">Watching a run's trace (factory.db)</h2>
+    <p>Independent of pi-web's UI, every run is fully recorded in <code>factory.db</code> — phases,
+    tool calls, gate results, costs. Query it directly:</p>
+    <pre><code>bun -e '
+import { Database } from "bun:sqlite";
+const db = new Database("factory.db", { readonly: true });
+console.log(db.query(
+  "select name, status, seq from phases where adw_id=? order by seq"
+).all("adw_xxxxxxxxxxxx"));
+'</code></pre>
+    <p>There's no visualizer for this yet — that's an explicitly deferred piece of the design (see the
+    design doc's §3.5). For now, direct SQL is the tool.</p>
+
+    <h2 id="status">What's built, what's next</h2>
+    <div class="statusgrid">
+      <div class="id">M-061</div><div class="title">Bun/TS scaffold + shared trace db</div><div class="status-done">done</div>
+      <div class="id">M-062</div><div class="title">piwebClient.ts — session client + completion wait-loop</div><div class="status-done">done</div>
+      <div class="id">M-063</div><div class="title">envelopes.ts + gates.ts</div><div class="status-done">done</div>
+      <div class="id">M-064</div><div class="title">permissions.ts — writes: enforcement</div><div class="status-done">done</div>
+      <div class="id">M-065</div><div class="title">factory.config.yaml + config.ts</div><div class="status-done">done</div>
+      <div class="id">M-066</div><div class="title">chains/planBuildTest.ts + run.ts — first live-verified chain</div><div class="status-done">done</div>
+      <div class="id">M-067</div><div class="title">cli.ts entrypoint</div><div class="status-done">done</div>
+      <div class="id">M-068</div><div class="title">Docker bake-in — ship it inside the jmfederico-pi-web image</div><div class="status-next">next</div>
+      <div class="id">M-069</div><div class="title">True per-role system prompts (pi extension hook)</div><div class="status-deferred">deferred</div>
+    </div>
+    <p>Today, <code>pi-web-factory</code> runs from a dev machine over the network. <b>M-068</b> is what
+    makes it a real, always-available part of the stack — baked into the <code>jmfederico-pi-web</code>
+    image itself, the same way the <code>pi-continue-companion</code> plugin already is. <b>M-069</b>
+    (giving each agent identity a true system prompt instead of text prepended to the first message) is
+    deliberately parked pending a go/no-go decision — the interim workaround already works, this is a
+    fidelity improvement, not a blocker.</p>
+    <p>There's also a durable ticket layer sketched but not built: a trimmed <code>.fleet</code>-style
+    <code>backlog/</code> → <code>now/</code> → <code>done/</code> queue that would let you author work
+    items and have them picked up later, rather than every run being manually triggered. <code>cli.ts</code>'s
+    argument shape was deliberately designed to be that queue's eventual calling convention, unchanged.</p>
+
+    <footer>
+      Built 2026-08-04, in <code>local-ai-machine</code>, cards M-061–M-067 on the <code>.fleet</code>
+      board. Full design record: <code>pi-web-adw-design.md</code> at the repo root.
+    </footer>
+  </main>
+</div>
+</body>
+</html>
