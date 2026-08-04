@@ -422,3 +422,118 @@ M-061 through M-065 have no dependencies on each other and can be worked in any 
 bodies link back to the specific section of this doc they implement rather than
 duplicating the design — this doc is the source of truth for *why*, the cards track
 *done or not*.
+
+## 6. Revision 2026-08-04: project-local config, worktrees, deep-linking, skills
+
+M-061 through M-067 shipped and work (§5, all `done`). Chris then reviewed the running
+system and gave feedback that changes real pieces of the design below — recorded here
+before any of it gets built, per this doc's own "record decisions before code" practice.
+
+### 6.1 Feedback, verbatim intent
+
+1. Per-project config (today: `factory.config.yaml`'s `projects:` map, centralized in
+   `pi-web-factory/`) should live **in the target project's own repo** instead — same
+   place the future durable ticket storage (§3.4's deferred `.fleet`-lite queue) will
+   also live. Question raised: does this need pi-web's own "Project" concept, or can
+   it just be a file?
+2. **Session safety** — resolved already, see AGENTS.md's new hard-stop (2026-08-04)
+   and `docker/agentic-fleet-AGENTS.md`'s local addendum. Not a design question, a
+   policy one; closed.
+3. Use pi-web's own **Workspace** primitive to organize pi-web-factory's sessions,
+   rather than inventing our own scheme — one shared workspace for all runs, or a
+   sharding scheme, "lean into the pi-web primitives."
+4. **Agentic triggering as a first-class experience**: sitting inside any pi-web
+   session, say "run the pipeline for X" and have it happen — a skill calling `cli.ts`
+   under the hood is fine — ideally with a link back to the new session. Also: more
+   chain shapes, matching SSSF's own variety — a lightweight plan→implement→review,
+   and a fuller run with a *bounded* review↔build correction loop (max 3 rounds).
+5. Fold in true per-role system prompts (M-069, previously parked pending this
+   decision) **before** Docker.
+6. Docker (M-068) goes last.
+
+### 6.2 Research findings (pi-web source, tag `v1.202607.3`, cross-checked live)
+
+**Projects.** `ProjectService` (`projectService.ts:6-31`) is a thin CRUD wrapper —
+`{id, name, path, createdAt}` in a JSON store. `POST /sessions {cwd}` never
+references it (confirmed again from source — registration was never required for
+session creation, as established in §1.3). It gates exactly one thing: an
+LLM-initiated **in-session** `spawn_session`/`spawn_subsession` tool call, restricted
+to a registered project's known worktree paths (`spawnTargetResolver.ts:16-19,50-57`)
+— irrelevant to pi-web-factory, which never uses that tool. `<project>/.pi-web/
+config.json` (`projectPiWebConfig.ts:8-12`) is real but **closed-schema**
+(`{version?, pathAccess?, uploads?}`) — parsed with unknown keys dropped, no
+passthrough. **Not a usable extension point.**
+
+**Workspaces.** No creation API exists. `WorkspaceService.list()`
+(`workspaceService.ts:19-41`) only *discovers* existing worktrees via `git worktree
+list --porcelain` — explicitly read-only (`workspaceService.ts:47`: "we never run
+`git worktree prune`"). `POST /sessions` takes only `{cwd, startupToken}` — no
+workspace id. **"Workspace" in pi-web is a visualization layer over real git
+worktrees, not an API resource** — creating one means pi-web-factory runs `git
+worktree add` itself and points `cwd` at the result; pi-web's own UI/discovery then
+picks it up automatically, with no coordination needed on our side beyond using plain
+git.
+
+**Session deep-linking.** Confirmed from the client router (`route.ts:12-22`,
+`PiWebApp.ts:562-579`): the working URL is
+**`http://192.168.1.21:8080/?project=<projectId>&workspace=<workspaceId>&session=<sessionId>`**
+— `session` alone is **not** sufficient; the router short-circuits before reading it
+if `project` is absent. This is the one finding that forces a decision: **printing a
+real, working link back to Chris requires a real `projectId` and `workspaceId`**,
+which means registering the target repo as a pi-web Project after all — not for
+config (§6.2's Projects finding rules that out), purely so runs are addressable and
+so `POST /projects` gives us an id to build a correct link. Cheap and one-time per
+project.
+
+**Skills.** `PI_CODING_AGENT_DIR=/home/piweb/.pi-web` (confirmed live via `docker exec
+pi-web env`), bind-mounted from host `~/.pi-web` (`docker-compose.yml`). No `skills/`
+subdirectory exists yet on this deployment (only a *plugin*, `pi-continue-companion`,
+has been used here before — a different mechanism). A pi-web-factory skill lands at
+`~/.pi-web/skills/pi-web-factory/SKILL.md` on the host — the directory just needs
+creating; the loading mechanism itself is already proven (§1.2).
+
+### 6.3 Decisions
+
+- **Per-project config moves into the target project's own repo.** A new file (name
+  TBD in the implementing card — leading candidate: `.pi-web-factory.yaml` at the
+  project root, discovered by simple existence-check, not through pi-web's Project
+  registry) replaces `factory.config.yaml`'s `projects:` map. `factory.config.yaml`
+  itself keeps the agent roster (shared across projects — that's genuinely
+  pi-web-factory's own config, not any one project's) and `defaults.protected_files`.
+  This **supersedes part of M-065** (the `projects:` map and `projectConfigFor`'s
+  centralized lookup) — filed as a new card (§6.4), M-065 itself stays `done` and
+  unedited as the historical record of what was actually built then.
+- **Register the target repo as a pi-web Project, once, idempotently** — not for
+  config (ruled out, §6.2), purely so `POST /sessions`-created runs are visible in
+  pi-web's own UI and so `cli.ts` can resolve a real `projectId` for deep-linking.
+- **Worktrees, created by pi-web-factory itself via plain `git worktree add`**, not a
+  pi-web API (none exists). Every chain run gets pointed at a resulting worktree path
+  as its `cwd` — this is *also* the answer to the design's own long-standing deferred
+  gap ("no branch-per-run isolation," §4/§0) arriving for free from this feedback,
+  not a separate effort.
+- **Real session deep-links in `cli.ts`'s output**, using the confirmed
+  `?project=&workspace=&session=` pattern — the thing that was deliberately *not*
+  fabricated back in M-067 (no confirmed URL scheme at the time) is now buildable.
+- **A `pi-web-factory` Agent Skill**, `SKILL.md` at `~/.pi-web/skills/pi-web-factory/`,
+  routing natural-language requests inside any pi-web session to the right chain and
+  shelling out to `cli.ts` — mirroring SSSF's own `SKILL.md` routing-table pattern
+  (this doc's §1.1), adapted to the fact that pi-web-factory's actual logic already
+  lives in TS, not in the skill itself. The skill is UX, not execution.
+- **New chain shapes**: a lightweight `planImplementReview.ts` (three phases, no
+  loop), and a fuller chain with a genuinely *bounded* build↔review correction loop
+  (max 3 rounds, mirroring upstream SSSF's own `adw_build_review` restraint) —
+  distinct from the already-built, unbounded retry-on-parse-failure loop inside
+  `run.ts` (that one retries a single phase's malformed JSON; this one is a
+  multi-phase review-rejects-then-build-fixes cycle at the chain level).
+- **M-069 unblocked** — moves from `blocked/` into active work, ahead of M-068.
+- **M-068 (Docker) stays last**, now blocked on all of the above rather than directly
+  following M-067.
+
+### 6.4 One open question, not yet decided
+
+**Worktree sharding scheme** — one worktree per chain *run* (maximum isolation,
+directly closes the "no isolation" gap, but worktrees accumulate and need a cleanup
+policy), one shared worktree reused across all pipeline runs for a given project
+(simpler, no cleanup policy needed, but runs can collide with each other's
+uncommitted state), or something in between (e.g. one worktree per chain *type*), is
+Chris's call — asked directly, not decided here.
