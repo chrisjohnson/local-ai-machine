@@ -2,8 +2,8 @@
 id: M-064
 title: pi-web-factory — permissions.ts (writes:/protected_files enforcement)
 initiative_id: null
-claimed_by: null
-claimed_at: null
+claimed_by: claude
+claimed_at: 2026-08-04T04:43:06Z
 blocks: null
 blocked_by: null
 status: null
@@ -39,6 +39,7 @@ doc §3.4, rather than an implicit "current repo" assumption).
 
 ## Signals
 <!-- append-only -->
+<!-- signal: claude 2026-08-04T04:43Z — claiming, starting permissions.ts -->
 
 ## Decision log
 <!-- append-only, one line per entry, newest last -->
