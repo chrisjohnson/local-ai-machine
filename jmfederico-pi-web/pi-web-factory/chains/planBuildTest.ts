@@ -53,6 +53,17 @@ export interface PlanBuildTestOptions {
   baseUrl?: string;
   /** adwId to use; a fresh one is minted when omitted. */
   adwId?: string;
+  /**
+   * Existing pi-web session to resume (design doc §3.4's `WorkItem.session_id?`
+   * — the seam a future ticket-queue worker/CLI `--session-id` flag threads
+   * through). When provided, `startSession` is skipped entirely and this id is
+   * used directly for both phases — piwebClient.ts's session routes resolve a
+   * `(id, cwd)` pair generically regardless of which process minted it, so
+   * resuming a session started by an earlier run (or even a different
+   * process) works the same as continuing one just started in this call. A
+   * fresh session is minted, as before, when omitted.
+   */
+  sessionId?: string;
   engineer?: string;
 }
 
@@ -102,7 +113,9 @@ export async function planBuildTest(opts: PlanBuildTestOptions): Promise<PlanBui
   const buildAgent = agentConfigFor(opts.config, "build");
   const protectedFiles = opts.config.defaults.protectedFiles;
 
-  const session = await startSession(baseUrl, opts.cwd, `${adwId}:planBuildTest`);
+  const session = opts.sessionId
+    ? { id: opts.sessionId }
+    : await startSession(baseUrl, opts.cwd, `${adwId}:planBuildTest`);
 
   // ── phase 1: plan ──────────────────────────────────────────────────────
   const planResult = await runAgentPhase({
