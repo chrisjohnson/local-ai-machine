@@ -32,7 +32,7 @@ Global, machine-wide — not per-project (same locality the roster always had; d
 from M-070's project-local `test`/`typecheck`/`lint` settings).
 
 ## Plan
-1. [ ] Define the YAML shape: one `roles:` list (or map), each entry `{name, kind:
+1. [x] Define the YAML shape: one `roles:` list (or map), each entry `{name, kind:
    agent|code, ...kind-specific fields}`. Agent fields: today's `AgentConfig` shape
    (model, thinking, writes) plus `system_prompt` (M-069's field — a literal string,
    or a path to a `.md` file, implementer's call, but be consistent with how M-069's
@@ -40,20 +40,20 @@ from M-070's project-local `test`/`typecheck`/`lint` settings).
    function reference name — decide whether that's a free-text string resolved via a
    registry map in code, or something more structured; keep it simple, this doesn't
    need to be extensible beyond "name -> function" for now.
-2. [ ] `modules/roles.ts` (or extend `config.ts` — implementer's call, but consider a
+2. [x] `modules/roles.ts` (or extend `config.ts` — implementer's call, but consider a
    separate file now that Roles are a bigger concept than the old `agents:` list):
    Zod schema + loader, `roleFor(name)` lookup throwing a specific error for an
    unknown name (same discipline every other lookup in this project already has).
-3. [ ] A code-role registry: `{"run-tests": (project, cwd) => testsPass(project.test,
+3. [x] A code-role registry: `{"run-tests": (project, cwd) => testsPass(project.test,
    cwd), ...}` or similar — the actual mapping from a code Role's name to a callable.
    Keep this small and explicit; don't build a plugin-loading mechanism for what's
    currently one entry.
-4. [ ] Migrate the real `factory.config.yaml` roster to the new shape — same five
+4. [x] Migrate the real `factory.config.yaml` roster to the new shape — same five
    agent identities (plan/build/review/scout/document) as Roles now, plus at least one
    real code Role (`run-tests`, wired to what `chains/planBuildTest.ts`'s "test" phase
    already does by hand today — M-076 is what actually rewires the runner to use this
    registry instead of that hand-written phase, but the config entry belongs here).
-5. [ ] Tests: valid Roles config loads (both kinds); malformed agent Role (bad
+5. [x] Tests: valid Roles config loads (both kinds); malformed agent Role (bad
    `provider/model-id`, same check M-065/`config.ts` already has) rejected; unknown
    code-role function reference rejected at load time, not first-use; `roleFor` throws
    a specific, actionable error for an unknown name.
@@ -61,8 +61,35 @@ from M-070's project-local `test`/`typecheck`/`lint` settings).
 ## Signals
 <!-- append-only -->
 <!-- signal: claude 2026-08-04T22:11Z — claiming, starting unified Roles config -->
+<!-- signal: claude 2026-08-04T22:35Z — done, moved to done/ -->
 
 ## Decision log
+<!-- append-only, one line per entry, newest last -->
+- 2026-08-04 (claude): `system_prompt` is a path to a `prompts/<name>.md` file, not
+  an inline YAML string — the real prompt content is multi-sentence prose, and
+  block-scalar YAML for five of those inline would be indentation-fragile and hard
+  to diff. Content copied verbatim from the already-deployed `pi-web-factory-
+  prompts` extension's `roles.json` — verified byte-for-byte identical myself
+  before committing (all five roles matched exactly), and confirmed via `git diff
+  --stat` on `plugins/` that the deployed extension itself was never touched. The
+  duplication between the two copies is deliberate and explicitly documented
+  (`roles.ts`'s header) — collapsing it needs pi-web-factory baked into the
+  container (M-068), not this card.
+- 2026-08-04 (claude): `config.ts`'s old agent-only roster fully replaced, not kept
+  alongside — `AgentEntrySchema`/`AgentConfig`/`FactoryConfig`/`loadConfig`/
+  `agentConfigFor` removed there entirely, superseded by `roles.ts`'s `RolesConfig`/
+  `AgentRole`/`CodeRole`/`loadRolesConfig`/`roleFor`. Every call site across the
+  codebase updated (`run.ts`, `chains/planBuildTest.ts`, `chains/registry.ts`,
+  `cli.ts`) — confirmed via a clean `tsc --noEmit`, not just a passing test count.
+- 2026-08-04 (claude): a code Role's `function` field is validated against the
+  in-code registry inside the Zod schema itself (`superRefine`), so an unknown
+  function name fails at config-load time, never silently at first invocation —
+  matches this project's established "fail fast, fail specific" discipline.
+- 2026-08-04 (claude): verified independently before committing — reran the full
+  suite myself (166 pass, including live integration tests) and `tsc --noEmit`
+  (clean), independently re-verified the byte-for-byte prompt-content match myself
+  (not just trusting the implementing pass's own test for it), and confirmed no
+  leftover scratch state on the live server.
 <!-- append-only, one line per entry, newest last -->
 
 ## Handoff notes
