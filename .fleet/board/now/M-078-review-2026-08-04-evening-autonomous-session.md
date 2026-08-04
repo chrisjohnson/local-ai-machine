@@ -37,6 +37,16 @@ needs your eyes.
 ## Log (append-only, newest last, one entry per consequential call)
 
 - 2026-08-04T21:28Z — card filed, session continuing per Chris's standing grant.
+- 2026-08-04T22:10Z — **M-071 done** (git-worktree-per-run, pi-web Project
+  registration, real session deep-links). Two judgment calls worth a look: (1)
+  worktree location — nested inside the project's own checkout rather than a true
+  sibling directory, forced by a real container-topology constraint (only one bind
+  mount per project) — see M-071's decision log for the verification trail. (2)
+  Cleanup policy — worktrees are kept forever after a run, never auto-removed
+  (reasoning: post-hoc inspectability matters more than tidiness at today's
+  manual-trigger volume) — this means `<project>/.pi-web-factory-worktrees/` will
+  grow unbounded over time with no sweep yet built. Worth confirming you're fine
+  with that tradeoff before volume increases.
 
 ## Signals
 <!-- append-only -->
