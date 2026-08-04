@@ -13,12 +13,13 @@ related_cards: [M-062, M-063, M-066]
 # M-069 — pi-web-factory — true per-role system prompt via before_agent_start extension
 
 ## Context
-**Blocked on Chris's decision, not on another card.** Filed to `blocked/` rather than
-`backlog/`/`now/` because the fleet's `blocked_by` field expects a card id and this
-card's blocker isn't one — it's a go/no-go call only Chris can make (per his instruction
-2026-08-03: "proceed with [the prepend] approach for now, but file a ticket... detailing
-the high level approach"). Move to `now/` when he decides to proceed; discard or
-downgrade to `backlog/` if he decides the workaround is good enough long-term.
+**Unblocked 2026-08-04** — Chris: "fold that in before we do docker" (see
+`pi-web-adw-design.md` §6.1 point 5, §6.3). Moved from `blocked/` to `now/`, ahead of
+M-068 in the build sequence.
+
+Full evidence trail is in `pi-web-adw-design.md` §1.4 at repo root — read that section
+before touching this card, don't rediscover it. Summary: SSSF's source gives each agent
+identity a true system prompt (bare `pi` CLI's `--system-prompt` flag). Going through
 
 Full evidence trail is in `pi-web-adw-design.md` §1.4 at repo root — read that section
 before touching this card, don't rediscover it. Summary: SSSF's source gives each agent

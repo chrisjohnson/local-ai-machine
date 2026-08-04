@@ -7,7 +7,7 @@ claimed_at: 2026-08-04T04:50:04Z
 blocks: null
 blocked_by: null
 status: null
-related_cards: [M-061, M-062, M-063, M-064, M-066, M-067, M-068]
+related_cards: [M-061, M-062, M-063, M-064, M-066, M-067, M-068, M-070]
 ---
 
 # M-065 — pi-web-factory — factory.config.yaml schema + config.ts loader

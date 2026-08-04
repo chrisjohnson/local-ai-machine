@@ -5,14 +5,21 @@ initiative_id: null
 claimed_by: null
 claimed_at: null
 blocks: null
-blocked_by: [M-067]
+blocked_by: [M-069, M-070, M-071, M-072, M-073]
 status: null
-related_cards: [M-061, M-062, M-063, M-064, M-065, M-066, M-067]
+related_cards: [M-061, M-062, M-063, M-064, M-065, M-066, M-067, M-069, M-070, M-071, M-072, M-073]
 ---
 
 # M-068 — pi-web-factory — Docker bake-in + first live end-to-end smoke test
 
 ## Context
+**Re-sequenced 2026-08-04**: originally blocked only on M-067; Chris's explicit
+instruction that day was "docker last" (`pi-web-adw-design.md` §6.1 point 6, §6.3) —
+now blocked on the full revision (M-069 system prompts, M-070 project-local config,
+M-071 worktrees/deep-links, M-072 the Skill, M-073 more chain shapes) so what gets
+baked in is the real, final shape of the system, not an intermediate one that needs a
+second bake-in pass later.
+
 Gets `pi-web-factory/` actually running inside the `jmfederico-pi-web` container,
 per design doc §0 point 1 and §3.1's "always-synced" note. Mirror the existing
 `plugins/pi-continue-companion` pattern exactly (see `jmfederico-pi-web/Dockerfile`
