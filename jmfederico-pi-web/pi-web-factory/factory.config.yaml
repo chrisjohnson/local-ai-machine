@@ -1,0 +1,93 @@
+# factory.config.yaml — pi-web-factory's agent roster + per-project config.
+#
+# Shape ported from upstream SSSF's `sssf.config.yaml` (agent identity -> model/
+# thinking/writes), with one addition upstream doesn't need: `projects:`, a map
+# keyed by absolute path, since one factory instance spans N target projects
+# instead of upstream's one-config-per-repo model (pi-web-adw-design.md §4).
+#
+# Model values are `provider/model-id` strings against this box's real,
+# already-seeded `local-litellm` provider (`jmfederico-pi-web`'s own
+# `models.seed.json.tmpl`) — `big-moe` and `medium-moe` are live model IDs
+# there today, not placeholders. See modules/config.ts for the load-time
+# validation this shape gets (well-formed `provider/model-id`, NOT reachability
+# — a stale/renamed litellm role is not caught here, see that file's comment).
+
+defaults:
+  model: local-litellm/medium-moe
+  thinking: medium # off | minimal | low | medium | high | xhigh | max
+  # pi-web-factory's own machinery, off-limits to every agent that doesn't
+  # explicitly name a path here in its own `writes:` — the analogue of
+  # upstream's `adw_modules/`/`adw_sssf_config/` self-protection, adapted to
+  # this project's real directory names (see modules/permissions.ts, which
+  # enforces this list; and pi-web-adw-design.md §3.1 for the tree it protects).
+  protected_files:
+    - modules/
+    - factory.config.yaml
+    - factory.db
+    - chains/
+    - cli.ts
+
+# One entry per agent identity envelopes.ts has a schema for (envelopeSchemas'
+# registry keys: plan, build, review, scout, document — see modules/envelopes.ts).
+#
+# Model mix (deliberately not uniform, same point upstream's starter roster
+# makes by mixing fireworks/openai): big-moe is reserved for the two phases
+# whose output is hardest to cheaply verify after the fact and most expensive
+# to get wrong downstream — planning (a bad plan corrupts every phase built on
+# it) and review (the last human-trust checkpoint before a chain reports
+# success). build/scout/document are comparatively mechanical given a good
+# plan/diff to work from (implement a spec, recon a codebase, write up a known
+# change) and run more often per chain, so they use medium-moe to keep
+# big-moe's capacity free for the judgment-heavy phases.
+agents:
+  - name: plan
+    model: local-litellm/big-moe
+    thinking: high
+    writes:
+      - specs/
+
+  - name: build
+    model: local-litellm/medium-moe
+    thinking: medium
+    # No writes: key — unrestricted within the target repo (upstream's own
+    # convention: the builder is the one agent with no writes allowlist). It
+    # still cannot touch defaults.protected_files; permissions.ts enforces
+    # that regardless of this field (see isWritePermitted's precedence).
+
+  - name: review
+    model: local-litellm/big-moe
+    thinking: high
+    writes: [] # read-only: a reviewer that cannot fix cannot quietly fix
+
+  - name: scout
+    model: local-litellm/medium-moe
+    thinking: low
+    writes: [] # read-only recon; findings go to the envelope, not the repo
+
+  - name: document
+    model: local-litellm/medium-moe
+    thinking: medium
+    writes:
+      - docs/
+      - app_docs/
+      - "**/*.md"
+      - "*.md"
+
+# Per-project overrides, keyed by absolute path — what M-063's tests_pass gate
+# (modules/gates.ts) needs per target project, since a shared factory can't
+# hardcode one repo's quality commands (design doc §4).
+#
+# printer-dashboard is a REAL project on this box (the same one
+# jmfederico-pi-web's own docker-compose.yml working_dir already targets) —
+# not a fictional worked example. Its actual package.json (confirmed
+# 2026-08-04) has only test:e2e (playwright test) / test:e2e:headed /
+# test:e2e:debug / test:e2e:ui — no plain `test` or `lint` script. `lint` is
+# therefore omitted below rather than invented; a real eslint/lint command
+# does not exist in this repo today. `typecheck` uses `npx tsc --noEmit`
+# directly since `typescript` is a real devDependency even without a
+# package.json script wrapping it.
+projects:
+  /home/chris/turnstone-workspace/printer-dashboard:
+    test: npx playwright test
+    typecheck: npx tsc --noEmit
+    # lint: intentionally omitted — no lint script configured in this repo.
