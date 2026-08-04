@@ -59,6 +59,20 @@ machine.
   template fix (Gemma-4 family) needs 0.20.0+. Upgrading is a real behavior-change
   decision (affects every registered model, not just the one being fixed), not a
   drive-by dependency bump.
+- **Archiving or deleting any pi-web session** (either running pi-web instance, either
+  via its API or its UI) **that wasn't created by the current agent, in the current
+  task, purely for disposable scratch/test purposes.** A pi-web session can hold hours
+  of real, in-progress work — unlike a model swap, this is not cheaply reversible.
+  Confirmed safe by construction, no confirmation needed each time: a session the
+  agent itself started via `POST /sessions` in the same task, at a `cwd` the agent
+  itself created solely for that test (e.g. a scratch dir under a project-specific
+  prefix it minted), archived+deleted before the task ends. Everything else —
+  including any session at a real project's own working directory, or any session the
+  agent did not itself start in the current task — needs Chris's explicit go-ahead
+  first, every time, even if it looks empty/stale/scratch-like. (Confirmed 2026-08-04:
+  no real session was touched building pi-web-factory — every archive/delete call that
+  session was scoped to a scratch cwd the agent minted itself — but the review that
+  confirmed it should have been the default, not a retroactive check.)
 
 ## Knowledge base — read at session start
 

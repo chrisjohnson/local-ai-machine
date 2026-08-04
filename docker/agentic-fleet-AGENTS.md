@@ -180,3 +180,25 @@ Separate branches don't conflict until merge, so the board can drift into contra
 
 Force-push / rewriting shared history · deleting branches · closing PRs · merging over someone's in-progress work · applying infra changes to production.
 §2's proceed-and-record default never applies here.
+
+---
+
+## Local addendum (local-ai-machine only, not part of the fleet snapshot above)
+
+Not part of `agentic-fleet/AGENTS.md` — do not fold this into that repo's file if
+re-copying the snapshot above. This section is specific to pi-web sessions running
+on this box and binds regardless of `.fleet/` presence in whatever project a session
+is working in.
+
+**Hard stop: archiving or deleting a pi-web session that wasn't started by the current
+agent, in the current task, purely for disposable scratch/test purposes.** A pi-web
+session can hold hours of real, in-progress work — not cheaply reversible. Confirmed
+safe without asking, every time: a session the agent itself started via `POST
+/sessions` in the same task, at a `cwd` the agent itself created solely for that test,
+archived+deleted before the task ends. Everything else — any session at a real
+project's own working directory, or any session the agent did not itself start in the
+current task — needs the human's explicit go-ahead first, no exceptions, even if it
+looks empty/stale/scratch-like. Added 2026-08-04 after building `pi-web-factory`
+(`jmfederico-pi-web/pi-web-factory/`), which drives pi-web sessions programmatically —
+this rule applies to it and to any future agent (including one triggered via a
+`pi-web-factory` skill, per that project's design) with the same force.
