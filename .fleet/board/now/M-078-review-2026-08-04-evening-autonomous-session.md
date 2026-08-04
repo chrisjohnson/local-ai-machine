@@ -47,6 +47,13 @@ needs your eyes.
   manual-trigger volume) — this means `<project>/.pi-web-factory-worktrees/` will
   grow unbounded over time with no sweep yet built. Worth confirming you're fine
   with that tradeoff before volume increases.
+- 2026-08-04T22:35Z — **M-075 done** (unified Roles config: agent + code, real
+  system prompts). Replaced `config.ts`'s old agent-only roster entirely (not kept
+  alongside) — every call site updated, confirmed via clean `tsc --noEmit`. System
+  prompt content is a deliberate, documented duplicate of the M-069 extension's
+  `roles.json` (verified byte-for-byte identical myself) — stays duplicated until
+  M-068. No concerns worth flagging on this one beyond what's already in its
+  decision log.
 
 ## Signals
 <!-- append-only -->
