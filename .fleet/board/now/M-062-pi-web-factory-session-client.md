@@ -2,8 +2,8 @@
 id: M-062
 title: pi-web-factory — piwebClient.ts (session lifecycle + completion wait-loop)
 initiative_id: null
-claimed_by: null
-claimed_at: null
+claimed_by: claude
+claimed_at: 2026-08-04T04:25:52Z
 blocks: null
 blocked_by: null
 status: null
@@ -52,6 +52,7 @@ gone):
 
 ## Signals
 <!-- append-only -->
+<!-- signal: claude 2026-08-04T04:25Z — claiming, starting piwebClient.ts -->
 
 ## Decision log
 <!-- append-only, one line per entry, newest last -->
