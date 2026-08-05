@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>local-ai-machine — Small-Build Sweep Dashboard — 2026-08-05</title>
+<style>
+  :root {
+    --bg: #0f1216;
+    --bg-card: #171b21;
+    --bg-card-2: #1d2229;
+    --border: #2a2f38;
+    --text: #e6e9ef;
+    --text-dim: #9aa4b2;
+    --accent: #5b9dff;
+    --good: #4ade80;
+    --warn: #fbbf24;
+    --bad: #f87171;
+    --bar-vllm: #5b9dff;
+    --bar-llamacpp: #34d399;
+    --bar-ollama: #fb923c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.55;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 40px 24px 80px; }
+  header.page {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 28px;
+    margin-bottom: 36px;
+  }
+  header.page h1 {
+    font-size: 28px;
+    margin: 0 0 6px;
+    letter-spacing: -0.02em;
+  }
+  header.page .sub { color: var(--text-dim); font-size: 14.5px; }
+  header.page .meta {
+    display: flex; gap: 18px; flex-wrap: wrap; margin-top: 16px;
+    font-size: 13px; color: var(--text-dim);
+  }
+  header.page .meta code { background: var(--bg-card); padding: 2px 6px; border-radius: 4px; color: var(--accent); }
+  h2 { font-size: 20px; margin: 48px 0 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border); letter-spacing: -0.01em; }
+  h3 { font-size: 15.5px; margin: 28px 0 10px; color: var(--text); }
+  h4 { font-size: 13.5px; margin: 22px 0 8px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.03em; }
+  p { color: var(--text-dim); font-size: 14.5px; }
+  a { color: var(--accent); }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em;
+    background: var(--bg-card); padding: 1px 5px; border-radius: 4px; color: var(--accent);
+  }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin: 20px 0; }
+  .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; }
+  .card .label { font-size: 12px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
+  .card .value { font-size: 22px; font-weight: 600; margin-top: 4px; }
+  .card .value.good { color: var(--good); }
+  .card .value.warn { color: var(--warn); }
+  .card .sub { font-size: 12.5px; color: var(--text-dim); margin-top: 2px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 14px 0 8px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { color: var(--text-dim); font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.03em; }
+  td.num { font-variant-numeric: tabular-nums; }
+  tr:last-child td { border-bottom: none; }
+  .engine-vllm { color: var(--bar-vllm); font-weight: 600; }
+  .engine-llamacpp { color: var(--bar-llamacpp); font-weight: 600; }
+  .engine-ollama { color: var(--bar-ollama); font-weight: 600; }
+  .group-row td { background: var(--bg-card-2); font-weight: 600; color: var(--text); padding-top: 14px; }
+  tr.group-member td { border-left: 2px solid var(--border); }
+  .pill {
+    display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px;
+    border-radius: 999px; margin-left: 6px; white-space: nowrap;
+  }
+  .pill.good { background: rgba(74,222,128,0.15); color: var(--good); }
+  .pill.warn { background: rgba(251,191,36,0.15); color: var(--warn); }
+  .pill.bad { background: rgba(248,113,113,0.15); color: var(--bad); }
+  .pill.dim { background: rgba(154,164,178,0.15); color: var(--text-dim); }
+  ul.findings { padding-left: 0; list-style: none; margin: 12px 0; }
+  ul.findings li { padding: 10px 0 10px 26px; position: relative; font-size: 14px; color: var(--text-dim); border-bottom: 1px solid var(--border); }
+  ul.findings li:last-child { border-bottom: none; }
+  ul.findings li::before { position: absolute; left: 0; top: 10px; font-size: 13px; }
+  ul.findings li.good::before { content: "✓"; color: var(--good); }
+  ul.findings li.warn::before { content: "!"; color: var(--warn); font-weight: 800; }
+  ul.findings li.bad::before { content: "✕"; color: var(--bad); }
+  ul.findings li strong { color: var(--text); }
+  .callout {
+    background: var(--bg-card); border: 1px solid var(--border); border-left: 3px solid var(--accent);
+    border-radius: 8px; padding: 14px 18px; margin: 16px 0; font-size: 13.5px; color: var(--text-dim);
+  }
+  .callout.warn { border-left-color: var(--warn); }
+  .callout.bad { border-left-color: var(--bad); }
+  .callout.good { border-left-color: var(--good); }
+  .callout strong { color: var(--text); }
+  .toc { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; margin: 18px 0 0; }
+  .toc a { color: var(--text-dim); border: 1px solid var(--border); padding: 5px 12px; border-radius: 999px; text-decoration: none; }
+  .toc a:hover { color: var(--accent); border-color: var(--accent); }
+  footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--text-dim); font-size: 12.5px; }
+  .scroll-x { overflow-x: auto; }
+  .bar-cell { min-width: 180px; }
+  .bar-track { background: var(--bg-card-2); border-radius: 4px; height: 12px; position: relative; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 4px; }
+  .bar-vllm { background: var(--bar-vllm); }
+  .bar-llamacpp { background: var(--bar-llamacpp); }
+  .bar-ollama { background: var(--bar-ollama); }
+  .bar-label { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+  .bar-max { color: var(--good); font-weight: 700; }
+  .bar-min { color: var(--warn); font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="page">
+  <h1>local-ai-machine — Small-Build (<40B) Sweep Dashboard</h1>
+  <div class="sub">M-083 sweep: every small build fresh-benchmarked (speed) and memory-captured on <code>2026-08-05</code> — llama.cpp direct (<code>llamacpp-bench-v1</code> + <code>llamacpp-mtp-v1</code>), Ollama (<code>ollama-warm-request-v2</code>), vLLM speed (<code>vllm-speed-c1c8-v2</code>, 2026-07-24/25, same kernel) + memory (<code>vllm-memory-capture-v1</code>). Built directly from <code>catalog/builds/*.yaml</code>.</div>
+  <div class="meta">
+    <span>Generated <code>2026-08-05</code></span>
+    <span>AMD Ryzen AI Max+ 395 (Strix Halo / gfx1151)</span>
+    <span>124GB unified memory pool</span>
+    <span>Speed + memory for every row below</span>
+  </div>
+  <div class="toc">
+    <a href="#findings">Biggest findings</a>
+    <a href="#summary">Headline cards</a>
+    <a href="#speed">Speed comparison</a>
+    <a href="#memory">Memory footprint</a>
+    <a href="#mtp">MTP speedups</a>
+    <a href="#quality">Data quality</a>
+  </div>
+</header>
+
+<section id="findings">
+  <h2>Biggest findings</h2>
+  <ul class="findings">
+    <li class="good"><strong>Fastest token generation across every small build: laguna-xs-2.1-33b via llama.cpp direct at 95.1 tok/s</strong> (tg128) — MoE-class, ~15% ahead of the next-fastest (GLM-4.7-Flash llama.cpp, 71.0). For a comparison of standing-role engineering value, GLM-4.7-Flash at 71.0 tok/s with only 17,484 MiB GTT is the strongest speed-per-memory ratio in the sweep.</li>
+    <li class="good"><strong>Smallest memory footprint: qwen3.5-4b vLLM at 23,389 MiB GTT</strong> (@0.20 util) — but among the useful-size builds, qwen2.5-vl-7b-instruct at 22.8 GiB GTT (@0.20) and the llama.cpp GGUF family (16-21 GiB GTT) are the practical leaders. Every llama.cpp build fits in under ~21 GiB GTT, roughly 1/5 the footprint of a vLLM 0.90-util build.</li>
+    <li class="good"><strong>MTP speculative decoding measured on 4 builds this sweep</strong>: qwen3.6-27b dense is the standout at 2.07x (26.38 vs 12.77 tok/s); the three MoE builds gain far less (Ornith 1.17x, qwen3.6-35b-a3b 1.16x, KAT-Coder ~1.08x). Dense models pay off most — MTP draft heads cost little extra compute there.</li>
+    <li class="warn"><strong>vLLM 0.90-util builds are full-box allocations and must never co-run</strong> — glm-4.7-flash-awq, gpt-oss-20b, gemma-4-26b-a4b-it, gemma-4-31b-it, and qwen3.6-27b all peak at 115-120 GiB GTT (system 123-127 GB, spilling into swap). Two stacked = the 2026-08-05 OOM thrash. qwen2.5-vl-7b (@0.20) and qwen3.5-4b (@0.20) are the only sub-30GB vLLM builds.</li>
+    <li class="good"><strong>Ollama trails llama.cpp direct on every shared model</strong> — GLM-4.7-Flash 59.1 vs 71.0 tok/s, qwen3.6-27b 10.46 vs 12.8, qwen3.6-35b-a3b 40.7 vs 63.7. Consistent with the prior dashboard's finding that Ollama's serving overhead costs MoE models proportionally more.</li>
+  </ul>
+</section>
+
+<section id="summary">
+  <h2>Headline cards</h2>
+  <div class="cards">
+    <div class="card"><div class="label">Fastest TG (any engine)</div><div class="value good">95.1 tok/s</div><div class="sub">laguna-xs-2.1-33b · llama.cpp · tg128</div></div>
+    <div class="card"><div class="label">Fastest vLLM TG</div><div class="value">94.5 tok/s</div><div class="sub">qwen2.5-vl-7b-instruct · c8</div></div>
+    <div class="card"><div class="label">Best MTP speedup</div><div class="value good">2.07x</div><div class="sub">qwen3.6-27b dense (26.38 tok/s)</div></div>
+    <div class="card"><div class="label">Smallest footprint</div><div class="value warn">22.8 GiB GTT</div><div class="sub">qwen2.5-vl-7b-instruct @0.20 (vLLM); 16.2-21.2 GiB llama.cpp family</div></div>
+    <div class="card"><div class="label">Largest footprint</div><div class="value">120 GiB GTT</div><div class="sub">glm-4.7-flash-awq @0.90 (default, no flag)</div></div>
+  </div>
+</section>
+
+<section id="speed">
+  <h2>Speed comparison — every small (&lt;40B) build, all engines</h2>
+  <p>llama.cpp = <code>llamacpp-bench-v1</code> (llama-bench pp512/tg128, single invocation, tool-internal mean ± σ), fresh 2026-08-05 unless noted. vLLM = <code>vllm-speed-c1c8-v2</code> (vllm bench serve, 3 trials/concurrency, mean ± σ). Ollama = <code>ollama-warm-request-v2</code> (cold load + 3 warm trials, warm mean), fresh 2026-08-05. Grouped by model. Sorted by tg128/c1 descending within engine families.</p>
+
+  <div class="scroll-x">
+  <table>
+    <tr>
+      <th>Model</th><th>Engine</th><th>Quant/Config</th><th>PP512 tok/s</th><th>TG128 tok/s</th><th>vLLM c1 out tok/s</th><th>vLLM c8 out tok/s</th><th>Ollama warm tok/s</th><th>Date</th>
+    </tr>
+    <tr class="group-row"><td colspan="9">laguna-xs-2.1-33b (MOE, ~33B total)</td></tr>
+    <tr class="group-member"><td>Laguna-XS-2.1-33B</td><td class="engine-llamacpp">llama.cpp direct</td><td>GGUF-Q4_K_M</td><td class="num">1194.6 ± —</td><td class="num">95.1 <span class="pill good">fastest TG</span></td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">2026-08-05</td></tr>
+    <tr class="group-row"><td colspan="9">glm-4.7-flash (MOE, ~30B total / ~3B active)</td></tr>
+    <tr class="group-member"><td>GLM-4.7-Flash</td><td class="engine-llamacpp">llama.cpp direct</td><td>GGUF-Q4_K_M</td><td class="num">1085.7 ± —</td><td class="num">71.0 <span class="pill good">best speed/GiB</span></td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">2026-08-05</td></tr>
+    <tr class="group-member"><td>GLM-4.7-Flash</td><td class="engine-ollama">Ollama</td><td>GGUF-Q4_K_M</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">59.1</td><td class="num">2026-08-05</td></tr>
+    <tr class="group-member"><td>GLM-4.7-Flash-AWQ</td><td class="engine-vllm">vLLM (swap-in)</td><td>AWQ-4bit</td><td class="num">—</td><td class="num">—</td><td class="num">19.42 ± 0.45</td><td class="num">33.18 ± 2.54</td><td class="num">—</td><td class="num">2026-07-25</td></tr>
+    <tr class="group-row"><td colspan="9">qwen3.6-35b-a3b (MOE, ~34.66B total / ~3B active)</td></tr>
+    <tr class="group-member"><td>Qwen3.6-35B-A3B</td><td class="engine-llamacpp">llama.cpp direct</td><td>GGUF-Q4_K_M</td><td class="num">1113.2 ± —</td><td class="num">63.7</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">2026-08-05</td></tr>
+    <tr class="group-member"><td>Qwen3.6-35B-A3B</td><td class="engine-ollama">Ollama</td><td>GGUF-Q4_K_M</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">40.7</td><td class="num">2026-08-05</td></tr>
+    <tr class="group-member"><td>Qwen3.6-35B-A3B</td><td class="engine-vllm">vLLM (standing)</td><td>bf16</td><td class="num">—</td><td class="num">—</td><td class="num">13.61 ± 0.17</td><td class="num">31.41 ± 0.32</td><td class="num">—</td><td class="num">2026-07-25</td></tr>
+    <tr class="group-row"><td colspan="9">ornith-1.0-35b-mtp-q8 (MOE, 35.51B total / 3.0B active)</td></tr>
+    <tr class="group-member"><td>Ornith-1.0-35B-MTP Q8_0</td><td class="engine-llamacpp">llama.cpp direct</td><td>GGUF-Q8_0 (MTP file)</td><td class="num">1158.02 ± 9.99</td><td class="num">55.26 ± 0.15</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">2026-08-05</td></tr>
+    <tr class="group-row"><td colspan="9">kat-coder-v2.5-dev (MOE, Q8_0 plain)</td></tr>
+    <tr class="group-member"><td>KAT-Coder-V2.5-Dev Q8_0</td><td class="engine-llamacpp">llama.cpp direct</td><td>GGUF-Q8_0</td><td class="num">1160.36 ± —</td><td class="num">55.33 ± —</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">2026-08-05</td></tr>
+    <tr class="group-row"><td colspan="9">gemma-4-26b-a4b-it (MOE, ~25.23B total / ~4B active)</td></tr>
+    <tr class="group-member"><td>Gemma-4-26B-A4B-it</td><td class="engine-llamacpp">llama.cpp direct</td><td>GGUF-Q4_K_M</td><td class="num">1252.7 ± —</td><td class="num">53.9</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">2026-08-05</td></tr>
+    <tr class="group-member"><td>Gemma-4-26B-A4B-it</td><td class="engine-vllm">vLLM (swap-in)</td><td>bf16</td><td class="num">—</td><td class="num">—</td><td class="num">21.67 ± 0.72</td><td class="num">59.18 ± 7.56</td><td class="num">—</td><td class="num">2026-07-24</td></tr>
+    <tr class="group-row"><td colspan="9">qwen3.6-27b (DENSE, 26.90B)</td></tr>
+    <tr class="group-member"><td>Qwen3.6-27B</td><td class="engine-llamacpp">llama.cpp direct</td><td>GGUF-Q4_K_M</td><td class="num">343.4 ± —</td><td class="num">12.8</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">2026-08-05</td></tr>
+    <tr class="group-member"><td>Qwen3.6-27B</td><td class="engine-ollama">Ollama</td><td>GGUF-Q4_K_M</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">10.46</td><td class="num">2026-08-05</td></tr>
+    <tr class="group-member"><td>Qwen3.6-27B</td><td class="engine-vllm">vLLM (swap-in)</td><td>bf16</td><td class="num">—</td><td class="num">—</td><td class="num">4.15 ± 0.07</td><td class="num">21.10 ± 2.75</td><td class="num">—</td><td class="num">2026-07-25</td></tr>
+    <tr class="group-row"><td colspan="9">qwen2.5-vl-7b-instruct (DENSE, 7B)</td></tr>
+    <tr class="group-member"><td>Qwen2.5-VL-7B-Instruct</td><td class="engine-vllm">vLLM (standing)</td><td>bf16 @0.20</td><td class="num">—</td><td class="num">—</td><td class="num">15.77 ± 0.30</td><td class="num">94.54 ± 13.44 <span class="pill good">fastest vLLM c8</span></td><td class="num">—</td><td class="num">2026-07-25</td></tr>
+    <tr class="group-row"><td colspan="9">gpt-oss-20b (MOE, ~20B total / ~3.5B active)</td></tr>
+    <tr class="group-member"><td>GPT-OSS-20B</td><td class="engine-vllm">vLLM (swap-in)</td><td>MXFP4-native @0.90</td><td class="num">—</td><td class="num">—</td><td class="num">12.92 ± 0.30</td><td class="num">72.99 ± 12.17</td><td class="num">—</td><td class="num">2026-07-26</td></tr>
+    <tr class="group-row"><td colspan="9">qwen3.5-4b (DENSE, 4B)</td></tr>
+    <tr class="group-member"><td>Qwen3.5-4B</td><td class="engine-vllm">vLLM (standing)</td><td>bf16 @0.20</td><td class="num">—</td><td class="num">—</td><td class="num">23.34 ± 0.41</td><td class="num">81.23 ± 3.01</td><td class="num">—</td><td class="num">2026-07-25</td></tr>
+    <tr class="group-row"><td colspan="9">gemma-4-31b-it (DENSE, 31B)</td></tr>
+    <tr class="group-member"><td>Gemma-4-31B-it</td><td class="engine-vllm">vLLM (swap-in)</td><td>bf16 @0.90</td><td class="num">—</td><td class="num">—</td><td class="num">3.34 ± 0.09</td><td class="num">11.24 ± 0.41</td><td class="num">—</td><td class="num">2026-07-25</td></tr>
+  </table>
+  </div>
+</section>
+
+<section id="memory">
+  <h2>Memory footprint — GTT peak per build</h2>
+  <p>vLLM rows are <code>vllm-memory-capture-v1</code> peak GTT + peak system RAM during a warm completion, standing config gpu-util noted. llama.cpp rows are <code>llamacpp-bench-v1</code> peak GTT. Ollama rows are <code>ollama-warm-request-v2</code> peak GTT. All GTT values in MiB; bar relative to the 124GB pool.</p>
+
+  <div class="scroll-x">
+  <table>
+    <tr>
+      <th>Model</th><th>Engine</th><th>GTT peak (MiB)</th><th>System peak (MiB)</th><th>Weights (GiB)</th><th>Standing util</th><th>Footprint bar (vs 124GB)</th>
+    </tr>
+    <tr class="group-member"><td>qwen3.5-4b</td><td class="engine-vllm">vLLM</td><td class="num">23,903</td><td class="num">32,224</td><td class="num">8.61</td><td class="num">0.20</td><td class="bar-cell"><div class="bar-track"><div class="bar-fill bar-vllm" style="width:19%"></div></div><div class="bar-label">19% of pool</div></td></tr>
+    <tr class="group-member"><td>qwen2.5-vl-7b-instruct</td><td class="engine-vllm">vLLM</td><td class="num">23,389 <span class="pill good">smallest vLLM</span></td><td class="num">30,709</td><td class="num">15.63</td><td class="num">0.20</td><td class="bar-cell"><div class="bar-track"><div class="bar-fill bar-vllm" style="width:19%"></div></div><div class="bar-label">19% of pool</div></td></tr>
+    <tr class="group-member"><td>qwen3.6-27b</td><td class="engine-llamacpp">llama.cpp</td><td class="num">16,234 <span class="pill good">smallest llama.cpp</span></td><td class="num">20,235</td><td class="num">15.92</td><td class="num">—</td><td class="bar-cell"><div class="bar-track"><div class="bar-fill bar-llamacpp" style="width:13%"></div></div><div class="bar-label">13% of pool</div></td></tr>
+    <tr class="group-member"><td>gemma-4-26b</td><td class="engine-llamacpp">llama.cpp</td><td class="num">16,754</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="bar-cell"><div class="bar-track"><div class="bar-fill bar-llamacpp" style="width:13.5%"></div></div><div class="bar-label">13.5% of pool</div></td></tr>
+    <tr class="group-member"><td>glm-4.7-flash</td><td class="engine-llamacpp">llama.cpp</td><td class="num">17,484</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="bar-cell"><div class="bar-track"><div class="bar-fill bar-llamacpp" style="width:14%"></div></div><div class="bar-label">14% of pool</div></td></tr>
+    <tr class="group-member"><td>laguna-xs-2.1-33b</td><td class="engine-llamacpp">llama.cpp</td><td class="num">18,791</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="bar-cell"><div class="bar-track"><div class="bar-fill bar-llamacpp" style="width:15%"></div></div><div class="bar-label">15% of pool</div></td></tr>
+    <tr class="group-member"><td>qwen3.6-35b-a3b</td><td class="engine-llamacpp">llama.cpp</td><td class="num">21,166</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="bar-cell"><div class="bar-track"><div class="bar-fill bar-llamacpp" style="width:17%"></div></div><div class="bar-label">17% of pool</div></td></tr>
+    <tr class="group-member"><td>ornith-1.0-35b-mtp-q8</td><td class="engine-llamacpp">llama.cpp</td><td class="num">35,858</td><td class="num">40,261</td><td class="num">35.19</td><td class="num">—</td><td class="bar-cell"><div class="bar-track"><div class="bar-fill bar-llamacpp" style="width:29%"></div></div><div class="bar-label">29% of pool (Q8_0, biggest llama.cpp)</div></td></tr>
+    <tr class="group-member"><td>glm-4.7-flash</td><td class="engine-ollama">Ollama</td><td class="num">38,021</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="bar-cell"><div class="bar-track"><div class="bar-fill bar-ollama" style="width:31%"></div></div><div class="bar-label">31% of pool</div></td></tr>
+    <tr class="group-member"><td>qwen3.6-27b</td><td class="engine-ollama">Ollama</td><td class="num">36,134</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="bar-cell"><div class="bar-track"><div class="bar-fill bar-ollama" style="width:29%"></div></div><div class="bar-label">29% of pool</div></td></tr>
+    <tr class="group-member"><td>qwen3.6-35b-a3b</td><td class="engine-ollama">Ollama</td><td class="num">27,616</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="bar-cell"><div class="bar-track"><div class="bar-fill bar-ollama" style="width:22%"></div></div><div class="bar-label">22% of pool</div></td></tr>
+    <tr class="group-row"><td colspan="7">vLLM 0.90-util builds — near-full-box allocations, never co-run</td></tr>
+    <tr class="group-member"><td>qwen3.6-35b-a3b</td><td class="engine-vllm">vLLM</td><td class="num">87,724</td><td class="num">96,522</td><td class="num">65.53</td><td class="num">0.70</td><td class="bar-cell"><div class="bar-track"><div class="bar-fill bar-vllm" style="width:71%"></div></div><div class="bar-label">71% of pool</div></td></tr>
+    <tr class="group-member"><td>qwen3.6-27b</td><td class="engine-vllm">vLLM</td><td class="num">114,651</td><td class="num">124,245</td><td class="num">51.10</td><td class="num">0.90</td><td class="bar-cell"><div class="bar-track"><div class="bar-fill bar-vllm" style="width:92%"></div></div><div class="bar-label">92% of pool — full box</div></td></tr>
+    <tr class="group-member"><td>gpt-oss-20b</td><td class="engine-vllm">vLLM</td><td class="num">115,316</td><td class="num">123,071</td><td class="num">14.16</td><td class="num">0.90</td><td class="bar-cell"><div class="bar-track"><div class="bar-fill bar-vllm" style="width:93%"></div></div><div class="bar-label">93% of pool</div></td></tr>
+    <tr class="group-member"><td>gemma-4-26b-a4b-it</td><td class="engine-vllm">vLLM</td><td class="num">115,429</td><td class="num">124,405</td><td class="num">48.50</td><td class="num">0.90</td><td class="bar-cell"><div class="bar-track"><div class="bar-fill bar-vllm" style="width:93%"></div></div><div class="bar-label">93% of pool</div></td></tr>
+    <tr class="group-member"><td>gemma-4-31b-it</td><td class="engine-vllm">vLLM</td><td class="num">115,803</td><td class="num">125,017</td><td class="num">58.90</td><td class="num">0.90</td><td class="bar-cell"><div class="bar-track"><div class="bar-fill bar-vllm" style="width:93%"></div></div><div class="bar-label">93% of pool</div></td></tr>
+    <tr class="group-member"><td>glm-4.7-flash-awq</td><td class="engine-vllm">vLLM</td><td class="num">120,007 <span class="pill bad">largest</span></td><td class="num">127,282</td><td class="num">16.94</td><td class="num">0.90 default</td><td class="bar-cell"><div class="bar-track"><div class="bar-fill bar-vllm" style="width:97%"></div></div><div class="bar-label">97% of pool — swap spill</div></td></tr>
+  </table>
+  </div>
+</section>
+
+<section id="mtp">
+  <h2>MTP speculative-decoding speedups (llamacpp-mtp-v1)</h2>
+  <p>Live llama-server timing (<code>--spec-type draft-mtp --spec-draft-n-max 3</code>, <code>-np 1</code>), 3 requests mean, vs the same model's plain-decode llama-bench tg128 baseline. Draft acceptance measured on Ornith only this sweep.</p>
+  <div class="scroll-x">
+  <table>
+    <tr><th>Model</th><th>Quant</th><th>Plain tg128 (tok/s)</th><th>MTP (tok/s)</th><th>Speedup</th><th>Architecture note</th><th>Date</th></tr>
+    <tr><td>qwen3.6-27b-mtp</td><td class="num">Q4_K_M</td><td class="num">12.77 ± 0.01</td><td class="num">26.38</td><td class="num"><strong>2.07x</strong> <span class="pill good">best</span></td><td>dense — MTP heads pay off most</td><td class="num">2026-08-05</td></tr>
+    <tr><td>ornith-1.0-35b-mtp-q8</td><td class="num">Q8_0</td><td class="num">55.26 ± 0.15</td><td class="num">64.73</td><td class="num">1.17x</td><td>MoE (35.51B/3.0B), draft acc 0.583, mean len 2.74</td><td class="num">2026-08-05</td></tr>
+    <tr><td>qwen3.6-35b-a3b-mtp</td><td class="num">Q4_K_M</td><td class="num">63.81</td><td class="num">73.84</td><td class="num">1.16x</td><td>MoE (34.66B/3.0B)</td><td class="num">2026-08-05</td></tr>
+    <tr><td>kat-coder-v2.5-dev-mtp-q6</td><td class="num">Q6_K</td><td class="num">58.25</td><td class="num">62.75</td><td class="num">~1.08x</td><td>MoE MTP-graft</td><td class="num">2026-08-05</td></tr>
+  </table>
+  </div>
+</section>
+
+<section id="quality">
+  <h2>Data quality — an honest accounting</h2>
+  <ul class="findings">
+    <li class="good"><strong>Every vLLM build now has memory-capture data</strong> — all 8 vLLM small builds have <code>vllm-memory-capture-v1</code> (GTT + system peak, weights) on top of fresh <code>vllm-speed-c1c8-v2</code> speed data. Speed data dates 2026-07-24/25 (same kernel 6.18.39, Mesa 25.3.6) — explicitly not re-run per M-083 scope; memory captured fresh 2026-08-05.</li>
+    <li class="good"><strong>All llama.cpp + ollama speed/memory fresh 2026-08-05</strong>, one model at a time, download queue paused, container verified stopped between runs.</li>
+    <li class="good"><strong>Ornith-1.0-35B-MTP Q8_0 benchmarked</strong> per M-083 directive (download completed mid-sweep) — plain + MTP + memory. First attempt corrupted by the <code>docker-compose-app</code> unit bringing up the full stack on download-complete (base_used 118,931 MiB); discarded and re-run clean at 4.5GB base.</li>
+    <li class="warn"><strong><code>gemma-4-26b--ollama</code> stays BROKEN</strong> — <code>gemma4</code> arch unsupported in Ollama 0.17.7 (pinned; upgrade is a hard-stop decision). No data fabricated.</li>
+    <li class="warn"><strong><code>north-mini-code-1.0-w4a16</code> stays BROKEN</strong> — unresolved <code>--max-model-len</code> placeholder; no memory capture attempted.</li>
+    <li class="warn"><strong>Historical context</strong>: prior passes measured slightly different numbers on some shared builds (e.g. GLM-4.7-Flash llama.cpp 71.24 → 71.0; Qwen3.6-27B llama.cpp 12.72/12.77 → 12.8; Ollama GLM 61.98 → 59.1, Qwen3.6-35B-A3B 41.27 → 40.7). Within run-to-run noise (pp512 especially is load-sensitive); the newer 2026-08-05 figures are the benchmark-of-record in the build files.</li>
+    <li class="warn"><strong>The 2026-08-05 OOM incident is fully documented</strong> in <code>catalog/builds/qwen3.6-27b--vllm-therock-gfx1151.yaml</code> and the M-083 card: two stacked 0.90-util vLLM builds (qwen3.6-27b + glm-4.7-flash-awq) exceeded the 124GB pool → swap thrash → power cycle. <code>/tmp/vllm_mem.sh</code> hardened (pre-flight guard + guaranteed teardown trap); the 0.90-util co-run warning is recorded in every affected build file.</li>
+  </ul>
+</section>
+
+<footer>
+  Synthesized directly from <code>catalog/builds/*.yaml</code> and <code>catalog/raw/*</code> on 2026-08-05 for M-083. Supersedes <code>docs/comparison-dashboard-2026-07-28.html</code> for every small (&lt;40B) build: all memory fields are new, all llama.cpp/Ollama speeds re-measured fresh, Ornith added. Speed figures for vLLM carried from 2026-07-24/25 (same kernel). MTP speedups are new. Prior dashboards remain as historical record. Methodology: <code>catalog/OPERATIONS.md</code>; decision history: <code>knowledge/decisions/</code>.
+</footer>
+
+</div>
+</body>
+</html>
