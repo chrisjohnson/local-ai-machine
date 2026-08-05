@@ -114,6 +114,50 @@ needs your eyes.
   current architecture (Workflow/Step/Role terms, M-076's interpreter, M-071's
   worktrees/deep-links, M-069's real system prompts, M-070's per-project config,
   M-074/M-076's token tracking, updated exit codes, status grid through M-078).
+- 2026-08-05T03:20Z — **This whole stretch, worked live with Chris (not
+  autonomous) once he came back — "refine 72" through pi-web-factory's Docker
+  bake-in and the Skill going live.** Summary of what happened, in order:
+  - **M-077 done** (real-time visualizer). Independent review confirmed the
+    core requirement (idle time compressed, not drawn to scale) via both its
+    own tests and my own live `curl` against the real running server. Found
+    one piece of leftover state NOT from this card — 9 stray sessions + 1
+    stray Project from my own earlier M-076 testing iterations (a fixed,
+    non-randomized scratch path meant every rerun reused it) — held off
+    deleting them until you explicitly confirmed (the hard-stop rule's
+    classifier correctly blocked my first attempt, which was based on
+    inference/pattern-match rather than tracked IDs); you confirmed, cleaned
+    up.
+  - **Found and corrected my own mistake**: initially reported the live
+    `pi-web` container as running stale config vs. `docker-compose.yml` —
+    wrong. There are two similarly-named compose services (`pi-web:`, the
+    old `agegr/pi-web` comparison partner, vs `jmfederico-pi-web:`, the real
+    one) and I'd compared against the wrong one. No real drift existed;
+    corrected directly with you once found. You had already told me to "fire
+    away" on a redeploy based on the wrong premise — flagged and walked back
+    before doing anything, then removed the stale `pi-web:` service/directory/
+    volume declaration entirely per your explicit "clean up that previous
+    experiment" instruction.
+  - **M-068 done** (Docker bake-in + first live end-to-end smoke test) —
+    pulled forward ahead of its original "dead last" sequencing because M-072
+    needed it. Deployed for real (`docker compose up -d jmfederico-pi-web`,
+    you confirmed nothing needed the container to stay up). One real,
+    non-obvious fix caught before deploying: `factory.db`'s path had to move
+    OUT of the always-resynced code directory, or every container restart
+    would have silently destroyed real accumulated observability history.
+  - **M-072 done** (the triggering Skill) — built, baked into the image
+    (corrected my own earlier plan: the skill file needs to be git-tracked,
+    not hand-placed on the host's bind mount), deployed, and live-verified
+    end-to-end from an ordinary session with a natural-language request. It
+    worked correctly — but the live run also surfaced a real bug in
+    `plan-build-review` itself (M-076): a `build` Step hallucinated success
+    without writing anything, `review` correctly caught it in its own
+    summary, but the overall run still reported top-level `SUCCESS` since
+    nothing propagates `review`'s `approved` field to the run's own status.
+    Filed as **M-080** (backlog, not started — needs your design call on the
+    right fix, not something I should decide unilaterally). This is real and
+    worth your attention even though it's not urgent.
+  - Full detail for all of the above is in each card's own decision log
+    (M-077, M-068, M-072, M-080, all in `done/` except M-080 in `backlog/`).
 
 ## Signals
 <!-- append-only -->
