@@ -111,3 +111,24 @@ versions:
       long_context_tg_tok_s: 80.67
       long_context_tg_degradation_pct: 12.7
       raw_stdout_file: null
+  - timestamp: '2026-08-05T05:10:00Z'
+    benchmark_id: llamacpp-bench-v1
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: 5cdc0cfe3467a77f51148fb5d9ef65277edc8b7a
+      host_gpu_driver: Mesa 25.3.6
+      concurrent_load:
+        downloads_paused: true
+        vllm_co_resident_or_stopped: stopped_for_run
+      host_metrics_window:
+        start: '2026-08-05T05:10:00Z'
+        end: '2026-08-05T05:11:30Z'
+      image_digest: '[kyuz0/amd-strix-halo-toolboxes@sha256:1648e4195154aef5dc975253d962e1e1b8358af26b0e54b4faf89a156131c320]'
+      engine_version: 0e4a03622 (10154)
+    result:
+      pp512_tok_s: 1194.64 ± 6.30
+      tg128_tok_s: 95.14 ± 0.62
+      memory_footprint_gtt_mib: 18791
+      memory_peak_system_used_mib: 23036
+      engine_build: 0e4a03622 (10154)
+      raw_stdout_file: catalog/raw/laguna-xs-2.1-33b-q4km--llamacpp-vulkan-radv-v1--llamacpp-bench-v1--20260805T051000Z.txt

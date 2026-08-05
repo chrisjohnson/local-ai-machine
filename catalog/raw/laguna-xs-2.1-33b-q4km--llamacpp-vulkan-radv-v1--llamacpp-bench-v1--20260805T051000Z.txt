@@ -1,0 +1,19 @@
+Laguna-XS-2.1 Q4_K_M — llama-bench, M-083 fresh benchmark
+Date: 2026-08-05
+Command (box):
+  docker run --rm --device /dev/kfd --device /dev/dri --group-add 26 --group-add 303 \
+    -v /var/lib/ai-models/laguna-xs-2.1-33b-q4km:/models:ro \
+    kyuz0/amd-strix-halo-toolboxes:vulkan-radv \
+    llama-bench -m /models/Laguna-XS-2.1-Q4_K_M.gguf -ngl 999 -fa 1 -lm none
+Pre-conditions: download queue paused (Ornith); all model-serving containers stopped; no other GPU load.
+Memory: base 4,349 MiB → peak system used 23,036 MiB; peak GTT 18,791 MiB (~18.4 GiB).
+Note: first llamacpp-bench-v1 run for this build (prior record was llamacpp-server-live-timing-v1).
+
+ggml_vulkan: Found 1 Vulkan devices:
+ggml_vulkan: 0 = AMD Radeon 8060S Graphics (RADV GFX1151) (radv) | uma: 1 | fp16: 1 | bf16: 0 | fp4: 0 | warp size: 64 | shared memory: 65536 | int dot: 1 | matrix cores: KHR_coopmat
+| model                          |       size |     params | backend    | ngl |  fa |         lm |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | --: | ---------: | --------------: | -------------------: |
+| laguna 30B.A3B Q4_K - Medium   |  18.88 GiB |    33.44 B | Vulkan     | 999 |   1 |       none |           pp512 |       1194.64 ± 6.30 |
+| laguna 30B.A3B Q4_K - Medium   |  18.88 GiB |    33.44 B | Vulkan     | 999 |   1 |       none |           tg128 |         95.14 ± 0.62 |
+
+build: 0e4a03622 (10154)
