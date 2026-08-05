@@ -24,6 +24,7 @@ function mkRun(overrides: Partial<RunSummary>): RunSummary {
     totalTokens: 0,
     totalCost: 0,
     archived: false,
+    steps: [],
     ...overrides,
   };
 }

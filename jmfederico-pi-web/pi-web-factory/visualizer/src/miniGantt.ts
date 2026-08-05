@@ -9,19 +9,19 @@
  * `auto-fill`/`minmax` — a fixed-px mini timeline would either overflow
  * narrow cards or look tiny in wide ones).
  *
- * Each Step also gets a small role-color dot beneath its bar, so the same
- * Role-color system (`roleColor.ts`) used on the detail page's full Gantt
- * and nested-event lists is visible at a glance on the grid too.
+ * Bar color is Role identity, not status (found missing in review, M-090
+ * follow-up, 2026-08-05 — see `stepBarStyle.ts`'s doc comment for the full
+ * story): every bar's fill is that Step's Role color in some form, in every
+ * state, so the same Role reads identically here and on the detail page's
+ * full Gantt. A separate per-Step "role dot" used to carry this instead —
+ * removed now that the bar itself does, which also means fewer DOM nodes
+ * per card (point 7's performance ask).
  */
 
 import type { Step } from "./api";
 import { computeGanttLayout } from "./gantt";
-import { roleColor } from "./roleColor";
+import { stepBarStyle } from "./stepBarStyle";
 import { escapeHtml } from "./format";
-
-function statusClass(status: string | null): string {
-  return status ? `step-${status}` : "step-queued";
-}
 
 /**
  * Renders a condensed, percentage-scaled Gantt strip for one run's Steps.
@@ -42,14 +42,14 @@ export function miniGanttHtml(steps: Step[], nowMs: number): string {
     .map((sl) => {
       const leftPct = (sl.x / totalWidth) * 100;
       const widthPct = Math.max(0.6, (sl.width / totalWidth) * 100);
-      const roleTokens = roleColor(sl.step.role);
+      const bar = stepBarStyle(sl.step.role, sl.step.status);
       const label = sl.step.name ?? sl.step.phaseId;
       const title = `${label}${sl.step.role ? ` · ${sl.step.role}` : ""} — ${sl.step.status ?? "unknown"}`;
+      const activeClass = bar.isActive ? " step-active" : "";
       return `
-        <div class="mini-step-bar ${statusClass(sl.step.status)}"
-             style="left:${leftPct.toFixed(2)}%; width:${widthPct.toFixed(2)}%"
+        <div class="mini-step-bar${activeClass}"
+             style="left:${leftPct.toFixed(2)}%; width:${widthPct.toFixed(2)}%; ${bar.style}"
              title="${escapeHtml(title)}"></div>
-        <div class="mini-step-role-dot" style="left:${leftPct.toFixed(2)}%; background:${roleTokens.color}" title="${escapeHtml(sl.step.role ?? "unknown role")}"></div>
       `;
     })
     .join("");

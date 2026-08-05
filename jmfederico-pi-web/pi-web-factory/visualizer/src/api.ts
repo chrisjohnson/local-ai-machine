@@ -19,6 +19,8 @@ export interface RunSummary {
   totalTokens: number;
   totalCost: number;
   archived: boolean;
+  /** Always present on `/api/runs` list responses now (batched server-side, one extra query for the whole page — see server.ts's `runsToApi`), so every grid card can render its mini-Gantt up front, not just running ones. */
+  steps: Step[];
 }
 
 export interface Step {

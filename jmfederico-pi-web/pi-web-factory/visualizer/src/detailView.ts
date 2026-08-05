@@ -25,16 +25,13 @@ import {
   formatTokens,
 } from "./format";
 import { roleColor } from "./roleColor";
+import { stepBarStyle } from "./stepBarStyle";
 import { runTitle } from "./runTitle";
 
 const RUN_POLL_INTERVAL_MS = 3000;
 const EVENTS_POLL_INTERVAL_MS = 2000;
 /** A Step counts as "actively live" if an event touched it within this window — keeps the pulse honest (not stuck highlighted forever off stale data). */
 const ACTIVITY_WINDOW_MS = 15000;
-
-function statusClass(status: string | null): string {
-  return status ? `step-${status}` : "step-queued";
-}
 
 /** Small pill badge for a Step's Role, colored via `roleColor.ts` — the same mapping used by the grid's mini-Gantt, so a Role reads consistently everywhere it appears. */
 function roleBadgeHtml(role: string | null): string {
@@ -170,6 +167,7 @@ export class DetailView {
           ${run.projectCwd ? `<span title="${escapeHtml(run.projectCwd)}">${escapeHtml(run.projectCwd)}</span>` : ""}
           ${isLive ? `<span class="live-indicator"><span class="status-dot"></span>LIVE — polling for updates</span>` : ""}
         </div>
+        ${run.request ? `<div class="run-prompt"><h3>initial prompt</h3><pre class="run-prompt-text">${escapeHtml(run.request)}</pre></div>` : ""}
       </div>
 
       <div class="timeline-wrap">
@@ -193,13 +191,18 @@ export class DetailView {
   }
 
   private stepRowHtml(step: Step, sl: { x: number; width: number }, active: Set<string>): string {
+    // `active` (events-derived "truly live right now") takes precedence over
+    // the phases row's own `status` for the pulsing-glow treatment — a Step
+    // can sit at status=running while actually stalled; `stepBarStyle`'s
+    // "running" branch is reserved for genuine live activity here.
     const isActive = active.has(step.phaseId);
+    const bar = stepBarStyle(step.role, isActive ? "running" : step.status);
     const label = step.name ?? step.phaseId;
     return `
       <div class="timeline-row">
         <span class="step-label" style="left:${String(sl.x)}px">${escapeHtml(label)}${roleBadgeHtml(step.role)}</span>
-        <div class="step-bar ${statusClass(step.status)} ${isActive ? "step-active" : ""}"
-             style="left:${String(sl.x)}px; width:${String(sl.width)}px"
+        <div class="step-bar${bar.isActive ? " step-active" : ""}"
+             style="left:${String(sl.x)}px; width:${String(sl.width)}px; ${bar.style}"
              data-step-toggle="${escapeHtml(step.phaseId)}"
              title="${escapeHtml(label)} — ${escapeHtml(step.status ?? "unknown")}">
           ${escapeHtml(label)}

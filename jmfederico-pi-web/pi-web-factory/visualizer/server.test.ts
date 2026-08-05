@@ -190,6 +190,23 @@ describe("visualizer server (real spawned process, real HTTP)", () => {
     expect(runs).toEqual([]);
   });
 
+  test("GET /api/runs (list endpoint) also includes each run's Steps, batched — not just the detail endpoint", async () => {
+    // Regression coverage for the grid needing every card's Steps up front
+    // (M-090 follow-up, 2026-08-05): the list route used to return bare
+    // run summaries, forcing a per-card detail fetch to paint a mini-Gantt.
+    const res = await fetch(`${baseUrl}/api/runs`);
+    const runs = (await res.json()) as Array<{ adwId: string; steps: Array<{ name: string; role: string }> }>;
+    const run = runs.find((r) => r.adwId === ADW_ID);
+    expect(run?.steps).toHaveLength(1);
+    expect(run?.steps[0]!.name).toBe("plan");
+    expect(run?.steps[0]!.role).toBe("planner");
+
+    // A run with zero Steps still gets a (present, empty) array — not
+    // undefined/missing — so the frontend never needs an existence check.
+    const runNoSteps = runs.find((r) => r.adwId === ADW_ID_PROJECT_B);
+    expect(runNoSteps?.steps).toEqual([]);
+  });
+
   test("GET /api/runs/:adwId returns the run plus its Steps in seq order", async () => {
     const res = await fetch(`${baseUrl}/api/runs/${ADW_ID}`);
     expect(res.status).toBe(200);

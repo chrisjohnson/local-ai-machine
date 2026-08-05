@@ -343,37 +343,22 @@ a.back-link:hover {
   height: 100%;
 }
 
+/* Bar fill/border/text color all come inline from `stepBarStyle.ts` — Role
+   identity is the bar's base hue in every state (see that module's doc
+   comment). CSS here only owns shape/sizing and the shared "active" pulse
+   (`.step-active`, below, used by both this condensed bar AND the full
+   detail-page `.step-bar`) — a pure `box-shadow` `@keyframes` animation,
+   GPU-cheap, never JS-driven per-frame (point 7's performance ask). */
 .mini-step-bar {
   position: absolute;
   top: 6px;
   height: 10px;
   border-radius: 3px;
-  border: 1px solid transparent;
+  border: 1.5px solid transparent;
 }
 
-.mini-step-bar.step-success {
-  background: var(--pi-success);
-}
-.mini-step-bar.step-fail {
-  background: var(--pi-danger);
-}
-.mini-step-bar.step-running {
-  background: var(--pi-accent);
-}
-.mini-step-bar.step-queued {
-  background: var(--pi-dim);
-  opacity: 0.5;
-}
-
-.mini-step-role-dot {
-  position: absolute;
-  top: 20px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-}
-
-.mini-gantt-empty {
+.mini-gantt-empty,
+.mini-gantt-note {
   color: var(--pi-dim);
   font-size: 11px;
   padding: 12px 0;
@@ -411,6 +396,32 @@ a.back-link:hover {
   margin-top: 10px;
 }
 
+.run-prompt {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--pi-border-muted);
+}
+
+.run-prompt h3 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--pi-dim);
+  font-weight: 600;
+}
+
+.run-prompt-text {
+  margin: 0;
+  font-family: var(--pi-mono);
+  font-size: 12.5px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--pi-text);
+  max-height: 260px;
+  overflow-y: auto;
+}
+
 .timeline-wrap {
   background: var(--pi-surface);
   border: 1px solid var(--pi-border);
@@ -444,6 +455,8 @@ a.back-link:hover {
   margin-bottom: 6px;
 }
 
+/* Fill/border/text color come inline from `stepBarStyle.ts` (same Role-based
+   scheme as `.mini-step-bar`, above) — CSS here only owns shape/sizing. */
 .step-bar {
   position: absolute;
   top: 4px;
@@ -458,27 +471,14 @@ a.back-link:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   cursor: pointer;
-  border: 1px solid transparent;
-  color: var(--pi-text-bright);
+  border: 1.5px solid transparent;
 }
 
-.step-bar.step-success {
-  background: var(--pi-success);
-  color: var(--pi-bg);
-}
-.step-bar.step-fail {
-  background: var(--pi-danger);
-  color: var(--pi-bg);
-}
-.step-bar.step-running {
-  background: var(--pi-accent);
-  color: #fff;
-}
-.step-bar.step-queued {
-  background: var(--pi-dim);
-  color: var(--pi-bg);
-}
-
+/* Shared "actively running right now" pulse — used by both the condensed
+   grid bar (`.mini-step-bar`) and the full detail-page bar (`.step-bar`),
+   so the same "this is live" visual language reads identically everywhere,
+   while the bar's FILL color still carries Role identity (stepBarStyle.ts). */
+.mini-step-bar.step-active,
 .step-bar.step-active {
   animation: pulse-border 1.2s ease-in-out infinite;
 }

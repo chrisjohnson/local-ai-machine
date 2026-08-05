@@ -64,6 +64,17 @@ describe("Tracer", () => {
     tracer.sessionStart(adwId, { engineer: "chris", projectCwd: "/home/chris/some-project" });
     tracer.sessionRequest(adwId, "add a /health endpoint");
 
+    // Regression: sessionRequest used to silently truncate at 500 chars —
+    // the visualizer's detail page now displays this in full, so nothing
+    // upstream of that display may drop data. A real task prompt can
+    // easily run longer than 500 chars.
+    const longPrompt = "x".repeat(2000);
+    tracer.sessionRequest(adwId, longPrompt);
+    const stored = tracer.db.query<{ request: string | null }, [string]>("SELECT request FROM sessions WHERE adw_id=?").get(adwId);
+    expect(stored?.request).toBe(longPrompt);
+    expect(stored?.request?.length).toBe(2000);
+    tracer.sessionRequest(adwId, "add a /health endpoint"); // restore for the rest of this test
+
     // phase_start -> creates a `phases` row
     const phaseStartId = tracer.event({
       adwId,

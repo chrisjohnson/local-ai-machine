@@ -1,15 +1,17 @@
 /**
- * runTitle.ts: display-layer-only title fallback (spec section 2).
+ * runTitle.ts: display-layer title fallback (spec section 2).
  *
- * `sessions.title` is currently always `null` for every real run — nothing
- * populates it yet (separate, not-yet-done upstream work; confirmed live
- * 2026-08-05). `sessions.request` (the original task prompt) IS always
- * populated and is what a human would actually recognize a run by. This is
- * a display-only fix: `modules/tracer.ts`/`workflow.ts` and the trace db
- * itself are untouched — only how the frontend CHOOSES what to show changes.
+ * `sessions.title` is populated for every real run started since M-091
+ * (`workflow.ts`/`planBuildTest.ts` call `tracer.sessionSetTitle(adwId,
+ * deriveTitleFromPrompt(taskPrompt))` right after `sessionStart`) — a short,
+ * human-readable title derived from the task prompt's first sentence/line,
+ * capped at 72 chars. Runs recorded BEFORE that change still have `title:
+ * null` in the db, so the fallback chain below still matters for old rows,
+ * not just as defensive coding.
  *
- * Precedence: `run.title` if present, else `run.request` (the task prompt
- * text), else `run.adwId` as the last resort (always present).
+ * Precedence: `run.title` if present, else `run.request` (the full task
+ * prompt text, for pre-M-091 rows), else `run.adwId` as the last resort
+ * (always present).
  *
  * Long text is truncated via CSS (`.run-title`'s `text-overflow: ellipsis`),
  * not here — more robust across different card widths than a JS string

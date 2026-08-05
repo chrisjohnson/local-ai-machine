@@ -222,8 +222,19 @@ export class Tracer {
     }
   }
 
+  /**
+   * Stores the run's COMPLETE original task prompt, untruncated — the
+   * visualizer's detail page displays this in full (2026-08-05 redesign:
+   * "the ticket should also include the complete initial prompt"). A prior
+   * version capped this at 500 chars, silently discarding the rest of any
+   * real, detailed prompt before it ever reached storage — found while
+   * wiring up that display and fixed here, since no truncation at the UI
+   * layer can recover data this method never persisted. `request` is a
+   * plain SQLite TEXT column (schema.ts) with no meaningful size ceiling
+   * for a local trace db.
+   */
   sessionRequest(adwId: string, request: string): void {
-    this.db.run("UPDATE sessions SET request=? WHERE adw_id=?", [request.slice(0, 500), adwId]);
+    this.db.run("UPDATE sessions SET request=? WHERE adw_id=?", [request, adwId]);
   }
 
   /**

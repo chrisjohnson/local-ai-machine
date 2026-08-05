@@ -114,9 +114,21 @@ function runCardShellOpenHtml(run: RunSummary, nowMs: number): string {
   `;
 }
 
-/** Fully static HTML for a card that can no longer change (success/fail) — computed once, then reused verbatim on every outer grid re-render until the underlying run data itself changes (it won't, once terminal). */
+/**
+ * Fully static HTML for a card that can no longer change (success/fail) —
+ * computed once, then reused verbatim on every outer grid re-render until
+ * the underlying run data itself changes (it won't, once terminal).
+ *
+ * Includes the mini-Gantt: `run.steps` now arrives pre-batched on every
+ * `/api/runs` list response (`server.ts`'s `runsToApi`), so ALL cards show
+ * their timeline inline, not just running ones — found missing in review
+ * against the reference screenshot (M-090 follow-up, 2026-08-05): a
+ * finished card previously showed only the shell (title/status/meta), no
+ * timeline at all, until clicked through to the detail page.
+ */
 function finishedCardHtml(run: RunSummary, nowMs: number): string {
-  return runCardShellOpenHtml(run, nowMs);
+  const gantt = `<div class="mini-gantt">${miniGanttHtml(run.steps, nowMs)}</div>`;
+  return `${runCardShellOpenHtml(run, nowMs)}${gantt}`;
 }
 
 function cardOuterHtml(run: RunSummary, innerHtml: string): string {
@@ -180,6 +192,11 @@ class RunningCardController {
     this.cardEl = cardEl;
     this.adwId = run.adwId;
     this.latestRun = run;
+    // `run.steps` already arrived batched on the outer /api/runs poll — seed
+    // with it so the first paint shows the real (if slightly stale) Gantt
+    // immediately, instead of an empty "no Steps yet" flash while the first
+    // per-card `/api/runs/:adwId` fetch is still in flight.
+    this.steps = run.steps;
   }
 
   start(): void {
@@ -332,8 +349,10 @@ export class ListView {
         }
         if (run.status === "running") {
           // Over the live cap — still a real running card (status pill,
-          // pulsing glow), just no per-card poll/mini-Gantt.
-          return cardOuterHtml(run, `${finishedCardHtml(run, nowMs)}<div class="mini-gantt-empty">live preview unavailable (too many concurrent runs)</div>`);
+          // pulsing glow) with its Gantt from the last outer-grid poll
+          // (`run.steps`, batched — see finishedCardHtml), it just doesn't
+          // get its OWN faster per-card poll cycle on top of that.
+          return cardOuterHtml(run, `${finishedCardHtml(run, nowMs)}<div class="mini-gantt-note">not live-updating (too many concurrent runs)</div>`);
         }
         return cardOuterHtml(run, finishedCardHtml(run, nowMs));
       })

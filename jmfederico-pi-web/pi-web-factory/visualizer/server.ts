@@ -135,7 +135,20 @@ interface EventRow {
   ended_at: string | null;
 }
 
-function runToApi(r: SessionRow) {
+/**
+ * `steps` defaults to `[]` here — `runsToApi` (below, the ONLY real caller
+ * for the list route) always overwrites it with the real, batched-fetched
+ * Steps for that run. Kept as a real field (not optional) on the return
+ * type so the frontend's `RunSummary` type can rely on it always being
+ * present, matching the spec's "every card shows its mini-Gantt, not just
+ * running ones" requirement (found missing in review, M-090 follow-up) —
+ * a card can't render anything without knowing its Steps up front, and a
+ * dedicated per-card fetch for every non-running card would mean N extra
+ * round trips just to paint the initial page, which is exactly the kind of
+ * thing the "batch data streaming efficiently" performance requirement
+ * rules out.
+ */
+function runToApi(r: SessionRow, steps: ReturnType<typeof stepToApi>[] = []) {
   return {
     adwId: r.adw_id,
     adwName: r.adw_name,
@@ -151,7 +164,38 @@ function runToApi(r: SessionRow) {
     totalTokens: r.total_tokens,
     totalCost: r.total_cost,
     archived: Boolean(r.archived),
+    steps,
   };
+}
+
+/**
+ * Batches every returned run's Steps into ONE extra query (`WHERE adw_id IN
+ * (...)`) rather than one query per run — the grid needs every card's Steps
+ * up front (to render a mini-Gantt for ALL cards, not just running ones),
+ * so this is the difference between 1 extra round trip and N. Groups by
+ * `adw_id` in JS afterward (SQLite's `IN` doesn't preserve per-key
+ * grouping on its own).
+ */
+function runsToApi(rows: SessionRow[]): ReturnType<typeof runToApi>[] {
+  if (rows.length === 0) return [];
+  const placeholders = rows.map(() => "?").join(",");
+  const adwIds = rows.map((r) => r.adw_id);
+  const allSteps = db
+    .query<PhaseRow, string[]>(
+      `SELECT phase_id, adw_id, seq, name, kind, owner, description, status,
+              attempt, retries, error, input_tokens, output_tokens, cached_tokens,
+              output_summary, started_at, ended_at
+       FROM phases WHERE adw_id IN (${placeholders}) ORDER BY adw_id, seq`,
+    )
+    .all(...adwIds);
+  const stepsByAdwId = new Map<string, ReturnType<typeof stepToApi>[]>();
+  for (const row of allSteps) {
+    const mapped = stepToApi(row);
+    const bucket = stepsByAdwId.get(row.adw_id);
+    if (bucket) bucket.push(mapped);
+    else stepsByAdwId.set(row.adw_id, [mapped]);
+  }
+  return rows.map((r) => runToApi(r, stepsByAdwId.get(r.adw_id) ?? []));
 }
 
 function stepToApi(r: PhaseRow) {
@@ -244,7 +288,7 @@ const server = Bun.serve({
           )
           .all();
         const rows = project ? allRows.filter((r) => r.project_cwd !== null && projectRootOf(r.project_cwd) === project) : allRows;
-        return json(rows.map(runToApi));
+        return json(runsToApi(rows));
       },
     },
 
