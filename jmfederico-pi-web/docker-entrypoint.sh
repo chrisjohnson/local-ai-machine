@@ -89,4 +89,15 @@ if [ -d /app/.pi-web/pi-web-factory-seed ]; then
   cp -r /app/.pi-web/pi-web-factory-seed "$HOME/pi-web-factory"
 fi
 
+# Always sync the pi-web-factory Agent Skill (M-072) into place on every
+# start, same reasoning as the syncs above. Lands in skills/ under
+# $CONFIG_ROOT (pi's own auto-discovered $PI_CODING_AGENT_DIR/skills/<name>/
+# SKILL.md location), unlike the CLI code sync above which deliberately
+# lands outside $CONFIG_ROOT.
+if [ -d /app/.pi-web/skills-seed/pi-web-factory ]; then
+  mkdir -p "$CONFIG_ROOT/skills"
+  rm -rf "$CONFIG_ROOT/skills/pi-web-factory"
+  cp -r /app/.pi-web/skills-seed/pi-web-factory "$CONFIG_ROOT/skills/pi-web-factory"
+fi
+
 exec "$@"

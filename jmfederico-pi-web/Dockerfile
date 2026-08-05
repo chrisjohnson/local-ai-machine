@@ -124,6 +124,19 @@ COPY plugins/pi-web-factory-prompts /app/.pi-web/extensions-seed/pi-web-factory-
 COPY pi-web-factory /app/.pi-web/pi-web-factory-seed
 RUN cd /app/.pi-web/pi-web-factory-seed && bun install --frozen-lockfile
 
+# pi-web-factory Agent Skill (M-072): lets any pi-web session trigger a
+# Workflow Run itself ("run the pipeline for X") via its own bash tool,
+# rather than requiring `cli.ts` to be invoked from outside. Pi's native
+# Skills mechanism auto-loads $PI_CODING_AGENT_DIR/skills/<name>/SKILL.md
+# into every session's system prompt (confirmed live, M-072's own research)
+# — unlike the CLI code above, this DOES belong under $CONFIG_ROOT (it's
+# exactly the kind of pi-coding-agent config that mechanism expects), but
+# still baked into the image and always-synced rather than placed on the
+# host's bind-mounted $PI_CODING_AGENT_DIR by hand, so it stays git-tracked
+# and never drifts from what's committed — same discipline as everything
+# else in this file.
+COPY skills/pi-web-factory /app/.pi-web/skills-seed/pi-web-factory
+
 # Points cli.ts's trace db at a path under $PI_CODING_AGENT_DIR (bind-mounted
 # from the host, so it survives both container restarts AND image rebuilds),
 # rather than its local-dev default (co-located with cli.ts itself, which

@@ -1,0 +1,66 @@
+---
+name: pi-web-factory
+description: Use when the user asks to run, trigger, kick off, or delegate an automated multi-step coding task — e.g. "run the pipeline for X", "have pi-web-factory build this", "plan and build this and review it", "implement this and get it tested" — as a separate, tracked Workflow Run rather than doing the work yourself in this conversation.
+---
+
+# pi-web-factory: trigger a Workflow Run
+
+pi-web-factory is a deterministic control plane for AI coding agent sessions: it
+drives Workflows (fixed sequences of Steps — plan/build/review/test) against a
+target project, each Step a bounded, typed turn with its own model, write
+allowlist, and acceptance checks. Triggering one here starts a REAL, separate
+pi-web session — not something that happens inside this conversation.
+
+Don't volunteer this capability or explain it unprompted. Only act when the
+user's request clearly matches "run an automated workflow" (see the
+`description` above for trigger phrasing). If it's ambiguous whether they want
+you to just do the work directly vs. delegate it to a tracked Workflow Run, ask
+which they mean — don't guess.
+
+## Available Workflows
+
+| Name | Shape | When to pick it |
+|---|---|---|
+| `plan-build-review` | plan → build → review (an agent's judgment call, no loop) | Default choice for most requests — a clear task where a second agent's review is enough quality gate. |
+| `bounded-build-review` | build → loop{review, build} until approved, max 3 rounds | The user wants correction rounds baked in — "keep fixing it until it's right", something finicky/security-sensitive, or the user explicitly asks for a review loop. |
+| `plan-build-test` | plan → build → test (a real command, e.g. `go test`/`bun test`, not another agent) | The user wants a mechanical, code-based acceptance check instead of (or in addition to) a judgment call — "make sure the tests pass", "TDD this". Requires the target project to have a `.pi-web-factory.yaml` declaring its `test` command; if it doesn't, say so rather than guessing a command. |
+
+## How to trigger one
+
+1. **Project path** (`--project`): your own session's cwd IS the target project
+   in the expected flow (you're triggering this from inside a session already
+   working in that project). Use `pwd` if you need to confirm it. Only ask the
+   user for a different path if they explicitly name a different project.
+2. **Workflow** (`--workflow`): pick from the table above based on what the
+   user actually asked for. Default to `plan-build-review` if nothing about
+   the request suggests otherwise.
+3. **Prompt**: the user's own task description, verbatim or lightly cleaned up
+   — don't paraphrase away specifics they gave you.
+4. Run, via your own bash tool:
+   ```
+   bun $HOME/pi-web-factory/cli.ts --project <path> --workflow <name> "<prompt>"
+   ```
+   This mints a fresh pi-web session in its own git worktree and runs the
+   Workflow against it — takes real time (multiple agent turns), the command
+   won't return until it's done or fails.
+5. **Relay the real result back to the user in this conversation** — don't
+   just dump raw CLI stdout. The command prints a status line ending in a
+   `link=http://...` deep-link that opens the actual resulting session/project/
+   workspace in pi-web's browser UI; always include that link. Summarize
+   success/failure/blocked-on-human plainly (the CLI's own status word —
+   `SUCCESS`, `BLOCKED-ON-HUMAN`, `FAILED`, `GATE-FAILED`, `LOOP-EXHAUSTED`,
+   `UNPARSEABLE`, `PERMISSIONS-VIOLATION` — is already precise; use it, don't
+   invent your own summary language for it).
+6. If the result is `BLOCKED-ON-HUMAN`: tell the user the agent asked a
+   question and is waiting — point them at the deep-link to answer it there,
+   then mention they (or you, later) can resume with the same command plus
+   `--session-id <the printed id>`.
+
+## What NOT to do
+
+- Don't archive, delete, or otherwise modify the resulting pi-web session
+  yourself afterward — it's a real, durable session the user may want to
+  revisit, not scratch state you created and own the way a test does.
+- Don't invent a `--project`/`--workflow` combination the table above doesn't
+  support — if genuinely nothing fits, say so rather than forcing a mismatched
+  Workflow onto the request.
