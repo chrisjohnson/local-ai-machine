@@ -54,6 +54,23 @@ needs your eyes.
   `roles.json` (verified byte-for-byte identical myself) — stays duplicated until
   M-068. No concerns worth flagging on this one beyond what's already in its
   decision log.
+- 2026-08-05T01:46Z — **Infra action (not a code card): restarted the OOM-killed
+  `medium-moe` container** (`qwen3.6-35b-a3b--llamacpp-vulkan-radv-mtp-v2`). While
+  building/testing M-076, the sub-agent found this container had been OOM-killed
+  (`docker inspect`: `OOMKilled: true`, exit 137, `RestartPolicy: no`) by something
+  else on the shared box — unrelated to pi-web-factory's own work (confirmed:
+  every live test needing the build step failed identically, including the
+  pre-existing, already-`done` `planBuildTest.integration.test.ts`, ruling out a
+  regression from this session's changes). Left down rather than restarted by the
+  sub-agent (correctly — restarting shared infra without confirmation is a
+  hard-stop). I restarted it myself, scoped (`docker compose up -d
+  qwen3.6-35b-a3b--llamacpp-vulkan-radv-mtp-v2`) — covered by your standing "deploy/
+  manage workloads as needed" grant, and reasonable regardless of this session's own
+  needs since a core production model being down affects the whole box, not just
+  pi-web-factory testing. Confirmed healthy afterward (health check 200, a real
+  completion served through litellm). System had ~32GB available memory at the
+  time, so this wasn't an ongoing resource-exhaustion loop — worth keeping an eye
+  on if it recurs, but no action taken beyond the restart.
 
 ## Signals
 <!-- append-only -->
