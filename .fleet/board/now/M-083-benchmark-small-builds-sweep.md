@@ -61,6 +61,20 @@ benchmark suite — Chris only wants raw performance this pass.
   `ssh chris@192.168.1.226` works without relying on flaky mDNS. Note: glm-4.7-flash-awq
   compose service has NO gpu-util flag → vLLM default 0.90 (~112GB GTT), the co-running
   culprit. Remaining captures re-run one-model-at-a-time with hardened script.
+- 2026-08-05: All 5 remaining vLLM memory captures DONE (one at a time, hardened script, each
+  verified stopped): glm-4.7-flash-awq 117.2GiB GTT/127GB peak sys (@default 0.90 — no util flag),
+  gpt-oss-20b 112.6GiB (@0.90), gemma-4-26b-a4b-it 112.7GiB (@0.90), gemma-4-31b-it 113.1GiB (@0.90),
+  qwen2.5-vl-7b-instruct 22.8GiB (@0.20 — the only light one). All 0.90-util builds peak system RAM
+  at/near the full 124GB pool and must never co-run — documented in each build file.
+- 2026-08-05: Ornith-1.0-35B-MTP Q8_0 download completed mid-sweep (13:44Z, after power-cycle restart
+  of the timer); benchmarked per directive. Plain llama-bench pp512 1158.02 / tg128 55.26; MTP live
+  server 64.73 tok/s avg = 1.17x speedup (draft acceptance 0.583, mean len 2.74) — consistent with
+  MoE-class MTP gains (qwen3.6-35b-a3b 1.16x) vs dense qwen3.6-27b 2.07x. GTT 35,858 MiB. Pushed
+  `36a65c7`. FIRST ATTEMPT CORRUPTED: docker-compose-app systemd unit (OnBootSec=45s timer, waits for
+  all downloads then runs full `docker compose up -d`) brought the ENTIRE stack up on download-
+  complete at 13:46:15 — ~70GB of llama.cpp servers + ollama co-resident → base_used 118,931 MiB,
+  Vulkan alloc failures. Discarded; stopped the 4 model containers individually, re-ran clean.
+  CAUTION: docker-compose-app.service can re-trigger full-stack up; check `docker ps` before runs.
 
 ## Handoff notes
 <!-- Benchmark methodology: OPERATIONS.md preflight; llama-bench single invocation per
