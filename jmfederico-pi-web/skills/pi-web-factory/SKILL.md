@@ -1,6 +1,6 @@
 ---
 name: pi-web-factory
-description: Use when the user asks to run, trigger, kick off, or delegate an automated multi-step coding task — e.g. "run the pipeline for X", "have pi-web-factory build this", "plan and build this and review it", "implement this and get it tested" — as a separate, tracked Workflow Run rather than doing the work yourself in this conversation.
+description: Use when the user asks to run, trigger, kick off, or delegate an automated multi-step coding task without naming a specific Workflow shape — e.g. "run the pipeline for X", "have pi-web-factory build this", "plan and build this and review it", "implement this and get it tested" — as a separate, tracked Workflow Run rather than doing the work yourself in this conversation. If the user already knows which shape they want, they can also use /skill:plan-build-review, /skill:bounded-build-review, or /skill:plan-build-test directly — this skill exists for the open-ended "just run something" case.
 ---
 
 # pi-web-factory: trigger a Workflow Run
@@ -10,6 +10,12 @@ drives Workflows (fixed sequences of Steps — plan/build/review/test) against a
 target project, each Step a bounded, typed turn with its own model, write
 allowlist, and acceptance checks. Triggering one here starts a REAL, separate
 pi-web session — not something that happens inside this conversation.
+
+Each Workflow also has its own dedicated skill (`/skill:plan-build-review <task>`,
+`/skill:bounded-build-review <task>`, `/skill:plan-build-test <task>`) for a user
+who already knows exactly which shape they want — SSSF-style shorthand, one
+command per Workflow. This skill is the fallback for open-ended requests where the
+shape isn't named explicitly; use the table below to pick one.
 
 Don't volunteer this capability or explain it unprompted. Only act when the
 user's request clearly matches "run an automated workflow" (see the

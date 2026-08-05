@@ -89,15 +89,21 @@ if [ -d /app/.pi-web/pi-web-factory-seed ]; then
   cp -r /app/.pi-web/pi-web-factory-seed "$HOME/pi-web-factory"
 fi
 
-# Always sync the pi-web-factory Agent Skill (M-072) into place on every
-# start, same reasoning as the syncs above. Lands in skills/ under
+# Always sync the pi-web-factory Agent Skills (M-072, M-086) into place on
+# every start, same reasoning as the syncs above. Lands in skills/ under
 # $CONFIG_ROOT (pi's own auto-discovered $PI_CODING_AGENT_DIR/skills/<name>/
 # SKILL.md location), unlike the CLI code sync above which deliberately
-# lands outside $CONFIG_ROOT.
-if [ -d /app/.pi-web/skills-seed/pi-web-factory ]; then
+# lands outside $CONFIG_ROOT. Syncs each baked-in skill subdirectory BY
+# NAME (not a wholesale `rm -rf $CONFIG_ROOT/skills`) so any OTHER skill a
+# human adds to the live, bind-mounted skills/ dir by hand is never touched
+# — only the specific names this image actually ships.
+if [ -d /app/.pi-web/skills-seed ]; then
   mkdir -p "$CONFIG_ROOT/skills"
-  rm -rf "$CONFIG_ROOT/skills/pi-web-factory"
-  cp -r /app/.pi-web/skills-seed/pi-web-factory "$CONFIG_ROOT/skills/pi-web-factory"
+  for skill_dir in /app/.pi-web/skills-seed/*/; do
+    skill_name=$(basename "$skill_dir")
+    rm -rf "$CONFIG_ROOT/skills/$skill_name"
+    cp -r "$skill_dir" "$CONFIG_ROOT/skills/$skill_name"
+  done
 fi
 
 exec "$@"

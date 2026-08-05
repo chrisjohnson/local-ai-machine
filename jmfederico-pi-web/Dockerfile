@@ -124,18 +124,20 @@ COPY plugins/pi-web-factory-prompts /app/.pi-web/extensions-seed/pi-web-factory-
 COPY pi-web-factory /app/.pi-web/pi-web-factory-seed
 RUN cd /app/.pi-web/pi-web-factory-seed && bun install --frozen-lockfile
 
-# pi-web-factory Agent Skill (M-072): lets any pi-web session trigger a
-# Workflow Run itself ("run the pipeline for X") via its own bash tool,
-# rather than requiring `cli.ts` to be invoked from outside. Pi's native
-# Skills mechanism auto-loads $PI_CODING_AGENT_DIR/skills/<name>/SKILL.md
-# into every session's system prompt (confirmed live, M-072's own research)
-# — unlike the CLI code above, this DOES belong under $CONFIG_ROOT (it's
-# exactly the kind of pi-coding-agent config that mechanism expects), but
+# pi-web-factory Agent Skills (M-072, M-086): let any pi-web session trigger
+# a Workflow Run itself, either via natural language (the general
+# `pi-web-factory` skill) or SSSF-style shorthand (`/skill:plan-build-review
+# <task>` etc. — one skill per Workflow, pi's native `/skill:<name>` command
+# mechanism, confirmed live). Pi's Skills mechanism auto-loads
+# $PI_CODING_AGENT_DIR/skills/<name>/SKILL.md into every session's system
+# prompt — unlike the CLI code above, this DOES belong under $CONFIG_ROOT
+# (exactly the kind of pi-coding-agent config that mechanism expects), but
 # still baked into the image and always-synced rather than placed on the
 # host's bind-mounted $PI_CODING_AGENT_DIR by hand, so it stays git-tracked
-# and never drifts from what's committed — same discipline as everything
-# else in this file.
-COPY skills/pi-web-factory /app/.pi-web/skills-seed/pi-web-factory
+# and never drifts from what's committed. Copies the WHOLE skills/ directory
+# (not one hardcoded name) so adding a new skill later is a new subdirectory,
+# not a Dockerfile edit.
+COPY skills /app/.pi-web/skills-seed
 
 # Points cli.ts's trace db at a path under $PI_CODING_AGENT_DIR (bind-mounted
 # from the host, so it survives both container restarts AND image rebuilds),
