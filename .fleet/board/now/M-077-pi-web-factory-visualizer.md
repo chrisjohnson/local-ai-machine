@@ -2,8 +2,8 @@
 id: M-077
 title: pi-web-factory — visualizer (Gantt-style Workflow Run view, real-time)
 initiative_id: null
-claimed_by: null
-claimed_at: null
+claimed_by: claude
+claimed_at: 2026-08-05T03:00:00Z
 blocks: null
 blocked_by: [M-074]
 status: null
@@ -50,6 +50,7 @@ schema (`title`, narrowed `kind`, `role`, per-step tokens, `output_summary`).
 
 ## Signals
 <!-- append-only -->
+<!-- signal: claude 2026-08-05T03:00Z — claiming, starting the visualizer -->
 
 ## Decision log
 <!-- append-only, one line per entry, newest last -->
