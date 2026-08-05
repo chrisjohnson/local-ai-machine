@@ -71,6 +71,18 @@ needs your eyes.
   completion served through litellm). System had ~32GB available memory at the
   time, so this wasn't an ongoing resource-exhaustion loop — worth keeping an eye
   on if it recurs, but no action taken beyond the restart.
+- 2026-08-05T02:20Z — **M-076 done** (generic Workflow interpreter — the largest,
+  most central card of the whole project: YAML-defined Workflows, a generic
+  interpreter, loop steps, three registered Workflows). Independent review (not the
+  implementing sub-agent) found and fixed one real latent bug (taskPrompt silently
+  dropped for a hypothetical loop-first Workflow — neither shipped Workflow is
+  affected, but the interpreter needed to be correct generally, not just for what
+  it ships with) and one infra staleness bug (hardcoded LAN IP, the box's address
+  changed mid-session). One live-test timeout traced via `/status` to genuine
+  model slowness under today's heavy concurrent load, not a hang — confirmed via
+  clean retry (89s, well under the 120s budget) rather than papered over with a
+  timeout bump. Full detail in M-076's own decision log. Nothing here needs your
+  input beyond a skim — flagging mainly because it's the biggest card so far.
 
 ## Signals
 <!-- append-only -->
