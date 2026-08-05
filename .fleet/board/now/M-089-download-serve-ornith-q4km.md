@@ -62,6 +62,8 @@ additive: new model definition + triggering its download, so a smoke-test
 
 ## Signals
 <!-- signal: claude 2026-08-05T00:00Z — claiming, researching Q4_K_M provenance -->
+<!-- signal: claude 2026-08-05T19:17Z — deployed via nixos-rebuild switch (clean eval, no syntax issues); download-model-llamacpp-ornith-1.0-35b-mtp-q4 service active and growing (148K -> 11M within first minute, .incomplete marker present as expected mid-transfer); laguna-s-2.1-118b-q4km and qwen3.6-35b-a3b-mtp confirmed still running untouched -->
+<!-- signal: claude 2026-08-05T19:17Z — handoff ready: smoke test + role-switch decision left for later, per task instructions -->
 
 ## Decision log
 - 2026-08-05: Confirmed via HF API tree (`/api/models/singulared/Ornith-1.0-35B-MTP-GGUF/tree/main`)
