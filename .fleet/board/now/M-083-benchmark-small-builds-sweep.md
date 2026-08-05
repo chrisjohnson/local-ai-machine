@@ -25,12 +25,12 @@ Explicitly out of scope: scripts/benchmark_orchestrator.py and the extended agen
 benchmark suite — Chris only wants raw performance this pass.
 
 ## Plan
-1. [ ] Stop laguna-s-2.1-118b-q4km + qwen3.6-35b-a3b-mtp containers
-2. [ ] Benchmark KAT Q8_0 (llama-bench pp512/tg128) + KAT MTP Q6_K (MTP live timing) with memory capture
-3. [ ] Record builds/versions/benchmark_runs + raw results; commit+push
-4. [ ] Fresh-benchmark every <40B build one at a time, memory notes each, commit+push per build
-5. [ ] Ornith benchmark if download completes
-6. [ ] Dashboard (speed + memory comparison, historical included), open for Chris
+1. [x] Stop laguna-s-2.1-118b-q4km + qwen3.6-35b-a3b-mtp containers
+2. [x] Benchmark KAT Q8_0 (llama-bench pp512/tg128) + KAT MTP Q6_K (MTP live timing) with memory capture
+3. [x] Record builds/versions/benchmark_runs + raw results; commit+push
+4. [x] Fresh-benchmark every <40B build one at a time, memory notes each, commit+push per build
+5. [x] Ornith benchmark if download completes (did complete mid-sweep; benchmarked)
+6. [x] Dashboard (speed + memory comparison, historical included), open for Chris
 
 ## Signals
 <!-- signal: claude 2026-08-05T00:00Z — claiming, starting with KAT benchmarks -->
@@ -75,6 +75,10 @@ benchmark suite — Chris only wants raw performance this pass.
   complete at 13:46:15 — ~70GB of llama.cpp servers + ollama co-resident → base_used 118,931 MiB,
   Vulkan alloc failures. Discarded; stopped the 4 model containers individually, re-ran clean.
   CAUTION: docker-compose-app.service can re-trigger full-stack up; check `docker ps` before runs.
+- 2026-08-05 DONE: Dashboard `docs/comparison-dashboard-2026-08-05.html` generated (speed + memory +
+  MTP tables, headline cards, historical notes), verified against build files, committed `f170161` and
+  opened for Chris. Ornith download service completed (36.2G in) — nothing left to resume. All M-083
+  plan items complete.
 
 ## Handoff notes
 <!-- Benchmark methodology: OPERATIONS.md preflight; llama-bench single invocation per
