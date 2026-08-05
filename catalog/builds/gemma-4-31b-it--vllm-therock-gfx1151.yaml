@@ -174,6 +174,27 @@ versions:
         - catalog/raw/gemma-4-31b-it--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c8-trial2--20260725T035221Z.json
         - catalog/raw/gemma-4-31b-it--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c8-trial3--20260725T035221Z.json
       server_log_raw_file: catalog/raw/gemma-4-31b-it--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--server-log--20260725T035221Z.txt
+  - timestamp: '2026-08-05T13:55:00Z'
+    benchmark_id: vllm-memory-capture-v1
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: 5cdc0cfe3467a77f51148fb5d9ef65277edc8b7a
+      host_gpu_driver: Mesa 25.3.6
+      concurrent_load:
+        downloads_paused: true
+        vllm_co_resident_or_stopped: standalone_swap_in
+      host_metrics_window:
+        start: '2026-08-05T13:55:00Z'
+        end: '2026-08-05T14:05:00Z'
+      image_digest: '[kyuz0/vllm-therock-gfx1151@sha256:25fd294fde9f729d1e75f109022ab4496c78190c0a6dc0142440529f7af20e4d]'
+      engine_version: 0.22.1rc1.dev499+g470229c37.d20260613.rocm714
+    result:
+      memory_footprint_gtt_mib: 115803
+      memory_peak_system_used_mib: 125017
+      weights_gib: 58.9
+      note: 'standing config --gpu-memory-utilization 0.90 — GTT peak 115,803 MiB (~113.1GB)
+        tracks the reservation; peak system 125,017 MiB briefly exceeds the 124GB pool (swap
+        spill). Same 0.90-util co-run warning as the other box-filling builds.'
   - timestamp: '2026-07-25T03:52:21Z'
     benchmark_id: seven-tier-coding-v2
     fingerprint:
