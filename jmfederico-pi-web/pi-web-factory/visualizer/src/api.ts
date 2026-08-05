@@ -8,6 +8,8 @@ export interface RunSummary {
   adwId: string;
   adwName: string | null;
   projectCwd: string | null;
+  /** Shared, worktree-suffix-stripped project root (see server.ts's `projectRootOf`) — use this for grouping/filtering by project, never `projectCwd` (unique per run). */
+  projectRoot: string | null;
   title: string | null;
   request: string | null;
   status: "running" | "success" | "fail" | string | null;

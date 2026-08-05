@@ -42,7 +42,25 @@ import { Database } from "bun:sqlite";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { SCHEMA } from "../modules/schema.ts";
+import { WORKTREE_SUBDIR } from "../modules/worktree.ts";
 import index from "./src/index.html";
+
+/**
+ * Every Workflow Run gets its OWN git worktree (M-071), so `sessions.
+ * project_cwd` is actually `<projectRoot>/.pi-web-factory-worktrees/<adwId>`
+ * — a value that's UNIQUE per run, never shared across runs against the
+ * same project. Confirmed live (2026-08-05): filtering by the raw, unique
+ * `projectCwd` made the "project" filter useless — it only ever matched
+ * the one run whose worktree path was typed in exactly. Strips the
+ * worktree suffix back to the real, shared project root so multiple runs
+ * against the same project group together correctly, both for the
+ * dropdown's distinct-project list and for the actual filter query below.
+ */
+function projectRootOf(cwd: string): string {
+  const marker = `/${WORKTREE_SUBDIR}/`;
+  const idx = cwd.indexOf(marker);
+  return idx === -1 ? cwd : cwd.slice(0, idx);
+}
 
 const DEFAULT_DB_PATH = join(import.meta.dir, "..", "factory.db");
 const DB_PATH = process.env["PI_WEB_FACTORY_VISUALIZER_DB_PATH"] ?? DEFAULT_DB_PATH;
@@ -122,6 +140,8 @@ function runToApi(r: SessionRow) {
     adwId: r.adw_id,
     adwName: r.adw_name,
     projectCwd: r.project_cwd,
+    /** The shared, worktree-suffix-stripped project root — what the `?project=` filter actually groups/matches on (see `projectRootOf` above). `projectCwd` itself is unique per run, never shared. */
+    projectRoot: r.project_cwd === null ? null : projectRootOf(r.project_cwd),
     title: r.title,
     request: r.request,
     status: r.status,
@@ -191,40 +211,39 @@ const server = Bun.serve({
     // ── static frontend (bundled by Bun.serve from the HTML import) ──────
     "/": index,
 
-    // ── GET /api/runs?project=<cwd> — list, most recent first, optionally
-    // filtered to runs whose project_cwd exactly matches `project` ─────────
+    // ── GET /api/runs?project=<root> — list, most recent first, optionally
+    // filtered to runs whose NORMALIZED project root (projectRootOf, above —
+    // strips the per-run worktree suffix) matches `project` ────────────────
+    //
+    // Filtered in JS, not SQL: `project_cwd` is a unique-per-run worktree
+    // path, not a plain column value shared across a project's runs, so
+    // there's no clean single-column SQL WHERE for "same project" — fetch
+    // every row (already the unfiltered-case behavior, and this table is a
+    // local trace db, not something needing a real query planner for this)
+    // and filter by the normalized root computed per row.
     //
     // No dedicated `/api/projects` endpoint: `/api/runs` is already a single
     // unpaginated query over the whole `sessions` table (no pagination exists
     // anywhere in this API), so the frontend already has the full set of
     // `projectCwd` values in hand after its first unfiltered fetch — deriving
-    // the distinct list client-side (see `listView.ts`) is a plain `Set` over
-    // data already on the wire, not an extra round trip's worth of DISTINCT
-    // query. A dedicated endpoint would only pay for itself once this table
-    // is large enough to need pagination/limits on `/api/runs` itself, which
-    // it isn't (a local trace db, not a multi-tenant service).
+    // the distinct (normalized) project list client-side (see `listView.ts`)
+    // is a plain `Set` over data already on the wire, not an extra round
+    // trip's worth of DISTINCT query. A dedicated endpoint would only pay
+    // for itself once this table is large enough to need pagination/limits
+    // on `/api/runs` itself, which it isn't.
     "/api/runs": {
       GET(req) {
         const url = new URL(req.url);
         const project = url.searchParams.get("project");
-        const rows = project
-          ? db
-              .query<SessionRow, [string]>(
-                `SELECT adw_id, adw_name, project_cwd, title, request, status, engineer,
-                        started_at, ended_at, total_tokens, total_cost, archived
-                 FROM sessions
-                 WHERE project_cwd = ?
-                 ORDER BY started_at DESC, adw_id DESC`,
-              )
-              .all(project)
-          : db
-              .query<SessionRow, []>(
-                `SELECT adw_id, adw_name, project_cwd, title, request, status, engineer,
-                        started_at, ended_at, total_tokens, total_cost, archived
-                 FROM sessions
-                 ORDER BY started_at DESC, adw_id DESC`,
-              )
-              .all();
+        const allRows = db
+          .query<SessionRow, []>(
+            `SELECT adw_id, adw_name, project_cwd, title, request, status, engineer,
+                    started_at, ended_at, total_tokens, total_cost, archived
+             FROM sessions
+             ORDER BY started_at DESC, adw_id DESC`,
+          )
+          .all();
+        const rows = project ? allRows.filter((r) => r.project_cwd !== null && projectRootOf(r.project_cwd) === project) : allRows;
         return json(rows.map(runToApi));
       },
     },

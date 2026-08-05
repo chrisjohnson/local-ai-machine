@@ -4,8 +4,13 @@
  * refresh (M-077 plan item 3).
  *
  * ── project filter ──────────────────────────────────────────────────────
- * A `<select>` above the list narrows the visible runs to one `projectCwd`
- * (server-side, via `/api/runs?project=<cwd>` — see `server.ts`). The
+ * A `<select>` above the list narrows the visible runs to one shared
+ * PROJECT ROOT (`projectRoot`, server-side via `/api/runs?project=<root>` —
+ * see `server.ts`'s `projectRootOf`) — deliberately NOT the raw `projectCwd`
+ * column, which is unique per Workflow Run (every run gets its own git
+ * worktree, M-071) and would put every single run in its own one-item
+ * "project" if used directly for grouping (a real bug, found and fixed
+ * live 2026-08-05). The
  * filter's known options are derived client-side from an always-unfiltered
  * fetch (`fetchRuns()` with no `project` arg, kept in `allProjects`) rather
  * than a dedicated `/api/projects` endpoint (see `server.ts`'s doc comment
@@ -104,7 +109,10 @@ export class ListView {
       const allRuns = await fetchRuns();
       const distinct = new Set<string>();
       for (const r of allRuns) {
-        if (r.projectCwd) distinct.add(r.projectCwd);
+        // projectRoot (worktree-suffix-stripped), NOT projectCwd — every
+        // run's projectCwd is its own unique worktree path (M-071), so
+        // grouping by it would put every single run in its own "project".
+        if (r.projectRoot) distinct.add(r.projectRoot);
       }
       this.allProjects = [...distinct].sort();
     } catch {

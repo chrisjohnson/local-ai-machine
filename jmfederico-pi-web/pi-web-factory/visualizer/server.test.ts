@@ -30,6 +30,17 @@ const ADW_ID_PROJECT_B = "adw_servertest02";
 const ADW_ID_PROJECT_B_2 = "adw_servertest03";
 const PROJECT_B_CWD = "/tmp/other-project";
 
+// Realistic per-run worktree paths (M-071: every Workflow Run gets its OWN
+// worktree) against the SAME project root — the actual real-world shape
+// that exposed a real bug live 2026-08-05: naive grouping/filtering by the
+// raw project_cwd column treated these as two unrelated one-run "projects"
+// instead of two runs against one shared project.
+const ADW_ID_WORKTREE_1 = "adw_servertest04";
+const ADW_ID_WORKTREE_2 = "adw_servertest05";
+const PROJECT_ROOT_CWD = "/tmp/pi-web-factory-realproject";
+const WORKTREE_CWD_1 = `${PROJECT_ROOT_CWD}/.pi-web-factory-worktrees/${ADW_ID_WORKTREE_1}`;
+const WORKTREE_CWD_2 = `${PROJECT_ROOT_CWD}/.pi-web-factory-worktrees/${ADW_ID_WORKTREE_2}`;
+
 function seed(): void {
   const tracer = new Tracer(dbPath);
   tracer.sessionStart(ADW_ID, { engineer: "test", projectCwd: "/tmp/x", adwName: "plan-build-review" });
@@ -56,6 +67,13 @@ function seed(): void {
   tracer.sessionSetTitle(ADW_ID_PROJECT_B, "project B run 1");
   tracer.sessionStart(ADW_ID_PROJECT_B_2, { engineer: "test", projectCwd: PROJECT_B_CWD, adwName: "plan-build-review" });
   tracer.sessionSetTitle(ADW_ID_PROJECT_B_2, "project B run 2");
+
+  // Two runs against the SAME project root, each with its own real
+  // per-run worktree cwd — see the constants' own comment above.
+  tracer.sessionStart(ADW_ID_WORKTREE_1, { engineer: "test", projectCwd: WORKTREE_CWD_1, adwName: "plan-build-review" });
+  tracer.sessionSetTitle(ADW_ID_WORKTREE_1, "real project run 1");
+  tracer.sessionStart(ADW_ID_WORKTREE_2, { engineer: "test", projectCwd: WORKTREE_CWD_2, adwName: "bounded-build-review" });
+  tracer.sessionSetTitle(ADW_ID_WORKTREE_2, "real project run 2");
 
   tracer.close();
 }
@@ -134,6 +152,42 @@ describe("visualizer server (real spawned process, real HTTP)", () => {
     expect(runs.some((r) => r.adwId === ADW_ID)).toBe(true);
     expect(runs.some((r) => r.adwId === ADW_ID_PROJECT_B)).toBe(true);
     expect(runs.some((r) => r.adwId === ADW_ID_PROJECT_B_2)).toBe(true);
+  });
+
+  test("GET /api/runs response exposes projectRoot, worktree-suffix-stripped, distinct from projectCwd", async () => {
+    const res = await fetch(`${baseUrl}/api/runs`);
+    const runs = (await res.json()) as Array<{ adwId: string; projectCwd: string | null; projectRoot: string | null }>;
+    const run1 = runs.find((r) => r.adwId === ADW_ID_WORKTREE_1);
+    const run2 = runs.find((r) => r.adwId === ADW_ID_WORKTREE_2);
+    expect(run1?.projectCwd).toBe(WORKTREE_CWD_1);
+    expect(run2?.projectCwd).toBe(WORKTREE_CWD_2);
+    // Different (unique per run) projectCwd, but the SAME projectRoot.
+    expect(run1?.projectCwd).not.toBe(run2?.projectCwd);
+    expect(run1?.projectRoot).toBe(PROJECT_ROOT_CWD);
+    expect(run2?.projectRoot).toBe(PROJECT_ROOT_CWD);
+  });
+
+  test("GET /api/runs?project=<root> groups multiple runs by their shared project root, not their unique per-run worktree cwd", async () => {
+    // Regression test for a real bug: filtering by the raw projectCwd
+    // column (each run's own unique worktree path) meant a "project"
+    // filter only ever matched exactly one run. This asserts BOTH
+    // worktree runs come back for the shared root, not just one.
+    const res = await fetch(`${baseUrl}/api/runs?project=${encodeURIComponent(PROJECT_ROOT_CWD)}`);
+    expect(res.status).toBe(200);
+    const runs = (await res.json()) as Array<{ adwId: string }>;
+    expect(runs.some((r) => r.adwId === ADW_ID_WORKTREE_1)).toBe(true);
+    expect(runs.some((r) => r.adwId === ADW_ID_WORKTREE_2)).toBe(true);
+    expect(runs.length).toBe(2);
+  });
+
+  test("GET /api/runs?project=<one run's raw worktree cwd> does NOT narrow to just that run (proves the filter uses projectRoot, not projectCwd)", async () => {
+    const res = await fetch(`${baseUrl}/api/runs?project=${encodeURIComponent(WORKTREE_CWD_1)}`);
+    const runs = (await res.json()) as unknown[];
+    // WORKTREE_CWD_1 is never any run's projectRoot (it's a projectCwd,
+    // the unique worktree path) -- filtering by it should match nothing,
+    // confirming the filter really keys off the normalized root and isn't
+    // silently falling back to an exact projectCwd match.
+    expect(runs).toEqual([]);
   });
 
   test("GET /api/runs/:adwId returns the run plus its Steps in seq order", async () => {
