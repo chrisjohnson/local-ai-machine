@@ -36,7 +36,23 @@ benchmark suite — Chris only wants raw performance this pass.
 <!-- signal: claude 2026-08-05T00:00Z — claiming, starting with KAT benchmarks -->
 
 ## Decision log
-<!-- append-only -->
+- 2026-08-05: KAT Q8_0 + KAT MTP Q6_K done; fresh llamacpp-bench on gemma-4-26b, glm-4.7-flash,
+  laguna-xs, qwen3.6-27b (dense), qwen3.6-35b-a3b, qwen3.6-27b MTP (2.07x speedup — build corrected
+  from stale-BROKEN to WORKING, wrong local_path), qwen3.6-35b-a3b MTP (1.16x). Fresh
+  ollama-warm-request-v2 on all 3 working ollama builds (glm-4.7-flash 59.1 tok/s, qwen3.6-27b
+  10.46, qwen3.6-35b-a3b 40.7; gemma-4-26b--ollama stays BROKEN: gemma4 arch unsupported in
+  0.17.7). All committed+ pushed. Memory fields now recorded on all llama.cpp + ollama builds.
+- 2026-08-05 INCIDENT: box unresponsive (ping OK, SSH banner timeout) after vLLM memory-capture
+  pass. Root cause: qwen3.6-27b vLLM standing config uses --gpu-memory-utilization 0.90 (~114GB
+  GTT) and my /tmp/vllm_mem.sh timed out at 600s before its `docker compose stop`, leaving the
+  container resident; then glm-4.7-flash-awq started on top → full-RAM swap thrash. Lesson: run
+  vLLM memory captures with generous timeout AND verify container stopped before starting next;
+  gpu-util 0.90 standing configs are near-full-box allocations on their own.
+- 2026-08-05: vLLM memory captured so far (peak GTT): qwen3.6-35b-a3b 87,724 MiB (0.70 util,
+  65.5GiB weights), qwen3.5-4b 23,903 MiB (8.6GiB weights), qwen3.6-27b 114,651 MiB (0.90 util,
+  51.1GiB weights). Remaining: glm-4.7-flash-awq, gpt-oss-20b, gemma-4-26b, gemma-4-31b,
+  qwen2.5-vl-7b. Speed data for all vLLM builds is fresh (2026-07-24/25, same kernel) so only
+  memory capture is needed, not full c1c8-v2 re-runs.
 
 ## Handoff notes
 <!-- Benchmark methodology: OPERATIONS.md preflight; llama-bench single invocation per
