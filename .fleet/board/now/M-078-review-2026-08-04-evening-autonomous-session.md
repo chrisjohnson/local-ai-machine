@@ -158,6 +158,61 @@ needs your eyes.
     worth your attention even though it's not urgent.
   - Full detail for all of the above is in each card's own decision log
     (M-077, M-068, M-072, M-080, all in `done/` except M-080 in `backlog/`).
+- 2026-08-05T19:20Z — **A second, later work block, this time live with you
+  ("The limits are reset, proceed... Set the model back to qwen...").** Summary:
+  - **Box outage, mid-session.** SSH/HTTP both stopped responding (TCP connected
+    instantly, application layer never answered — classic resource-starvation
+    signature, not a crash). Reported it plainly and asked how you wanted to
+    proceed rather than guessing; you confirmed it was back and mentioned another
+    agent had been swapping models via a worktree, board might have drifted —
+    it hadn't (clean fast-forward pull once reachable again).
+  - **M-086.1 done** (renamed from M-086 due to a real ID collision with an
+    unrelated, pre-existing card — renumbered per `AGENTS.md` §6a rather than
+    overwriting). Per-Workflow `/skill:plan-build-review <task>` etc. commands,
+    pi's real native mechanism, confirmed via reading the installed SDK's own
+    docs rather than guessing. Live-verified via a real slash-command trigger.
+  - **M-087 done** — error messages now show the agent's actual raw response (or
+    explicitly say "returned no response text at all" for a genuinely empty one)
+    and the actual violating filename(s), instead of generic unhelpful text. Found
+    and fixed a real bug in my OWN fix immediately after deploying it (empty
+    string being treated as falsy, silently reverting to the old message in
+    exactly the case easiest to explain) — full account in that card.
+  - **M-088 done** — visualizer project filter. Same pattern: shipped, then
+    immediately found a real bug live (every Workflow Run's `projectCwd` is a
+    unique per-run worktree path, not shared across a project's runs, so the
+    filter only ever matched one run) and fixed it properly with a real
+    regression test. Full account in that card.
+  - **Infra, mid-testing:** found ornith's container had a real port-binding bug
+    (compose declared a port mapping that silently wasn't active — fixed via
+    force-recreate) and was OOM-killed twice during concurrent test runs (laguna +
+    ornith co-resident leaves ~2GB headroom on a 124GB box — essentially none).
+    Also found, via a direct litellm completion test, that **ornith is a genuine
+    reasoning/thinking model** — a completion can exhaust its token budget
+    entirely inside invisible "thinking" before any real content emits, which is
+    very likely the real cause of most of today's empty-response failures (not
+    "misbehavior" so much as a token-budget mismatch with a newly-swapped
+    reasoning model — qwen, the previous backend, had special handling for
+    exactly this elsewhere in the stack that pi-web-factory's own Roles don't
+    have). Per your instruction, switched `medium-moe` back to qwen for stability
+    and spawned a worktree-isolated sub-agent to find/deploy a smaller Ornith
+    quant for more headroom — **M-089** confirmed a real Q4_K_M quant exists
+    (MTP tensors verified via raw GGUF header parsing, not trusted from
+    filenames), deployed its service definition, download genuinely in progress
+    (~20.6GB, confirmed growing). Left in `now/` since the download itself takes
+    a while — smoke-testing it is real follow-up work for later.
+  - **New test round + screenshots + dashboard**: captured real in-progress/
+    failed/passing screenshots from both pi-web's own UI and the visualizer
+    (list + detail views, including the fixed project filter grouping a
+    project's runs correctly). Regenerated the HTML dashboard leading with the
+    `/skill:` triggering flow (your explicit ask — you said you'll basically
+    never drive `cli.ts` directly).
+  - **One thing worth your attention, not urgent:** during live testing, the
+    `plan` Role (writes: `specs/` only) directly wrote the actual deliverable
+    file instead of just a plan document, twice, tripping a real
+    `PERMISSIONS-VIOLATION` (correctly caught and rolled back) — same class of
+    thing as M-080. Not filed as its own card yet; flagging the pattern here in
+    case it recurs enough to be worth a design look at `plan`'s own system
+    prompt.
 
 ## Signals
 <!-- append-only -->
