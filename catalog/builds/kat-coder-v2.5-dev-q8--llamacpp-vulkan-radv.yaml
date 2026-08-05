@@ -1,0 +1,56 @@
+id: kat-coder-v2.5-dev-q8--llamacpp-vulkan-radv
+model:
+  display_name: KAT-Coder-V2.5-Dev (Q8_0 GGUF)
+  family: Kwaipilot
+  hf_repo: bartowski/Kwaipilot_KAT-Coder-V2.5-Dev-GGUF
+  hf_revision: null
+  architecture: moe
+  total_params: 34.66e9
+  active_params: 3e9
+  num_experts: null
+  quantization: GGUF-Q8_0
+  context_length_native: 262144
+  modality: text
+  files:
+  - Kwaipilot_KAT-Coder-V2.5-Dev-Q8_0.gguf
+  local_path: /var/lib/ai-models/llamacpp-kat-coder-v2.5-dev-q8
+  size_on_disk_gb: 34.4
+versions:
+- version: v1
+  compose_service_id: kat-coder-v2.5-dev-q8--llamacpp-vulkan-radv-v1
+  engine_ref: llamacpp-vulkan-radv-v1
+  role: 'M-079 agentic coder candidate — Qwen3.5-MoE-arch 35B/3B-active with 262144 native context;
+    plain Q8_0 conversion (ships mtp_num_hidden_layers: 0, no MTP head of its own)'
+  notes: 'bartowski Q8_0 conversion, 36,914,690,464 bytes (~34.4 GiB) confirmed via HF API tree
+    listing. qwen35moe arch, 40 layers, 262144 native context. NO MTP head tensors (this is the
+    plain build — the MTP-grafted variant is the separate kat-coder-v2.5-dev-mtp-q6 family).
+    First benchmark 2026-08-05 (M-083), download queue paused and all model services stopped:
+    pp512 1160.36±14.72 tok/s, tg128 55.33±0.13 tok/s. Peak unified-memory (GTT) footprint
+    during llama-bench: 35,013 MiB (~34.2 GiB) with ~3.9 GiB baseline system usage — model
+    resident at roughly its full 34.37 GiB file size. Consistent across two runs.
+
+    '
+  status: WORKING
+  created: '2026-08-05'
+  last_verified: '2026-08-05'
+  benchmark_runs:
+  - timestamp: '2026-08-05T04:40:37Z'
+    benchmark_id: llamacpp-bench-v1
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: 5cdc0cfe3467a77f51148fb5d9ef65277edc8b7a
+      host_gpu_driver: Mesa 25.3.6
+      concurrent_load:
+        downloads_paused: true
+        vllm_co_resident_or_stopped: stopped_for_run
+      host_metrics_window:
+        start: '2026-08-05T04:40:37Z'
+        end: '2026-08-05T04:42:00Z'
+      image_digest: '[kyuz0/amd-strix-halo-toolboxes@sha256:1648e4195154aef5dc975253d962e1e1b8358af26b0e54b4faf89a156131c320]'
+      engine_version: 0e4a03622 (10154)
+    result:
+      pp512_tok_s: 1160.36 ± 14.72
+      tg128_tok_s: 55.33 ± 0.13
+      memory_footprint_gtt_mib: 35013
+      engine_build: 0e4a03622 (10154)
+      raw_stdout_file: catalog/raw/kat-coder-v2.5-dev-q8--llamacpp-bench-v1--20260805T044037Z.txt

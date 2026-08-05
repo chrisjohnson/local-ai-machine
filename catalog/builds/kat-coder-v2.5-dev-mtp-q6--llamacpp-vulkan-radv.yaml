@@ -1,0 +1,93 @@
+id: kat-coder-v2.5-dev-mtp-q6--llamacpp-vulkan-radv
+model:
+  display_name: KAT-Coder-V2.5-Dev (MTP graft, Q6_K GGUF)
+  family: Kwaipilot
+  hf_repo: gbuzhf/KAT-Coder-V2.5-Dev-MTP-GGUF
+  hf_revision: null
+  architecture: moe
+  total_params: 34.66e9
+  active_params: 3e9
+  num_experts: null
+  quantization: GGUF-Q6_K (UD)
+  context_length_native: 262144
+  modality: text
+  files:
+  - Kwaipilot_KAT-Coder-V2.5-Dev-MTP-UD-Q6_K.gguf
+  local_path: /var/lib/ai-models/llamacpp-kat-coder-v2.5-dev-mtp-q6
+  size_on_disk_gb: 28.0
+versions:
+- version: v1
+  compose_service_id: kat-coder-v2.5-dev-mtp-q6--llamacpp-vulkan-radv-v1
+  engine_ref: llamacpp-vulkan-radv-mtp-v1
+  role: M-079 agentic coder candidate, MTP-grafted variant — KAT ships no MTP head, this third-party
+    build grafts Qwen3.6-35B-A3B's blk.40 MTP head back on (verified present, 753 tensors)
+  notes: 'gbuzhf MTP graft, 30,012,294,784 bytes (~28.0 GiB) confirmed via HF API tree listing.
+    Q6_K is the top quant available (no Q8 MTP build exists). Imatrix calibrated on KAT''s own
+    output, but no imatrix stats cover blk.40 (the MTP head never executes during calibration —
+    quantized unguided, a shared limitation of both graft repos). Per gbuzhf''s measured notes MTP
+    ALONE is a net loss on this arch — must run --spec-type draft-mtp,ngram-mod together (the
+    compose service carries the full coordinate-ascent flag set; llama.cpp build 10154 defaults
+    n-min 48/n-max 64/n-match 24, explicit flags required, not cosmetic). -np 1 required for MTP.
+
+    First benchmark 2026-08-05 (M-083), download queue paused and all model services stopped.
+    Plain-decode llama-bench baseline: pp512 976.57±9.92 tok/s, tg128 58.25±0.27 tok/s. MTP live
+    server timing (draft-mtp+ngram-mod flag set, MTP context creation confirmed in logs): 62.28-
+    63.11 tok/s avg 62.75 (4th sample 69.01) → ~1.08x speedup over plain tg128. Note: gbuzhf''s own
+    numbers were RTX 3070 Ti laptop with 35/40 layers on CPU — real Strix-Halo numbers now
+    measured, and the MTP gain on this hardware is modest (~8%), well short of the 1.8-2.5x range
+    some community references cite for other models. Peak unified-memory (GTT) footprint during
+    llama-bench: 28,419 MiB (~27.8 GiB); steady-state llama-server resident 29.1 GB (~27.1 GiB)
+    GTT with 33 GiB system used.
+
+    '
+  status: WORKING
+  created: '2026-08-05'
+  last_verified: '2026-08-05'
+  benchmark_runs:
+  - timestamp: '2026-08-05T04:44:00Z'
+    benchmark_id: llamacpp-bench-v1
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: 5cdc0cfe3467a77f51148fb5d9ef65277edc8b7a
+      host_gpu_driver: Mesa 25.3.6
+      concurrent_load:
+        downloads_paused: true
+        vllm_co_resident_or_stopped: stopped_for_run
+      host_metrics_window:
+        start: '2026-08-05T04:44:00Z'
+        end: '2026-08-05T04:45:30Z'
+      image_digest: '[kyuz0/amd-strix-halo-toolboxes@sha256:1648e4195154aef5dc975253d962e1e1b8358af26b0e54b4faf89a156131c320]'
+      engine_version: 0e4a03622 (10154)
+    result:
+      pp512_tok_s: 976.57 ± 9.92
+      tg128_tok_s: 58.25 ± 0.27
+      memory_footprint_gtt_mib: 28419
+      engine_build: 0e4a03622 (10154)
+      raw_stdout_file: catalog/raw/kat-coder-v2.5-dev-mtp-q6--llamacpp-bench-v1--20260805T044000Z.txt
+  - timestamp: '2026-08-05T04:48:00Z'
+    benchmark_id: llamacpp-mtp-v1
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: 5cdc0cfe3467a77f51148fb5d9ef65277edc8b7a
+      host_gpu_driver: Mesa 25.3.6
+      concurrent_load:
+        downloads_paused: true
+        vllm_co_resident_or_stopped: stopped_for_run
+      host_metrics_window:
+        start: '2026-08-05T04:48:00Z'
+        end: '2026-08-05T04:55:00Z'
+      image_digest: '[kyuz0/amd-strix-halo-toolboxes@sha256:1648e4195154aef5dc975253d962e1e1b8358af26b0e54b4faf89a156131c320]'
+      engine_version: 0e4a03622 (10154)
+    result:
+      mtp_tg_tok_s_samples:
+      - 62.87
+      - 63.11
+      - 62.28
+      mtp_tg_tok_s_avg: 62.75
+      mtp_tg_tok_s_peak: 69.01
+      speedup_vs_plain_baseline_x: 1.08
+      note: llama-bench cannot run --spec-type; measured via llama-server /v1/chat/completions
+        request timings (predicted_per_second) with the gbuzhf draft-mtp+ngram-mod flag set and
+        MTP context creation confirmed in startup logs. No per-request accept/draft stats surfaced.
+      memory_footprint_gtt_gb_server: 29.1
+      raw_stdout_file: catalog/raw/kat-coder-v2.5-dev-mtp-q6--llamacpp-mtp-v1--20260805T044800Z.txt
