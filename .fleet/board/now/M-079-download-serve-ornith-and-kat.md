@@ -42,14 +42,17 @@ a "probably Q8, probably MTP" preference. Research outcome:
    `llamacpp-kat-coder-v2.5-dev-q8`, `llamacpp-kat-coder-v2.5-dev-mtp-q6`.
 3. [x] Add 3 llama-server compose services (ports 8110-8112) with
    README-derived MTP flags.
-4. [ ] Commit + push main; deploy on box (`git pull --ff-only` +
-   `nixos-rebuild switch`); confirm the 3 download services start and
-   make real progress. Watch disk: / was 237G free (87%) before these
-   ~105GB of downloads.
+4. [x] Commit + push main (1cb40f4); deployed on box via `git pull --ff-only`
+   + `nixos-rebuild switch`. All 3 download services started; serialized via
+   the shared flock — mtp-q6 downloading first (confirmed 10.9MB in cache at
+   00:57Z and growing), ornith + kat-q8 queued behind it. Watch disk: / was
+   237G free (87%) before these ~105GB of downloads.
 5. [ ] (after downloads complete) start a service + smoke test.
 
 ## Signals
 <!-- signal: opencode 2026-08-05T00:55Z — claiming, wiring config + compose -->
+<!-- signal: opencode 2026-08-05T01:05Z — deployed, 3 downloads running (mtp-q6 first, serialized) -->
+<!-- signal: opencode 2026-08-05T01:05Z — note: docker-compose-app.service failing pre-existing (pi-web container name conflict, restart counter 1462) — NOT caused by M-079, belongs to pi-web-factory work -->
 
 ## Decision log
 - 2026-08-05: Ornith kept at Q8_0 per Chris's stated preference even though
