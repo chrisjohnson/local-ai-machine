@@ -53,6 +53,14 @@ benchmark suite — Chris only wants raw performance this pass.
   51.1GiB weights). Remaining: glm-4.7-flash-awq, gpt-oss-20b, gemma-4-26b, gemma-4-31b,
   qwen2.5-vl-7b. Speed data for all vLLM builds is fresh (2026-07-24/25, same kernel) so only
   memory capture is needed, not full c1c8-v2 re-runs.
+- 2026-08-05 RESOLUTION: Chris power-cycled the box; recovered clean (3.3Gi/124Gi, no vLLM/
+  ollama containers). Hardened /tmp/vllm_mem.sh: pre-flight refuses to start if any vLLM/
+  ollama container is resident (the exact failure that OOM'd the box), trap guarantees
+  `docker compose stop` + verify-gone on EVERY exit path, health timeout extended 600s→900s.
+  Box host key unchanged (ed25519 matches known_hosts); added raw IP to known_hosts so
+  `ssh chris@192.168.1.226` works without relying on flaky mDNS. Note: glm-4.7-flash-awq
+  compose service has NO gpu-util flag → vLLM default 0.90 (~112GB GTT), the co-running
+  culprit. Remaining captures re-run one-model-at-a-time with hardened script.
 
 ## Handoff notes
 <!-- Benchmark methodology: OPERATIONS.md preflight; llama-bench single invocation per
