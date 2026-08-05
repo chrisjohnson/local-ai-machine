@@ -80,3 +80,52 @@ versions:
       warm_tok_s_mean: 10.521621457621855
       warm_tok_s_stddev: 0.02871995990963214
       raw_file: catalog/raw/qwen3.6-27b--ollama-vulkan-0177-v1--ollama-warm-request-v2--20260728T004239Z.json
+  - timestamp: '2026-08-05T05:16:00Z'
+    benchmark_id: ollama-warm-request-v2
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: 5cdc0cfe3467a77f51148fb5d9ef65277edc8b7a
+      host_gpu_driver: Mesa 25.3.6
+      concurrent_load:
+        downloads_paused: true
+        vllm_co_resident_or_stopped: stopped_for_run
+      host_metrics_window:
+        start: '2026-08-05T05:16:00Z'
+        end: '2026-08-05T06:05:00Z'
+      image_digest: '[ollama/ollama@sha256:0ff452f6a4c3c5bb4ab063a1db190b261d5834741a519189ed5301d50e4434d1]'
+      engine_version: ollama version is 0.17.7
+    result:
+      cold:
+        eval_count: 4702
+        eval_duration_ns: 449314294118
+        prompt_eval_count: 47
+        prompt_eval_duration_ns: 444302740
+        load_duration_ns: 259363385
+        total_duration_ns: 455890095568
+        tok_s: 10.465
+      warm_trials:
+      - eval_count: 4657
+        eval_duration_ns: 445317712746
+        prompt_eval_count: 47
+        prompt_eval_duration_ns: 428077264
+        load_duration_ns: 172758440
+        total_duration_ns: 452338200348
+        tok_s: 10.458
+      - eval_count: 4253
+        eval_duration_ns: 406259807918
+        prompt_eval_count: 47
+        prompt_eval_duration_ns: 433465742
+        load_duration_ns: 182392282
+        total_duration_ns: 413650082310
+        tok_s: 10.469
+      - eval_count: 4239
+        eval_duration_ns: 405265849183
+        prompt_eval_count: 47
+        prompt_eval_duration_ns: 435114803
+        load_duration_ns: 178212122
+        total_duration_ns: 412458329728
+        tok_s: 10.46
+      warm_tok_s_mean: 10.462
+      memory_footprint_gtt_mib: 36134
+      memory_peak_system_used_mib: 41411
+      raw_file: catalog/raw/qwen3.6-27b--ollama-vulkan-0177-v1--ollama-warm-request-v2--20260805T051600Z.json

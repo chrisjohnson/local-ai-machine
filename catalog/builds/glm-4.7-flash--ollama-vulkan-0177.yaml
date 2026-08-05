@@ -80,3 +80,52 @@ versions:
       warm_tok_s_mean: 61.982234731374355
       warm_tok_s_stddev: 0.3232920994584695
       raw_file: catalog/raw/glm-4.7-flash--ollama-vulkan-0177-v1--ollama-warm-request-v2--20260728T002619Z.json
+  - timestamp: '2026-08-05T05:08:00Z'
+    benchmark_id: ollama-warm-request-v2
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: 5cdc0cfe3467a77f51148fb5d9ef65277edc8b7a
+      host_gpu_driver: Mesa 25.3.6
+      concurrent_load:
+        downloads_paused: true
+        vllm_co_resident_or_stopped: stopped_for_run
+      host_metrics_window:
+        start: '2026-08-05T05:08:00Z'
+        end: '2026-08-05T05:10:00Z'
+      image_digest: '[ollama/ollama@sha256:0ff452f6a4c3c5bb4ab063a1db190b261d5834741a519189ed5301d50e4434d1]'
+      engine_version: ollama version is 0.17.7
+    result:
+      cold:
+        eval_count: 3417
+        eval_duration_ns: 57222238838
+        prompt_eval_count: 38
+        prompt_eval_duration_ns: 376972037
+        load_duration_ns: 101288869
+        total_duration_ns: 58593689351
+        tok_s: 59.715
+      warm_trials:
+      - eval_count: 3549
+        eval_duration_ns: 59711797912
+        prompt_eval_count: 38
+        prompt_eval_duration_ns: 20438478
+        load_duration_ns: 103998017
+        total_duration_ns: 60032919886
+        tok_s: 59.435
+      - eval_count: 3898
+        eval_duration_ns: 66071364285
+        prompt_eval_count: 38
+        prompt_eval_duration_ns: 20632111
+        load_duration_ns: 101848546
+        total_duration_ns: 66410226168
+        tok_s: 58.997
+      - eval_count: 3952
+        eval_duration_ns: 67051194480
+        prompt_eval_count: 38
+        prompt_eval_duration_ns: 20765478
+        load_duration_ns: 104726533
+        total_duration_ns: 67389208463
+        tok_s: 58.94
+      warm_tok_s_mean: 59.124
+      memory_footprint_gtt_mib: 38021
+      memory_peak_system_used_mib: 42485
+      raw_file: catalog/raw/glm-4.7-flash--ollama-vulkan-0177-v1--ollama-warm-request-v2--20260805T050800Z.json

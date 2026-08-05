@@ -1,0 +1,50 @@
+{
+  "benchmark_id": "ollama-warm-request-v2",
+  "build_id": "qwen3.6-27b--ollama-vulkan-0177-v1",
+  "timestamp": "2026-08-05T05:16:00Z",
+  "methodology_note": "fresh M-083 run with memory capture. Cold request not truly cold (model already resident from a prior debug load — load_dur 0.26s); all 4 requests effectively warm. Values consistent with the 2026-07-28 run (~10.5 tok/s), confirming the model is CPU/I/O-symmetric under ollama+vulkan.",
+  "memory": {
+    "base_used_mib": 41272,
+    "peak_system_used_mib": 41411,
+    "peak_gtt_used_mib": 36134
+  },
+  "cold": {
+    "eval_count": 4702,
+    "eval_duration_ns": 449314294118,
+    "prompt_eval_count": 47,
+    "prompt_eval_duration_ns": 444302740,
+    "load_duration_ns": 259363385,
+    "total_duration_ns": 455890095568,
+    "tok_s": 10.465
+  },
+  "warm_trials": [
+    {
+      "eval_count": 4657,
+      "eval_duration_ns": 445317712746,
+      "prompt_eval_count": 47,
+      "prompt_eval_duration_ns": 428077264,
+      "load_duration_ns": 172758440,
+      "total_duration_ns": 452338200348,
+      "tok_s": 10.458
+    },
+    {
+      "eval_count": 4253,
+      "eval_duration_ns": 406259807918,
+      "prompt_eval_count": 47,
+      "prompt_eval_duration_ns": 433465742,
+      "load_duration_ns": 182392282,
+      "total_duration_ns": 413650082310,
+      "tok_s": 10.469
+    },
+    {
+      "eval_count": 4239,
+      "eval_duration_ns": 405265849183,
+      "prompt_eval_count": 47,
+      "prompt_eval_duration_ns": 435114803,
+      "load_duration_ns": 178212122,
+      "total_duration_ns": 412458329728,
+      "tok_s": 10.46
+    }
+  ],
+  "warm_tok_s_mean": 10.462
+}
