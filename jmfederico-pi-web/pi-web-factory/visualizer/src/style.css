@@ -1,15 +1,121 @@
+/**
+ * style.css: pi-web-factory visualizer theme.
+ *
+ * Matches pi-web's own real shipped theme system (extracted directly from
+ * its bundle, not guessed) — "PI WEB Light" and "PI WEB Dark", switched via
+ * `prefers-color-scheme` exactly like pi-web's own "Auto" mode (no manual
+ * toggle here; this app follows the OS/browser setting, same as pi-web).
+ *
+ * Role colors (`--role-*`) are a SEPARATE palette from the three status
+ * colors (`--pi-success`/`--pi-warning`/`--pi-danger`) — status colors are
+ * reserved for run/Step status (success/running/fail), role colors identify
+ * WHICH agent role (plan/build/review/scout/document/run-tests) produced a
+ * Step, wherever a Role is shown (grid mini-Gantt, detail full Gantt, nested
+ * event lists). Keeping the two systems visually distinct is deliberate —
+ * mixing them would make a "this step failed" signal and a "this step was
+ * run by review" signal indistinguishable at a glance.
+ */
+
 :root {
-  color-scheme: dark;
-  --bg: #14161c;
-  --panel: #1c1f28;
-  --panel-border: #2c303c;
-  --text: #e4e6eb;
-  --text-dim: #9aa0ac;
-  --accent: #5b8cff;
-  --success: #3ecf6e;
-  --fail: #ef5350;
-  --running: #f5a623;
-  --queued: #6b7180;
+  color-scheme: light;
+
+  /* ── PI WEB Light (default / prefers-color-scheme: light) ──────────────── */
+  --pi-bg: #f7f1e6;
+  --pi-surface: #fff9ee;
+  --pi-surface-hover: #f0e6d6;
+  --pi-border: #c9bca8;
+  --pi-border-muted: #d8cdbc;
+  --pi-text: #15131b;
+  --pi-text-secondary: #15131b;
+  --pi-text-bright: #15131b;
+  --pi-muted: #5f586a;
+  --pi-dim: #766f7e;
+  --pi-accent: #6430d8;
+  --pi-accent-border: #6430d8;
+  --pi-selection-bg: #eadff8;
+  --pi-success: #008c82;
+  --pi-success-border: #008c82;
+  --pi-success-bg: #e1f4ef;
+  --pi-success-surface: #d7f0ec;
+  --pi-warning: #b05f00;
+  --pi-warning-border: #b05f00;
+  --pi-warning-surface: #fff2d2;
+  --pi-danger: #b51d49;
+  --pi-danger-border: #b51d49;
+  --pi-danger-surface: #fbe2ea;
+  --pi-purple: #6430d8;
+  --pi-purple-border: #6430d8;
+  --pi-purple-surface: #eadff8;
+  --pi-shadow-soft: #15131b22;
+  --pi-shadow: #15131b33;
+
+  /* Role colors — light theme (text/border color + surface for badge backgrounds) */
+  --role-plan: #6430d8;
+  --role-plan-surface: #eadff8;
+  --role-build: #0f7a8c;
+  --role-build-surface: #d6f3f7;
+  --role-review: #8a6a10;
+  --role-review-surface: #faf0d6;
+  --role-scout: #3454c4;
+  --role-scout-surface: #e2e8fc;
+  --role-document: #b23070;
+  --role-document-surface: #fbe2ee;
+  --role-run-tests: #3f7a4a;
+  --role-run-tests-surface: #e1f5e4;
+
+  /* fonts — matches pi-web's own --pi-control-font-family / --pi-control-monospace-font-family exactly */
+  --pi-font: system-ui, sans-serif;
+  --pi-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+
+    /* ── PI WEB Dark ───────────────────────────────────────────────────── */
+    --pi-bg: #070912;
+    --pi-surface: #101527;
+    --pi-surface-hover: #151b31;
+    --pi-border: #26304f;
+    --pi-border-muted: #26304f;
+    --pi-text: #f7f4ff;
+    --pi-text-secondary: #aaa4bd;
+    --pi-text-bright: #ffffff;
+    --pi-muted: #aaa4bd;
+    --pi-dim: #817a99;
+    --pi-accent: #7c3cff;
+    --pi-accent-border: #5a47b0;
+    --pi-selection-bg: #1d2547;
+    --pi-success: #00f0d8;
+    --pi-success-border: #00f0d8;
+    --pi-success-bg: #071e22;
+    --pi-success-surface: #092d31;
+    --pi-warning: #ffb000;
+    --pi-warning-border: #ffb000;
+    --pi-warning-surface: #16140d;
+    --pi-danger: #ff4f7b;
+    --pi-danger-border: #ff4f7b;
+    --pi-danger-surface: #2a0f18;
+    --pi-purple: #b7a2ff;
+    --pi-purple-border: #7c3cff;
+    --pi-purple-surface: #181026;
+    --pi-shadow-soft: #0006;
+    --pi-shadow: #0008;
+
+    /* Role colors — dark theme */
+    --role-plan: #b7a2ff;
+    --role-plan-surface: #181026;
+    --role-build: #5ee6f2;
+    --role-build-surface: #0d2226;
+    --role-review: #f0d264;
+    --role-review-surface: #221c0a;
+    --role-scout: #7aa2ff;
+    --role-scout-surface: #10182e;
+    --role-document: #ff9ecf;
+    --role-document-surface: #26121c;
+    --role-run-tests: #9fd9a8;
+    --role-run-tests-surface: #0f1f13;
+  }
 }
 
 * {
@@ -18,13 +124,13 @@
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-  background: var(--bg);
-  color: var(--text);
+  font-family: var(--pi-font);
+  background: var(--pi-bg);
+  color: var(--pi-text);
 }
 
 #app {
-  max-width: 1100px;
+  max-width: 1400px;
   margin: 0 auto;
   padding: 24px 20px 80px;
 }
@@ -37,17 +143,19 @@ header.top-bar {
 }
 
 header.top-bar h1 {
-  font-size: 20px;
+  font-size: 18px;
+  font-weight: 700;
   margin: 0;
+  letter-spacing: 0.01em;
 }
 
 header.top-bar .subtitle {
-  color: var(--text-dim);
-  font-size: 13px;
+  color: var(--pi-dim);
+  font-size: 12.5px;
 }
 
 a.back-link {
-  color: var(--accent);
+  color: var(--pi-accent);
   text-decoration: none;
   font-size: 13px;
 }
@@ -55,7 +163,7 @@ a.back-link:hover {
   text-decoration: underline;
 }
 
-/* ── list view ─────────────────────────────────────────────────────────── */
+/* ── list/grid view ───────────────────────────────────────────────────── */
 
 .run-filter-bar {
   display: flex;
@@ -63,41 +171,85 @@ a.back-link:hover {
   gap: 8px;
   margin-bottom: 14px;
   font-size: 12.5px;
-  color: var(--text-dim);
+  color: var(--pi-dim);
 }
 
 .project-filter-select {
-  background: var(--panel);
-  color: var(--text);
-  border: 1px solid var(--panel-border);
+  background: var(--pi-surface);
+  color: var(--pi-text);
+  border: 1px solid var(--pi-border);
   border-radius: 6px;
   padding: 5px 8px;
   font-size: 12.5px;
   max-width: 360px;
+  font-family: var(--pi-font);
 }
 .project-filter-select:hover {
-  border-color: var(--accent);
+  border-color: var(--pi-accent);
 }
 
-.run-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+/* Responsive grid of condensed run cards (SSSF-style) — the main structural
+   change from the old vertical list. `auto-fill` + `minmax` lets the grid
+   naturally reflow from 1 column (narrow viewport) up to N columns on a wide
+   monitor, no JS-driven breakpoints needed. */
+.run-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 12px;
 }
 
 .run-card {
   display: block;
-  background: var(--panel);
-  border: 1px solid var(--panel-border);
+  background: var(--pi-surface);
+  border: 1px solid var(--pi-border);
   border-radius: 10px;
   padding: 14px 16px;
   text-decoration: none;
   color: inherit;
   cursor: pointer;
-  transition: border-color 0.15s ease;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 1px 2px var(--pi-shadow-soft);
 }
 .run-card:hover {
-  border-color: var(--accent);
+  border-color: var(--pi-accent);
+  background: var(--pi-surface-hover);
+}
+
+/* Status-driven card treatment (spec §5). Running: full brightness + pulsing
+   glow (the "this is live right now" signal — CSS `@keyframes` on
+   `box-shadow`/`opacity`, GPU-cheap, never JS-driven per-frame). Success/
+   fail: tinted toward their status color, then dimmed slightly to read as
+   "done, not active" — no pulse. */
+.run-card.run-card-running {
+  border-color: var(--pi-accent-border);
+  animation: card-pulse-glow 2s ease-in-out infinite alternate;
+}
+
+.run-card.run-card-success {
+  background: var(--pi-success-surface);
+  border-color: var(--pi-success-border);
+  opacity: 0.85;
+}
+.run-card.run-card-success:hover {
+  opacity: 1;
+}
+
+.run-card.run-card-fail {
+  background: var(--pi-danger-surface);
+  border-color: var(--pi-danger-border);
+  opacity: 0.85;
+}
+.run-card.run-card-fail:hover {
+  opacity: 1;
+}
+
+@keyframes card-pulse-glow {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--pi-accent) 45%, transparent), 0 1px 2px var(--pi-shadow-soft);
+  }
+  100% {
+    box-shadow: 0 0 10px 2px color-mix(in srgb, var(--pi-accent) 55%, transparent), 0 1px 2px var(--pi-shadow-soft);
+  }
 }
 
 .run-card-top {
@@ -108,20 +260,22 @@ a.back-link:hover {
 }
 
 .run-title {
-  font-size: 15px;
+  font-size: 14.5px;
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
+  flex: 1;
 }
 
 .run-meta {
   margin-top: 6px;
   display: flex;
-  gap: 16px;
+  gap: 14px;
   flex-wrap: wrap;
-  font-size: 12.5px;
-  color: var(--text-dim);
+  font-size: 12px;
+  color: var(--pi-dim);
 }
 
 .status-pill {
@@ -130,27 +284,28 @@ a.back-link:hover {
   gap: 5px;
   padding: 2px 9px;
   border-radius: 999px;
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.03em;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 .status-pill.status-success {
-  background: rgba(62, 207, 110, 0.15);
-  color: var(--success);
+  background: var(--pi-success-surface);
+  color: var(--pi-success);
 }
 .status-pill.status-fail {
-  background: rgba(239, 83, 80, 0.15);
-  color: var(--fail);
+  background: var(--pi-danger-surface);
+  color: var(--pi-danger);
 }
 .status-pill.status-running {
-  background: rgba(245, 166, 35, 0.15);
-  color: var(--running);
+  background: var(--pi-purple-surface);
+  color: var(--pi-accent);
 }
 .status-pill.status-queued {
-  background: rgba(107, 113, 128, 0.15);
-  color: var(--queued);
+  background: var(--pi-border-muted);
+  color: var(--pi-dim);
 }
 
 .status-dot {
@@ -164,24 +319,91 @@ a.back-link:hover {
 }
 
 .empty-state {
-  color: var(--text-dim);
+  color: var(--pi-dim);
   font-size: 14px;
   padding: 40px 0;
   text-align: center;
 }
 
+/* ── mini Gantt (grid card, condensed) ───────────────────────────────────
+   Reuses gantt.ts's layout math (computeGanttLayout) — only the rendering
+   is smaller/condensed here, the layout algorithm itself is NOT forked. */
+
+.mini-gantt {
+  position: relative;
+  margin-top: 10px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--pi-bg);
+  height: 40px;
+}
+
+.mini-gantt-track {
+  position: relative;
+  height: 100%;
+}
+
+.mini-step-bar {
+  position: absolute;
+  top: 6px;
+  height: 10px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+}
+
+.mini-step-bar.step-success {
+  background: var(--pi-success);
+}
+.mini-step-bar.step-fail {
+  background: var(--pi-danger);
+}
+.mini-step-bar.step-running {
+  background: var(--pi-accent);
+}
+.mini-step-bar.step-queued {
+  background: var(--pi-dim);
+  opacity: 0.5;
+}
+
+.mini-step-role-dot {
+  position: absolute;
+  top: 20px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.mini-gantt-empty {
+  color: var(--pi-dim);
+  font-size: 11px;
+  padding: 12px 0;
+  text-align: center;
+}
+
+/* ── role badges (shared: grid cards, detail Gantt, nested event lists) ── */
+
+.role-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 /* ── detail view ───────────────────────────────────────────────────────── */
 
 .run-detail-header {
-  background: var(--panel);
-  border: 1px solid var(--panel-border);
+  background: var(--pi-surface);
+  border: 1px solid var(--pi-border);
   border-radius: 10px;
   padding: 16px 18px;
   margin-bottom: 22px;
 }
 
 .run-detail-header .run-title {
-  font-size: 18px;
+  font-size: 17px;
   white-space: normal;
 }
 
@@ -190,24 +412,24 @@ a.back-link:hover {
 }
 
 .timeline-wrap {
-  background: var(--panel);
-  border: 1px solid var(--panel-border);
+  background: var(--pi-surface);
+  border: 1px solid var(--pi-border);
   border-radius: 10px;
   padding: 18px;
   overflow-x: auto;
 }
 
 .timeline-wrap h2 {
-  font-size: 13px;
+  font-size: 12.5px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--text-dim);
+  color: var(--pi-dim);
   margin: 0 0 14px;
 }
 
 .timeline-note {
   font-size: 11.5px;
-  color: var(--text-dim);
+  color: var(--pi-dim);
   margin-bottom: 14px;
 }
 
@@ -237,22 +459,24 @@ a.back-link:hover {
   text-overflow: ellipsis;
   cursor: pointer;
   border: 1px solid transparent;
-  color: #0d0f13;
+  color: var(--pi-text-bright);
 }
 
 .step-bar.step-success {
-  background: var(--success);
+  background: var(--pi-success);
+  color: var(--pi-bg);
 }
 .step-bar.step-fail {
-  background: var(--fail);
-  color: #fff;
+  background: var(--pi-danger);
+  color: var(--pi-bg);
 }
 .step-bar.step-running {
-  background: var(--running);
+  background: var(--pi-accent);
+  color: #fff;
 }
 .step-bar.step-queued {
-  background: var(--queued);
-  color: #fff;
+  background: var(--pi-dim);
+  color: var(--pi-bg);
 }
 
 .step-bar.step-active {
@@ -263,13 +487,16 @@ a.back-link:hover {
   position: absolute;
   top: -16px;
   font-size: 10.5px;
-  color: var(--text-dim);
+  color: var(--pi-dim);
   white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 5px;
 }
 
 .step-detail-panel {
   margin-top: 16px;
-  border-top: 1px solid var(--panel-border);
+  border-top: 1px solid var(--pi-border-muted);
   padding-top: 14px;
   font-size: 13px;
 }
@@ -277,6 +504,9 @@ a.back-link:hover {
 .step-detail-panel h3 {
   margin: 0 0 8px;
   font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .step-detail-grid {
@@ -284,15 +514,15 @@ a.back-link:hover {
   grid-template-columns: max-content 1fr;
   gap: 4px 14px;
   font-size: 12.5px;
-  color: var(--text-dim);
+  color: var(--pi-dim);
   margin-bottom: 10px;
 }
 .step-detail-grid dt {
-  color: var(--text-dim);
+  color: var(--pi-dim);
 }
 .step-detail-grid dd {
   margin: 0;
-  color: var(--text);
+  color: var(--pi-text);
 }
 
 .tool-call-list {
@@ -311,24 +541,24 @@ a.back-link:hover {
   gap: 8px;
   align-items: baseline;
   font-size: 12px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  background: rgba(255, 255, 255, 0.03);
+  font-family: var(--pi-mono);
+  background: var(--pi-surface-hover);
   border-radius: 5px;
   padding: 4px 8px;
 }
 
 .tool-call-time {
-  color: var(--text-dim);
+  color: var(--pi-dim);
   flex-shrink: 0;
 }
 
 .tool-call-name {
-  color: var(--accent);
+  color: var(--pi-accent);
   font-weight: 600;
 }
 
 .tool-call-payload {
-  color: var(--text-dim);
+  color: var(--pi-dim);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -339,7 +569,7 @@ a.back-link:hover {
   align-items: center;
   gap: 6px;
   font-size: 11.5px;
-  color: var(--running);
+  color: var(--pi-accent);
   font-weight: 600;
 }
 .live-indicator .status-dot {
@@ -352,14 +582,14 @@ a.back-link:hover {
 }
 
 @keyframes pulse-border {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 166, 35, 0.7); }
-  50% { box-shadow: 0 0 0 5px rgba(245, 166, 35, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--pi-accent) 70%, transparent); }
+  50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--pi-accent) 0%, transparent); }
 }
 
 .loading, .error-banner {
-  color: var(--text-dim);
+  color: var(--pi-dim);
   padding: 20px 0;
 }
 .error-banner {
-  color: var(--fail);
+  color: var(--pi-danger);
 }

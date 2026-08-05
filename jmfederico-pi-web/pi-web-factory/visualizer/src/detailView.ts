@@ -24,6 +24,8 @@ import {
   formatMs,
   formatTokens,
 } from "./format";
+import { roleColor } from "./roleColor";
+import { runTitle } from "./runTitle";
 
 const RUN_POLL_INTERVAL_MS = 3000;
 const EVENTS_POLL_INTERVAL_MS = 2000;
@@ -32,6 +34,13 @@ const ACTIVITY_WINDOW_MS = 15000;
 
 function statusClass(status: string | null): string {
   return status ? `step-${status}` : "step-queued";
+}
+
+/** Small pill badge for a Step's Role, colored via `roleColor.ts` — the same mapping used by the grid's mini-Gantt, so a Role reads consistently everywhere it appears. */
+function roleBadgeHtml(role: string | null): string {
+  if (!role) return "";
+  const tokens = roleColor(role);
+  return `<span class="role-badge" style="color:${tokens.color};background:${tokens.surface}">${escapeHtml(role)}</span>`;
 }
 
 export class DetailView {
@@ -142,14 +151,14 @@ export class DetailView {
     const layout = computeGanttLayout(steps, nowMs);
     const active = this.activePhaseIds(nowMs);
 
-    const title = run.title ?? run.adwId;
+    const title = runTitle(run);
     const isLive = run.status === "running";
 
     this.container.innerHTML = `
       <a class="back-link" href="#/">&larr; all runs</a>
       <div class="run-detail-header">
         <div class="run-card-top">
-          <div class="run-title">${escapeHtml(title)}</div>
+          <div class="run-title" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
           <span class="status-pill status-${run.status ?? "queued"}"><span class="status-dot"></span>${escapeHtml(run.status ?? "unknown")}</span>
         </div>
         <div class="run-meta">
@@ -188,7 +197,7 @@ export class DetailView {
     const label = step.name ?? step.phaseId;
     return `
       <div class="timeline-row">
-        <span class="step-label" style="left:${String(sl.x)}px">${escapeHtml(label)}${step.role ? ` &middot; ${escapeHtml(step.role)}` : ""}</span>
+        <span class="step-label" style="left:${String(sl.x)}px">${escapeHtml(label)}${roleBadgeHtml(step.role)}</span>
         <div class="step-bar ${statusClass(step.status)} ${isActive ? "step-active" : ""}"
              style="left:${String(sl.x)}px; width:${String(sl.width)}px"
              data-step-toggle="${escapeHtml(step.phaseId)}"
@@ -209,9 +218,9 @@ export class DetailView {
 
     return `
       <div class="step-detail-panel">
-        <h3>${escapeHtml(step.name ?? step.phaseId)} ${isActive ? `<span class="live-indicator"><span class="status-dot"></span>active now</span>` : ""}</h3>
+        <h3>${escapeHtml(step.name ?? step.phaseId)} ${roleBadgeHtml(step.role)} ${isActive ? `<span class="live-indicator"><span class="status-dot"></span>active now</span>` : ""}</h3>
         <dl class="step-detail-grid">
-          <dt>role</dt><dd>${escapeHtml(step.role ?? "—")}</dd>
+          <dt>role</dt><dd>${step.role ? roleBadgeHtml(step.role) : "—"}</dd>
           <dt>kind</dt><dd>${escapeHtml(step.kind ?? "—")}</dd>
           <dt>status</dt><dd>${escapeHtml(step.status ?? "unknown")}</dd>
           <dt>attempt</dt><dd>${String(step.attempt)}${step.retries ? ` (retries: ${String(step.retries)})` : ""}</dd>
