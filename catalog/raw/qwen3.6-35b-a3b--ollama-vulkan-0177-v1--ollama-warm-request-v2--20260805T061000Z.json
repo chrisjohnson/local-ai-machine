@@ -1,0 +1,50 @@
+{
+  "benchmark_id": "ollama-warm-request-v2",
+  "build_id": "qwen3.6-35b-a3b--ollama-vulkan-0177-v1",
+  "timestamp": "2026-08-05T06:10:00Z",
+  "methodology_note": "fresh M-083 run with memory capture. Cold request was genuinely cold here (model swapped in after qwen3.6-27b was evicted — load_dur 80.3s). warm_tok_s_mean 40.7 vs the 2026-07-28 run (~40.4) — consistent.",
+  "memory": {
+    "base_used_mib": 41324,
+    "peak_system_used_mib": 32721,
+    "peak_gtt_used_mib": 27616
+  },
+  "cold": {
+    "eval_count": 5061,
+    "eval_duration_ns": 123264613103,
+    "prompt_eval_count": 47,
+    "prompt_eval_duration_ns": 268834674,
+    "load_duration_ns": 80313208486,
+    "total_duration_ns": 206440210683,
+    "tok_s": 41.058
+  },
+  "warm_trials": [
+    {
+      "eval_count": 4334,
+      "eval_duration_ns": 106404526258,
+      "prompt_eval_count": 47,
+      "prompt_eval_duration_ns": 224105337,
+      "load_duration_ns": 224105337,
+      "total_duration_ns": 108131930689,
+      "tok_s": 40.731
+    },
+    {
+      "eval_count": 4508,
+      "eval_duration_ns": 110869035403,
+      "prompt_eval_count": 47,
+      "prompt_eval_duration_ns": 228538507,
+      "load_duration_ns": 228538507,
+      "total_duration_ns": 112611843490,
+      "tok_s": 40.661
+    },
+    {
+      "eval_count": 4473,
+      "eval_duration_ns": 109891622103,
+      "prompt_eval_count": 47,
+      "prompt_eval_duration_ns": 226975038,
+      "load_duration_ns": 226975038,
+      "total_duration_ns": 111592123954,
+      "tok_s": 40.704
+    }
+  ],
+  "warm_tok_s_mean": 40.699
+}

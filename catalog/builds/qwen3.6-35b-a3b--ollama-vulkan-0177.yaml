@@ -82,3 +82,52 @@ versions:
       warm_tok_s_mean: 41.2655382970628
       warm_tok_s_stddev: 0.0640164118989534
       raw_file: catalog/raw/qwen3.6-35b-a3b--ollama-vulkan-0177-v1--ollama-warm-request-v2--20260728T010844Z.json
+  - timestamp: '2026-08-05T06:10:00Z'
+    benchmark_id: ollama-warm-request-v2
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: 5cdc0cfe3467a77f51148fb5d9ef65277edc8b7a
+      host_gpu_driver: Mesa 25.3.6
+      concurrent_load:
+        downloads_paused: true
+        vllm_co_resident_or_stopped: stopped_for_run
+      host_metrics_window:
+        start: '2026-08-05T06:10:00Z'
+        end: '2026-08-05T06:15:00Z'
+      image_digest: '[ollama/ollama@sha256:0ff452f6a4c3c5bb4ab063a1db190b261d5834741a519189ed5301d50e4434d1]'
+      engine_version: ollama version is 0.17.7
+    result:
+      cold:
+        eval_count: 5061
+        eval_duration_ns: 123264613103
+        prompt_eval_count: 47
+        prompt_eval_duration_ns: 268834674
+        load_duration_ns: 80313208486
+        total_duration_ns: 206440210683
+        tok_s: 41.058
+      warm_trials:
+      - eval_count: 4334
+        eval_duration_ns: 106404526258
+        prompt_eval_count: 47
+        prompt_eval_duration_ns: 224105337
+        load_duration_ns: 224105337
+        total_duration_ns: 108131930689
+        tok_s: 40.731
+      - eval_count: 4508
+        eval_duration_ns: 110869035403
+        prompt_eval_count: 47
+        prompt_eval_duration_ns: 228538507
+        load_duration_ns: 228538507
+        total_duration_ns: 112611843490
+        tok_s: 40.661
+      - eval_count: 4473
+        eval_duration_ns: 109891622103
+        prompt_eval_count: 47
+        prompt_eval_duration_ns: 226975038
+        load_duration_ns: 226975038
+        total_duration_ns: 111592123954
+        tok_s: 40.704
+      warm_tok_s_mean: 40.699
+      memory_footprint_gtt_mib: 27616
+      memory_peak_system_used_mib: 32721
+      raw_file: catalog/raw/qwen3.6-35b-a3b--ollama-vulkan-0177-v1--ollama-warm-request-v2--20260805T061000Z.json
