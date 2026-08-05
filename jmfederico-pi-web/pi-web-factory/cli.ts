@@ -42,8 +42,8 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { workflowNames, workflowRegistry, type WorkflowResultBase } from "./chains/registry.ts";
 import { ConfigError, projectConfigFor } from "./modules/config.ts";
 import { loadRolesConfig } from "./modules/roles.ts";
@@ -240,6 +240,28 @@ const DEFAULT_CONFIG_PATH = join(import.meta.dir, "factory.config.yaml");
 const DEFAULT_DB_PATH = join(import.meta.dir, "factory.db");
 
 /**
+ * `factory.db` accumulates real observability history across every run — it
+ * must NOT default to a path that a deploy mechanism might periodically wipe
+ * (M-068's Docker bake-in re-syncs `pi-web-factory`'s own code directory
+ * wholesale, `rm -rf` included, on every container start, exactly like the
+ * existing `pi-continue-companion`/`pi-web-factory-prompts` plugin/extension
+ * syncs already do — see `docker-entrypoint.sh`). `PI_WEB_FACTORY_DB_PATH`
+ * lets the container set this to a path OUTSIDE that resynced directory
+ * (under the bind-mounted, persistent `$PI_CODING_AGENT_DIR`) so the trace
+ * db survives both container restarts and code redeploys. Defaults to the
+ * historical co-located path for local dev, unchanged.
+ */
+function resolveDbPath(): string {
+  const path = process.env["PI_WEB_FACTORY_DB_PATH"] ?? DEFAULT_DB_PATH;
+  // bun:sqlite's `create: true` makes the FILE if missing, not missing
+  // parent directories — needed once PI_WEB_FACTORY_DB_PATH can point
+  // somewhere that doesn't yet exist (e.g. a fresh bind-mounted config
+  // volume on a container's first ever start).
+  mkdirSync(dirname(path), { recursive: true });
+  return path;
+}
+
+/**
  * Config path is resolved relative to THIS file's own location (not the
  * caller's cwd), same convention the test suite already uses
  * (`join(import.meta.dir, "..", "factory.config.yaml")` from chains/modules
@@ -338,7 +360,7 @@ async function main(): Promise<number> {
       (args.sessionId ? ` sessionId=${args.sessionId}` : " sessionId=(minting a fresh pi-web session...)"),
   );
 
-  const tracer = new Tracer(DEFAULT_DB_PATH);
+  const tracer = new Tracer(resolveDbPath());
   try {
     const result = await workflowRunner({
       tracer,

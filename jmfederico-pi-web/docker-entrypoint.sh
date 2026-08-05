@@ -75,4 +75,18 @@ if [ -d /app/.pi-web/extensions-seed/pi-web-factory-prompts ]; then
   cp -r /app/.pi-web/extensions-seed/pi-web-factory-prompts "$CONFIG_ROOT/extensions/pi-web-factory-prompts"
 fi
 
+# Always sync pi-web-factory (our own control-plane CLI, M-068) into place on
+# every start, same reasoning as the syncs above: actively-developed code
+# baked into the image, a container restart must always pick up the latest
+# build. Lands OUTSIDE $CONFIG_ROOT at a fixed, well-known path
+# ($HOME/pi-web-factory) so a triggering Skill's bash tool (M-072) can invoke
+# `bun $HOME/pi-web-factory/cli.ts ...` regardless of which project a
+# session targets. factory.db is NOT under this path (the Dockerfile points
+# PI_WEB_FACTORY_DB_PATH at $CONFIG_ROOT instead, which this rm -rf never
+# touches) — see cli.ts's PI_WEB_FACTORY_DB_PATH doc comment.
+if [ -d /app/.pi-web/pi-web-factory-seed ]; then
+  rm -rf "$HOME/pi-web-factory"
+  cp -r /app/.pi-web/pi-web-factory-seed "$HOME/pi-web-factory"
+fi
+
 exec "$@"

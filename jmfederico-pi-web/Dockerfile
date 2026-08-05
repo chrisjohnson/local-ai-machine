@@ -104,6 +104,32 @@ COPY plugins/pi-continue-companion /app/.pi-web/plugins-seed/pi-continue-compani
 # settings.json packages: entry needed, unlike npm:pi-continue.
 COPY plugins/pi-web-factory-prompts /app/.pi-web/extensions-seed/pi-web-factory-prompts
 
+# pi-web-factory: our own control-plane CLI (chains/, modules/, cli.ts) that
+# drives pi-web sessions over its own REST/WebSocket API to run deterministic,
+# multi-step agentic Workflows (M-068). Baked into the image and
+# always-synced (not seed-once) on every container start, same reasoning as
+# the plugin/extension syncs above — actively-developed code, a container
+# restart must always pick up the latest build, never a stale copy from a
+# previous image. Landed OUTSIDE $CONFIG_ROOT/.pi-web (it's a standalone
+# tool, not pi-web/pi-coding-agent config) at a fixed path a triggering
+# Skill's bash tool can reference directly (see M-072) regardless of which
+# project a session targets. Dependencies (bun.lock: yaml, zod) installed
+# once here at build time with a frozen lockfile, baked into the seeded
+# copy, so the always-sync step in docker-entrypoint.sh is a pure file copy
+# — no network access needed at container start. factory.db (the trace
+# database) deliberately does NOT live under this synced directory — see
+# cli.ts's PI_WEB_FACTORY_DB_PATH doc comment and this Dockerfile's ENV
+# below; a `rm -rf` on every restart would otherwise destroy real
+# accumulated observability history.
+COPY pi-web-factory /app/.pi-web/pi-web-factory-seed
+RUN cd /app/.pi-web/pi-web-factory-seed && bun install --frozen-lockfile
+
+# Points cli.ts's trace db at a path under $PI_CODING_AGENT_DIR (bind-mounted
+# from the host, so it survives both container restarts AND image rebuilds),
+# rather than its local-dev default (co-located with cli.ts itself, which
+# docker-entrypoint.sh's always-sync step `rm -rf`s on every start).
+ENV PI_WEB_FACTORY_DB_PATH="/home/piweb/.pi-web/pi-web-factory-data/factory.db"
+
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
