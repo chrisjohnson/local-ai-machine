@@ -6,7 +6,7 @@ claimed_by: null
 claimed_at: null
 blocks: null
 blocked_by: [M-071]
-status: null
+status: needs-refinement
 related_cards: [M-066, M-067, M-071, M-073]
 ---
 
@@ -66,8 +66,54 @@ back to the human in the same conversation.
 
 ## Signals
 <!-- append-only -->
+<!-- signal: claude 2026-08-05T02:30Z — investigated, hit a real architectural fork, marked needs-refinement -->
 
 ## Decision log
 <!-- append-only, one line per entry, newest last -->
+- 2026-08-05 (claude): M-071 (blocker) is done, so I started this — but hit the
+  question the Plan itself flagged as open ("how does the skill learn the project's
+  real absolute path... confirm this assumption or handle the case where it isn't")
+  and it's bigger than routing. Investigated the actual box topology:
+  - The `pi-web` container (`ghcr.io/jmfederico/pi-web:latest`) is where every
+    session's Skill/bash-tool actually executes — confirmed `bun` is present inside
+    it, `PI_CODING_AGENT_DIR=/home/piweb/.pi-web` (skills load from here, matches
+    M-072's own earlier research), and its current bind mounts are: docker.sock
+    (rw), `~/turnstone-workspace/printer-dashboard` → `/work`, `~/.pi-web` →
+    `/home/piweb/.pi-web`, `~/.ssh` → `/home/piweb/.ssh` (github deploy key only,
+    no general host-reachable key).
+  - `pi-web-factory` itself is NOT mounted into that container (expected — M-068,
+    the Docker bake-in card, is explicitly the LAST card and hasn't happened). So a
+    Skill's bash tool, running inside `pi-web`, has no path to `cli.ts` today.
+  - Found the box also has its own separate clone of this repo at
+    `/home/chris/local-ai-machine` (currently a bit behind origin/main — being used
+    concurrently by a different agent, "opencode", on the unrelated M-079 card;
+    left entirely alone, not my concern).
+  - Two real ways to make `cli.ts` reachable from inside a live session, before
+    M-068 exists to do it properly: (a) add a new bind mount into the *existing*
+    `pi-web` container's compose config for `pi-web-factory`'s own checkout, which
+    requires restarting that container to pick up the new mount — but unlike
+    M-069's medium-moe restart (a headless backend model server with no live user
+    state), `pi-web` is the container hosting every actual interactive session;
+    restarting it risks interrupting live WebSocket connections/sessions in a way
+    I can't fully characterize from here (unknown whether session state survives a
+    container restart), and touches this repo's own hard-stop rule's spirit even
+    though it isn't a literal session archive/delete. (b) Use the mounted
+    docker.sock to `docker run` a disposable sibling container per invocation
+    (mounting the factory checkout + target project path fresh each time) — avoids
+    touching the live `pi-web` container at all, but is a genuinely new, untested
+    invocation pattern (image pull/cache behavior, path-mapping correctness,
+    latency) that deserves its own real verification pass, not a first try wired
+    directly into a Skill a human might trigger for real work.
+  - Neither is a "just proceed" call given the blast radius of (a) and the
+    unvalidated-new-mechanism risk of (b) — this is a genuine design fork, not a
+    routing detail, so marked `needs-refinement` rather than pushed through solo.
+    Left in `now/` (already human-promoted via the original feedback that created
+    this card) — the refinement gap is about approach, not whether this should be
+    worked at all.
 
 ## Handoff notes
+Decision needed from Chris: (a) bind-mount pi-web-factory into the live `pi-web`
+container + accept a restart of it, or (b) docker-run a disposable sibling container
+per Skill invocation (needs its own build-and-test pass first), or (c) some other
+approach. Once decided, the rest of the original Plan (SKILL.md content, routing,
+deploy, live verification) is unchanged and ready to execute.
