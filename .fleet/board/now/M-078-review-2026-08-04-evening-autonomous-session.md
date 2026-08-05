@@ -83,6 +83,17 @@ needs your eyes.
   clean retry (89s, well under the 120s budget) rather than papered over with a
   timeout bump. Full detail in M-076's own decision log. Nothing here needs your
   input beyond a skim — flagging mainly because it's the biggest card so far.
+- 2026-08-05T02:35Z — **M-072 marked `needs-refinement`, not implemented.** This
+  one DOES need your input, not just a skim. Investigating the Skill's execution
+  path surfaced a real fork: the pi-web container that hosts every live session
+  doesn't have `pi-web-factory` on its filesystem (expected — M-068 hasn't
+  happened yet), so a Skill's bash tool has no way to reach `cli.ts` today. Two
+  live options, both with real tradeoffs (one needs restarting the *interactive*
+  pi-web container itself — different risk profile than the medium-moe backend
+  restart earlier — the other is an untested new invocation pattern). Didn't want
+  to gamble on restarting the container everyone's live sessions run through
+  without you around to notice if something broke. Full writeup + both options in
+  M-072's own decision log/handoff notes.
 
 ## Signals
 <!-- append-only -->
