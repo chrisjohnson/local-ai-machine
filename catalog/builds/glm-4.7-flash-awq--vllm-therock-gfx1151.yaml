@@ -176,6 +176,29 @@ versions:
         - catalog/raw/glm-4.7-flash-awq--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c8-trial2--20260725T014802Z.json
         - catalog/raw/glm-4.7-flash-awq--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c8-trial3--20260725T014802Z.json
       server_log_raw_file: catalog/raw/glm-4.7-flash-awq--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--server-log--20260725T014802Z.txt
+  - timestamp: '2026-08-05T12:40:00Z'
+    benchmark_id: vllm-memory-capture-v1
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: 5cdc0cfe3467a77f51148fb5d9ef65277edc8b7a
+      host_gpu_driver: Mesa 25.3.6
+      concurrent_load:
+        downloads_paused: true
+        vllm_co_resident_or_stopped: standalone_swap_in
+      host_metrics_window:
+        start: '2026-08-05T12:40:00Z'
+        end: '2026-08-05T12:50:00Z'
+      image_digest: '[kyuz0/vllm-therock-gfx1151@sha256:25fd294fde9f729d1e75f109022ab4496c78190c0a6dc0142440529f7af20e4d]'
+      engine_version: 0.22.1rc1.dev499+g470229c37.d20260613.rocm714
+    result:
+      memory_footprint_gtt_mib: 120007
+      memory_peak_system_used_mib: 127282
+      weights_gib: 16.94
+      note: 'standing config has NO --gpu-memory-utilization flag → vLLM default 0.90 (~112GB GTT).
+        GTT peak 120,007 MiB (~117.2GB) tracks the reservation. Peak system 127,282 MiB briefly
+        exceeds the 124GB pool (spilled to swap). Same WARNING as qwen3.6-27b: 0.90-util config
+        must never co-run with another vLLM/GPU workload (this was the second container in the
+        2026-08-05 swap-thrash incident).'
   - timestamp: '2026-07-25T08:55:15Z'
     benchmark_id: seven-tier-coding-v2
     fingerprint:
