@@ -49,6 +49,20 @@ import type { ZodType, z } from "zod";
 
 const DEFAULT_MAX_PARSE_ATTEMPTS = 3;
 
+/** Cap applied to the raw failed-response text captured on an `unparseable` result — long enough to show a human the actual shape of the problem (markdown fences, leading prose, wrong field names, truncated output), short enough to stay a one-glance trace-db column / CLI line rather than a full transcript dump. */
+const RAW_RESPONSE_CAP = 500;
+
+/**
+ * Truncates `text` to `RAW_RESPONSE_CAP` chars, appending a note of exactly
+ * how much was cut so a reader never mistakes a truncated snippet for the
+ * agent's complete response.
+ */
+export function truncateRawResponse(text: string, cap: number = RAW_RESPONSE_CAP): string {
+  if (text.length <= cap) return text;
+  const omitted = text.length - cap;
+  return `${text.slice(0, cap)}… [truncated, ${String(omitted)} more chars]`;
+}
+
 export interface RunAgentPhaseOptions<Schema extends ZodType> {
   tracer: Tracer;
   baseUrl: string;
@@ -96,7 +110,7 @@ export type RunAgentPhaseResult<Schema extends ZodType> =
   | { status: "permissions-violation"; envelope: z.infer<Schema>; permissions: PermissionsResult; attempts: number }
   | { status: "blocked-on-human"; pendingAsk: PendingAskUser; attempts: number }
   | { status: "error"; reason: string; attempts: number }
-  | { status: "unparseable"; lastReport: GateReport; attempts: number };
+  | { status: "unparseable"; lastReport: GateReport; attempts: number; rawResponse: string };
 
 /**
  * Builds a correction message from a failed `jsonParses` GateReport — names
@@ -252,10 +266,19 @@ export async function runAgentPhase<Schema extends ZodType>(
         parentId: phaseStartId,
         payload: { attempt: attempts, checks: parseReport.checks },
       });
-      failPhase(`unparseable after ${String(attempts)} attempts`);
-      // failPhase's default `outputSummary` (= `error`) is already exactly
-      // right here — "unparseable after N attempts" — no override needed.
-      return { status: "unparseable", lastReport: parseReport, attempts };
+      // The raw last-attempt response text is what actually lets a human
+      // diagnose this (wrapped in markdown fences? prose before the JSON?
+      // wrong field names? truncated output?) — the generic "unparseable
+      // after N attempts" string alone gives zero signal. Capped via
+      // truncateRawResponse (module-level RAW_RESPONSE_CAP) since a raw
+      // agent response can be arbitrarily long and this both becomes a
+      // trace-db column and a CLI-printed line.
+      const truncated = truncateRawResponse(text);
+      failPhase(
+        `unparseable after ${String(attempts)} attempts — last response: ${truncated}`,
+        `unparseable after ${String(attempts)} attempts — last response: ${truncated}`,
+      );
+      return { status: "unparseable", lastReport: parseReport, attempts, rawResponse: truncated };
     }
 
     // Retry-on-parse-failure: re-prompt the SAME session with a correction

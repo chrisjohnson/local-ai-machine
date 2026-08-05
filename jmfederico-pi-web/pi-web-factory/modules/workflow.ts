@@ -136,6 +136,8 @@ export type WorkflowRunResult =
       sessionId: string;
       step: string;
       lastReport: GateReport;
+      /** The agent's actual last-attempt response text that failed to parse (capped — see run.ts's truncateRawResponse) — what lets a human see roughly what the agent said and judge why it didn't parse. */
+      rawResponse: string;
       link: WorkflowRunLinkInfo;
     }
   | {
@@ -248,7 +250,7 @@ function toRunOutcome(
     return { status: "failed", adwId, sessionId, step: stepName, reason: result.reason, link };
   }
   if (result.status === "unparseable") {
-    return { status: "unparseable", adwId, sessionId, step: stepName, lastReport: result.lastReport, link };
+    return { status: "unparseable", adwId, sessionId, step: stepName, lastReport: result.lastReport, rawResponse: result.rawResponse, link };
   }
   if (result.status === "permissions-violation") {
     return { status: "permissions-violation", adwId, sessionId, step: stepName, permissions: result.permissions, link };

@@ -201,14 +201,25 @@ export function describeResult(result: WorkflowResultBase, baseUrl: string = DEF
       };
     }
     case "unparseable": {
+      const rawResponse = "rawResponse" in result ? String((result as { rawResponse?: unknown }).rawResponse) : undefined;
+      const detail = rawResponse
+        ? ` — last response: ${rawResponse}`
+        : " — the agent's response never matched the required envelope schema after retries";
       return {
-        message: `UNPARSEABLE (step=${stepName()}) — ${idLine} — ${link} — the agent's response never matched the required envelope schema after retries`,
+        message: `UNPARSEABLE (step=${stepName()}) — ${idLine} — ${link}${detail}`,
         exitCode: 3,
       };
     }
     case "permissions-violation": {
+      const permissions = "permissions" in result
+        ? (result as { permissions?: { violations?: string[] } }).permissions
+        : undefined;
+      const violations = permissions?.violations ?? [];
+      const detail = violations.length > 0
+        ? ` — the agent wrote outside its allowed paths (${violations.join(", ")}); changes were rolled back`
+        : " — the agent wrote outside its allowed paths; changes were rolled back";
       return {
-        message: `PERMISSIONS-VIOLATION (step=${stepName()}) — ${idLine} — ${link} — the agent wrote outside its allowed paths; changes were rolled back`,
+        message: `PERMISSIONS-VIOLATION (step=${stepName()}) — ${idLine} — ${link}${detail}`,
         exitCode: 4,
       };
     }

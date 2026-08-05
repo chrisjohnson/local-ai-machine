@@ -167,11 +167,27 @@ describe("describeResult", () => {
       sessionId: "sess_1",
       phase: "build",
       lastReport: { checks: [] },
+      rawResponse: "",
       link: TEST_LINK,
     };
     const { message, exitCode } = describeResult(result);
     expect(exitCode).not.toBe(0);
     expect(message).toContain("UNPARSEABLE");
+  });
+
+  test("unparseable -> message includes the agent's actual raw response text, not just a generic phrase", () => {
+    const result: PlanBuildTestResult = {
+      status: "unparseable",
+      adwId: "adw_1",
+      sessionId: "sess_1",
+      phase: "build",
+      lastReport: { checks: [{ item: "json", ok: false, note: "does not parse" }] },
+      rawResponse: "```json\n{\"status\": \"success\"}\n```",
+      link: TEST_LINK,
+    };
+    const { message } = describeResult(result);
+    expect(message).toContain("```json");
+    expect(message).not.toContain("never matched the required envelope schema after retries");
   });
 
   test("permissions-violation -> distinct message, non-zero exit code", () => {
@@ -186,6 +202,26 @@ describe("describeResult", () => {
     const { message, exitCode } = describeResult(result);
     expect(exitCode).not.toBe(0);
     expect(message).toContain("PERMISSIONS-VIOLATION");
+  });
+
+  test("permissions-violation -> message names the actual violating file(s)", () => {
+    const result: PlanBuildTestResult = {
+      status: "permissions-violation",
+      adwId: "adw_1",
+      sessionId: "sess_1",
+      phase: "build",
+      permissions: {
+        touched: ["stack.py", "unauthorized.txt"],
+        allowed: [],
+        violations: ["stack.py", "unauthorized.txt"],
+        rollbacks: [],
+        clean: true,
+      },
+      link: TEST_LINK,
+    };
+    const { message } = describeResult(result);
+    expect(message).toContain("stack.py");
+    expect(message).toContain("unauthorized.txt");
   });
 
   test("failed -> distinct message including the reason, non-zero exit code", () => {

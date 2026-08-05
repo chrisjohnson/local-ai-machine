@@ -19,7 +19,7 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { z } from "zod";
 import { Tracer } from "./tracer.ts";
-import { runAgentPhase, buildCorrectionMessage } from "./run.ts";
+import { runAgentPhase, buildCorrectionMessage, truncateRawResponse } from "./run.ts";
 import type { AgentRole } from "./roles.ts";
 import { jsonParses } from "./gates.ts";
 
@@ -288,6 +288,9 @@ describe("runAgentPhase — retry-on-parse-failure loop", () => {
     expect(result.attempts).toBe(3);
     expect(promptCalls.length).toBe(3);
     expect(result.lastReport.checks.some((c) => !c.ok)).toBe(true);
+    // The raw last-attempt response text is captured, not discarded — this
+    // is what lets a human see roughly what the agent actually said.
+    expect(result.rawResponse).toBe("nope 3");
 
     // Traced as a distinct gate_fail, not silently dropped.
     const gateRow = tracer.db
@@ -567,9 +570,53 @@ describe("runAgentPhase — M-074 output_summary / per-step token columns", () =
     expect(result.status).toBe("unparseable");
 
     const row = tracer.db
+      .query<{ output_summary: string | null; error: string | null }, [string]>(
+        "select output_summary, error from phases where phase_id=?",
+      )
+      .get(phaseId);
+    // The generic "unparseable after N attempts" string alone is no longer
+    // good enough — a human reading phases.error/output_summary must be
+    // able to see roughly what the agent actually said.
+    expect(row?.output_summary).toContain("unparseable after 3 attempts");
+    expect(row?.output_summary).toContain("nope 3");
+    expect(row?.error).toContain("nope 3");
+  });
+
+  test("unparseable failure: a long raw response is truncated with a note, not dumped in full", async () => {
+    const longText = "x".repeat(2000);
+    mockFetchSequence({
+      statusSequence: [{ isStreaming: false }, { isStreaming: false }, { isStreaming: false }],
+      assistantTexts: [longText, longText, longText],
+    });
+
+    const phaseId = "adw_test_trunc_build";
+    const result = await runAgentPhase({
+      tracer,
+      baseUrl: BASE_URL,
+      adwId: "adw_test_trunc",
+      phaseId,
+      seq: 1,
+      cwd,
+      agent,
+      sessionId: "sess_trunc",
+      modelAlreadySet: false,
+      promptText: "do the thing",
+      envelopeSchema: TestEnvelopeSchema,
+      outputTypeName: "build",
+      protectedFiles: [],
+      maxParseAttempts: 3,
+      waitOptions: { forcePollOnly: true },
+    });
+
+    expect(result.status).toBe("unparseable");
+    if (result.status !== "unparseable") throw new Error("expected unparseable");
+    expect(result.rawResponse.length).toBeLessThan(longText.length);
+    expect(result.rawResponse).toContain("truncated");
+
+    const row = tracer.db
       .query<{ output_summary: string | null }, [string]>("select output_summary from phases where phase_id=?")
       .get(phaseId);
-    expect(row?.output_summary).toBe("unparseable after 3 attempts");
+    expect(row?.output_summary).toContain("truncated");
   });
 
   test("permissions-violation failure: output_summary names the violating file(s)", async () => {
@@ -634,5 +681,25 @@ describe("buildCorrectionMessage", () => {
     for (const check of report.checks.filter((c) => !c.ok)) {
       expect(message).toContain(check.item);
     }
+  });
+});
+
+describe("truncateRawResponse", () => {
+  test("returns short text unchanged", () => {
+    expect(truncateRawResponse("hello")).toBe("hello");
+  });
+
+  test("truncates text over the cap and notes how much was cut", () => {
+    const text = "a".repeat(600);
+    const result = truncateRawResponse(text, 500);
+    expect(result.length).toBeLessThan(text.length);
+    expect(result.startsWith("a".repeat(500))).toBe(true);
+    expect(result).toContain("truncated");
+    expect(result).toContain("100 more chars");
+  });
+
+  test("text exactly at the cap is left unchanged", () => {
+    const text = "b".repeat(500);
+    expect(truncateRawResponse(text, 500)).toBe(text);
   });
 });

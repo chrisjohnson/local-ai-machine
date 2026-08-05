@@ -380,6 +380,102 @@ workflows:
     if (result.status !== "blocked-on-human") throw new Error(JSON.stringify(result));
     expect(result.step).toBe("plan");
   });
+
+  test("an unparseable agent step's result carries the agent's actual raw response text through to the workflow result", async () => {
+    const workflow: Workflow = loadWorkflowsFromString(`
+workflows:
+  - name: single
+    steps:
+      - kind: agent
+        name: plan
+        role: plan
+        prompt: "Reply with JSON."
+`)[0] as Workflow;
+
+    mockWorkflowFetch({
+      assistantTextsByRole: {
+        plan: ["Sure! Here's my plan:\n```json\nnot actually valid json\n```"],
+      },
+      workspacePath: cwd,
+    });
+
+    const result = await runWorkflow({
+      tracer,
+      config: testRolesConfig(),
+      workflow,
+      cwd,
+      taskPrompt: "add a /health endpoint",
+      baseUrl: BASE_URL,
+      adwId: "adw_wf_unparseable",
+      sessionId: "sess_preexisting",
+    });
+
+    expect(result.status).toBe("unparseable");
+    if (result.status !== "unparseable") throw new Error(JSON.stringify(result));
+    expect(result.step).toBe("plan");
+    expect(result.rawResponse).toContain("```json");
+    expect(result.rawResponse).toContain("not actually valid json");
+
+    const phaseRow = tracer.db
+      .query<{ error: string | null }, [string]>("select error from phases where phase_id=?")
+      .get("adw_wf_unparseable_plan");
+    expect(phaseRow?.error).toContain("not actually valid json");
+  });
+
+  test("a permissions-violation agent step's result names the violating file(s)", async () => {
+    // testRolesConfig's "review" role is the one with `writes: []`
+    // (read-only) — reused here so ANY write it makes is a violation,
+    // mirroring run.test.ts's readOnlyAgent pattern without needing to
+    // hand-construct a RolesConfig (its shape is `{defaults, roles: Role[]}`,
+    // not a plain agents map, so mutating a role in place isn't the natural
+    // way to do this).
+    const workflow: Workflow = loadWorkflowsFromString(`
+workflows:
+  - name: single
+    steps:
+      - kind: agent
+        name: review
+        role: review
+        prompt: "Reply with JSON."
+`)[0] as Workflow;
+
+    globalThis.fetch = (async (input: string | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.endsWith("/projects") && (init?.method ?? "GET") === "GET") return new Response(JSON.stringify([]), { status: 200 });
+      if (url.endsWith("/projects") && init?.method === "POST")
+        return new Response(JSON.stringify({ id: "proj_1", name: "repo", path: cwd, createdAt: "x" }), { status: 200 });
+      if (url.includes("/workspaces")) return new Response(JSON.stringify([{ id: "ws_1", path: cwd, isMain: true }]), { status: 200 });
+      if (url.endsWith("/model")) return new Response("{}", { status: 200 });
+      if (url.endsWith("/prompt") && init?.method === "POST") {
+        writeFileSync(join(cwd, "stack.py"), "print('should not have been written')\n");
+        return new Response(JSON.stringify({ accepted: true }), { status: 200 });
+      }
+      if (url.endsWith("/status")) return new Response(JSON.stringify({ isStreaming: false }), { status: 200 });
+      if (url.endsWith("/messages")) {
+        return new Response(
+          JSON.stringify([{ role: "assistant", content: [{ type: "text", text: JSON.stringify(reviewEnvelope(true)) }] }]),
+          { status: 200 },
+        );
+      }
+      throw new Error(`unexpected fetch to ${url}`);
+    }) as typeof fetch;
+
+    const result = await runWorkflow({
+      tracer,
+      config: testRolesConfig(),
+      workflow,
+      cwd,
+      taskPrompt: "add a /health endpoint",
+      baseUrl: BASE_URL,
+      adwId: "adw_wf_permviol",
+      sessionId: "sess_preexisting",
+    });
+
+    expect(result.status).toBe("permissions-violation");
+    if (result.status !== "permissions-violation") throw new Error(JSON.stringify(result));
+    expect(result.step).toBe("review");
+    expect(result.permissions.violations).toContain("stack.py");
+  });
 });
 
 describe("runWorkflow — code step", () => {

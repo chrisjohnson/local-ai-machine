@@ -218,6 +218,8 @@ export type PlanBuildTestResult =
       sessionId: string;
       phase: "plan" | "build";
       lastReport: GateReport;
+      /** The agent's actual last-attempt response text that failed to parse (capped — see run.ts's truncateRawResponse) — what lets a human see roughly what the agent said and judge why it didn't parse. */
+      rawResponse: string;
       link: PlanBuildTestLinkInfo;
     }
   | {
@@ -243,7 +245,7 @@ function toChainOutcome<Phase extends "plan" | "build">(
     return { status: "failed", adwId, sessionId, phase, reason: result.reason, link };
   }
   if (result.status === "unparseable") {
-    return { status: "unparseable", adwId, sessionId, phase, lastReport: result.lastReport, link };
+    return { status: "unparseable", adwId, sessionId, phase, lastReport: result.lastReport, rawResponse: result.rawResponse, link };
   }
   if (result.status === "permissions-violation") {
     return { status: "permissions-violation", adwId, sessionId, phase, permissions: result.permissions, link };
