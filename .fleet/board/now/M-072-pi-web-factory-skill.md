@@ -2,11 +2,11 @@
 id: M-072
 title: pi-web-factory — Agent Skill for triggering chains from inside any pi-web session
 initiative_id: null
-claimed_by: null
-claimed_at: null
+claimed_by: claude
+claimed_at: 2026-08-05T03:15:00Z
 blocks: null
 blocked_by: [M-071]
-status: needs-refinement
+status: null
 related_cards: [M-066, M-067, M-071, M-073]
 ---
 
@@ -67,6 +67,7 @@ back to the human in the same conversation.
 ## Signals
 <!-- append-only -->
 <!-- signal: claude 2026-08-05T02:30Z — investigated, hit a real architectural fork, marked needs-refinement -->
+<!-- signal: claude 2026-08-05T03:15Z — refined with Chris, plan set, waiting on M-077's live testing to clear before touching pi-web -->
 
 ## Decision log
 <!-- append-only, one line per entry, newest last -->
@@ -112,8 +113,35 @@ back to the human in the same conversation.
     worked at all.
 
 ## Handoff notes
-Decision needed from Chris: (a) bind-mount pi-web-factory into the live `pi-web`
-container + accept a restart of it, or (b) docker-run a disposable sibling container
-per Skill invocation (needs its own build-and-test pass first), or (c) some other
-approach. Once decided, the rest of the original Plan (SKILL.md content, routing,
-deploy, live verification) is unchanged and ready to execute.
+**Refined with Chris 2026-08-05.** While investigating, found the live `pi-web`
+container is running a stale config relative to `docker/docker-compose.yml`
+(config-hash mismatch: running `74411c27...` vs current file `67ae535d...`) — the
+compose file has pointed at a local Dockerfile build (`../pi-web`) with Claude-bridge
+env vars (`IS_SANDBOX`, `CLAUDE_CODE_OAUTH_TOKEN`, M-039) and a named volume at
+`/data` since 2026-07-31, but the running container never actually picked any of
+that up (still `ghcr.io/jmfederico/pi-web:latest`, still the old
+`~/.pi-web`-bind-mount config) despite being recreated as recently as tonight's
+M-069 deploy. Chris confirmed (2026-08-05): "nothing super sensitive in the
+container, fire away" — authorized redeploying pi-web to match current compose
+state, and separately confirmed nothing (him or any other agent) currently needs
+the live container to stay up.
+
+**Resulting plan for M-072**, decided together: skip both originally-proposed
+options. Instead, add ONE more bind mount to the `pi-web` service in
+`docker/docker-compose.yml` — this project's own checkout (`pi-web-factory` →
+some fixed container path, e.g. `/pi-web-factory`, alongside the existing
+`printer-dashboard` → `/work` mount) — and let it land in the SAME redeploy that
+picks up the pending Claude-bridge compose drift. Once live, the Skill's bash tool
+(running inside pi-web's own container) can run `bun /pi-web-factory/cli.ts ...`
+directly — no disposable sibling container needed, no separate pi-web instance
+(clarified a real misunderstanding: the Skill only ever talks to the ONE live
+pi-web server over HTTP, same as `cli.ts` does today from this Mac; "sibling
+container" in the earlier draft meant a throwaway Bun-only helper, never a second
+pi-web).
+
+**Sequencing:** deliberately NOT executed yet as of this note — M-077's
+implementing sub-agent was still live-testing against the real pi-web server when
+this was decided; restarting pi-web mid-flight would have pulled the rug out from
+under its in-progress verification. Do the compose edit + redeploy once that
+settles, then resume the rest of the original Plan (SKILL.md content, routing,
+deploy, live verification) unchanged.
