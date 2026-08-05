@@ -5,9 +5,9 @@ initiative_id: null
 claimed_by: claude
 claimed_at: 2026-08-05T03:15:00Z
 blocks: null
-blocked_by: [M-071]
+blocked_by: [M-071, M-068]
 status: null
-related_cards: [M-066, M-067, M-071, M-073]
+related_cards: [M-066, M-067, M-068, M-071, M-073]
 ---
 
 # M-072 — pi-web-factory — Agent Skill for triggering chains from inside any pi-web session
@@ -126,22 +126,36 @@ container, fire away" — authorized redeploying pi-web to match current compose
 state, and separately confirmed nothing (him or any other agent) currently needs
 the live container to stay up.
 
-**Resulting plan for M-072**, decided together: skip both originally-proposed
-options. Instead, add ONE more bind mount to the `pi-web` service in
-`docker/docker-compose.yml` — this project's own checkout (`pi-web-factory` →
-some fixed container path, e.g. `/pi-web-factory`, alongside the existing
-`printer-dashboard` → `/work` mount) — and let it land in the SAME redeploy that
-picks up the pending Claude-bridge compose drift. Once live, the Skill's bash tool
+**Refined again 2026-08-05, same conversation:** Chris pointed out a better option
+than the bind mount above — `pi-web-factory` should just be `COPY`'d into the
+`jmfederico-pi-web` image itself, exactly the pattern `plugins/pi-continue-companion`
+already uses (image build + entrypoint re-sync on every container start, never a
+bind mount tied to a host-side checkout staying in sync). This is literally what
+`M-068`'s own Plan items 1-2 already specify (`COPY` into `jmfederico-pi-web/Dockerfile`,
+re-synced by the entrypoint) — M-068 was just sequenced to happen dead last,
+*after* M-072, on the assumption the skill mechanism would be figured out first.
+That assumption is now backwards: M-072 needs the bake-in to exist before the
+Skill can run `cli.ts` at all. Resolved by flipping the dependency: M-072 is now
+`blocked_by` M-068 (added above) instead of the reverse (removed from M-068's
+`blocked_by` — see that card's own decision log). M-068's *remaining* scope (the
+real box deploy via `git pull` + scoped rebuild, the first live end-to-end smoke
+test, and the design-doc update) still makes sense to do last, after M-077 too —
+only its Dockerfile/entrypoint COPY step is being pulled forward, done as part of
+unblocking this card.
+
+**Resulting plan for M-072**: no bind mount, no disposable sibling container. Add
+`pi-web-factory/` to `jmfederico-pi-web/Dockerfile` (`COPY`, mirroring
+`pi-continue-companion`'s exact pattern) and the entrypoint's always-sync step,
+rebuild+redeploy the `jmfederico-pi-web` image (this also happens to be the same
+redeploy that finally picks up the pending Claude-bridge compose drift noted
+above — one deliberate redeploy, not two). Once live, the Skill's bash tool
 (running inside pi-web's own container) can run `bun /pi-web-factory/cli.ts ...`
-directly — no disposable sibling container needed, no separate pi-web instance
-(clarified a real misunderstanding: the Skill only ever talks to the ONE live
-pi-web server over HTTP, same as `cli.ts` does today from this Mac; "sibling
-container" in the earlier draft meant a throwaway Bun-only helper, never a second
-pi-web).
+directly against the one real pi-web server over HTTP — same server, same API,
+just invoked from inside instead of from this Mac.
 
 **Sequencing:** deliberately NOT executed yet as of this note — M-077's
 implementing sub-agent was still live-testing against the real pi-web server when
-this was decided; restarting pi-web mid-flight would have pulled the rug out from
-under its in-progress verification. Do the compose edit + redeploy once that
-settles, then resume the rest of the original Plan (SKILL.md content, routing,
-deploy, live verification) unchanged.
+this was decided; rebuilding/restarting pi-web mid-flight would have pulled the
+rug out from under its in-progress verification. Do the Dockerfile/entrypoint
+change + rebuild + redeploy once that settles, then resume the rest of the
+original Plan (SKILL.md content, routing, deploy, live verification) unchanged.
