@@ -169,6 +169,26 @@ versions:
         - catalog/raw/qwen3.5-4b--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c8-trial2--20260725T151727Z.json
         - catalog/raw/qwen3.5-4b--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--c8-trial3--20260725T151727Z.json
       server_log_raw_file: catalog/raw/qwen3.5-4b--vllm-therock-gfx1151-v1--vllm-speed-c1c8-v2--server-log--20260725T151727Z.txt
+  - timestamp: '2026-08-05T06:30:00Z'
+    benchmark_id: vllm-memory-capture-v1
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: 5cdc0cfe3467a77f51148fb5d9ef65277edc8b7a
+      host_gpu_driver: Mesa 25.3.6
+      concurrent_load:
+        downloads_paused: true
+        vllm_co_resident_or_stopped: standalone_swap_in
+      host_metrics_window:
+        start: '2026-08-05T06:30:00Z'
+        end: '2026-08-05T06:34:00Z'
+      image_digest: '[kyuz0/vllm-therock-gfx1151@sha256:25fd294fde9f729d1e75f109022ab4496c78190c0a6dc0142440529f7af20e4d]'
+      engine_version: 0.22.1rc1.dev499+g470229c37.d20260613.rocm714
+    result:
+      memory_footprint_gtt_mib: 23903
+      memory_peak_system_used_mib: 32224
+      weights_gib: 8.61
+      note: standing config --gpu-memory-utilization 0.20 (~24GB) — GTT peak tracks the reservation
+        (measured with the standing compose service standalone, after a warm completion request).
   - timestamp: '2026-07-25T14:41:57Z'
     benchmark_id: seven-tier-coding-v2
     fingerprint:
