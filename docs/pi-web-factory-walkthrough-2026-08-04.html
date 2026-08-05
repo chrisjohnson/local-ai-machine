@@ -442,26 +442,29 @@
     own condensed live timeline, no click-through needed just to see what's happening. Sort order is
     deliberate: still-running runs first (oldest-started at the very top), then completed runs
     newest-first below.</p>
-    <img class="shot" src="pi-web-factory-screenshots-2026-08-05/visualizer-grid-light.png" alt="Visualizer grid view, light theme, showing a running card with a live progress bar alongside real success and fail cards with descriptive titles">
-    <div class="shot-caption">Light theme (pi-web's own sand/purple palette). Real, descriptive titles now
-    (derived from the task prompt at Workflow Run start — "Add rate limiting middleware that returns
-    H…" — not the bare adwId), a purple pulsing-glow border on the running card, green-tinted successes and
-    red-tinted failures, both dimmed slightly to read as "done, not active."</div>
+    <img class="shot" src="pi-web-factory-screenshots-2026-08-05/visualizer-grid-light.png" alt="Visualizer grid view, light theme, showing two running cards with live role-colored mini-Gantt bars alongside real success and fail cards, every card showing its own timeline inline">
+    <div class="shot-caption">Light theme (pi-web's own sand/purple palette). Real, descriptive titles
+    (derived from the task prompt at Workflow Run start — not the bare adwId), a purple pulsing-glow
+    border on running cards, green-tinted successes and red-tinted failures both dimmed slightly to read
+    as "done, not active." Every card — running or finished — shows its mini-Gantt inline, SSSF-style, no
+    click-through required; each Step's bar is colored by its Role, not its status.</div>
     <img class="shot" src="pi-web-factory-screenshots-2026-08-05/visualizer-grid-dark.png" alt="The same visualizer grid view in dark theme">
     <div class="shot-caption">The same page, dark theme — follows your system's light/dark preference
     automatically via <code>prefers-color-scheme</code>, exactly like pi-web's own "Auto" mode.</div>
 
     <h3>Detail view — click any card for the full timeline</h3>
-    <img class="shot" src="pi-web-factory-screenshots-2026-08-05/visualizer-detail-running.png" alt="Visualizer detail view of an in-progress run, showing a live purple pulsing Step bar and a teal build role badge">
+    <img class="shot" src="pi-web-factory-screenshots-2026-08-05/visualizer-detail-running.png" alt="Visualizer detail view of an in-progress run, showing the complete initial prompt, a completed teal build Step, and a live gold review Step with a pulsing border">
     <div class="shot-caption">Clicking a card still drops you into the full per-Step Gantt timeline (kept
-    from the original design) — each Step's bar is drawn proportional to its real duration, gaps between
-    Steps compressed to a small fixed width rather than drawn to scale, so a run that sat
-    blocked-on-human for an hour won't produce an hour-long blank stretch. Each Role now gets its own
-    persistent color (purple/plan, teal/build, gold/review, blue/scout, pink/document, green/run-tests) —
-    the same palette shows up in the grid's condensed timelines too.</div>
+    from the original design), now with the run's complete initial prompt shown above it — each Step's bar
+    is drawn proportional to its real duration, gaps between Steps compressed to a small fixed width rather
+    than drawn to scale, so a run that sat blocked-on-human for an hour won't produce an hour-long blank
+    stretch. Each Role gets its own persistent color as the bar's actual fill (purple/plan, teal/build,
+    gold/review, blue/scout, pink/document, green/run-tests) — full-saturation with a pulsing glow while
+    a Step is live, a dimmed tint of that same color with a status-colored border once it finishes. The
+    same palette shows up in the grid's condensed timelines too.</div>
 
     <h3>Filtered by project</h3>
-    <img class="shot" src="pi-web-factory-screenshots-2026-08-05/visualizer-project-filter.png" alt="Visualizer grid filtered to one project, showing a passing run">
+    <img class="shot" src="pi-web-factory-screenshots-2026-08-05/visualizer-project-filter.png" alt="Visualizer grid filtered to one project, showing one passing and one failing run grouped together">
     <div class="shot-caption">Selecting a project groups every run triggered against it — regardless of
     which git worktree each individual run actually used under the hood (a real bug found and fixed live,
     see the findings below).</div>
