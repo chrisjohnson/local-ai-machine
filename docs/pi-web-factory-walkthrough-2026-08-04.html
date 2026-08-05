@@ -19,7 +19,9 @@
     --code-bg: #0e1219;
     --plan: #a78bfa;
     --build: #62d6a0;
+    --review: #7c9fff;
     --test: #f2b866;
+    --loop: #ef9a7a;
   }
   * { box-sizing: border-box; }
   body {
@@ -64,7 +66,7 @@
   nav.side a:hover { background: var(--panel2); color: var(--text); }
   main {
     flex: 1;
-    max-width: 920px;
+    max-width: 960px;
     padding: 48px 56px 120px;
   }
   h1 { font-size: 32px; margin: 0 0 8px; }
@@ -145,6 +147,20 @@
   }
   .box .name { font-weight: 600; font-size: 13.5px; color: var(--text); }
   .box .desc { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .termgrid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    margin: 20px 0;
+  }
+  .term {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+  .term .name { font-weight: 700; font-size: 14px; color: var(--accent); margin-bottom: 4px; }
+  .term .desc { font-size: 13px; color: var(--text); }
   .flow {
     display: flex;
     flex-direction: column;
@@ -184,6 +200,7 @@
   .step .content h4 { margin: 0 0 4px; font-size: 14.5px; }
   .step .content p { margin: 0; font-size: 13.5px; color: var(--muted); }
   .step.branch .dot { border-color: var(--warn); color: var(--warn); }
+  .step.loop .dot { border-color: var(--loop); color: var(--loop); }
   .badge-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
   .badge {
     font-size: 10.5px;
@@ -226,6 +243,7 @@
   .status-done { color: var(--accent2); font-size: 11px; font-weight: 700; text-transform: uppercase; }
   .status-next { color: var(--accent); font-size: 11px; font-weight: 700; text-transform: uppercase; }
   .status-deferred { color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase; }
+  .status-refine { color: var(--warn); font-size: 11px; font-weight: 700; text-transform: uppercase; }
   footer { color: var(--muted); font-size: 12px; margin-top: 80px; padding-top: 20px; border-top: 1px solid var(--border); }
 </style>
 </head>
@@ -233,13 +251,16 @@
 <div class="layout">
   <nav class="side">
     <div class="brand">pi-web-factory</div>
-    <div class="subbrand">walkthrough — 2026-08-04</div>
+    <div class="subbrand">walkthrough — updated 2026-08-04 evening</div>
     <a href="#what">What is this?</a>
     <a href="#why">Why it exists</a>
+    <a href="#terms">Terminology</a>
     <a href="#architecture">Architecture</a>
-    <a href="#flow">How work flows</a>
+    <a href="#flow">How a Workflow Run flows</a>
     <a href="#usage">How to use it</a>
-    <a href="#config">The roster</a>
+    <a href="#roles">Roles &amp; system prompts</a>
+    <a href="#workflows">The three shipped Workflows</a>
+    <a href="#worktrees">Worktrees, Projects &amp; deep-links</a>
     <a href="#dashboard">Connecting to pi-web</a>
     <a href="#trace">Watching a run's trace</a>
     <a href="#status">What's built / what's next</a>
@@ -248,143 +269,166 @@
     <span class="pill">local-ai-machine</span>
     <h1>pi-web-factory</h1>
     <p class="lede">A deterministic control plane for AI coding agents, built on top of your existing
-    <code>jmfederico-pi-web</code> stack. This page is a guided walkthrough of what got built this
-    session (cards M-061 through M-067), how it works, and how to drive it yourself.</p>
+    <code>jmfederico-pi-web</code> stack. This page reflects the architecture as of the evening
+    autonomous session on 2026-08-04 — a significant redesign from the first cut of this doc, driven by
+    real feedback: per-project config that lives with the project, real git-worktree isolation per run,
+    true per-role system prompts, and a fully data-driven Workflow interpreter instead of one hand-written
+    TypeScript file per shape.</p>
 
     <h2 id="what">What is this?</h2>
     <p><b>pi-web-factory</b> brings the <a href="https://github.com/disler/super-simple-software-factory"
     style="color:var(--accent)">SSSF</a> pattern — deterministic code owns sequencing, retries, and
-    acceptance; an AI agent works inside one bounded, typed phase at a time — to your running pi-web
+    acceptance; an AI agent works inside one bounded, typed Step at a time — to your running pi-web
     deployment. Instead of spawning a bare <code>pi</code> CLI subprocess (which doesn't exist on PATH
     anywhere in the <code>jmfederico-pi-web</code> container), it drives real pi-web sessions over the
     same HTTP/WebSocket API your browser uses.</p>
     <div class="callout">
       <b>The practical upshot:</b> every session pi-web-factory starts is a completely ordinary pi-web
-      session. It shows up in the browser UI exactly like one you started by hand. You can watch an
-      agent work in real time, and if something needs a human, you can even answer it there — something
-      the upstream SSSF tool can't do at all, since it has no equivalent UI.
+      session, in its own git worktree, registered as a real pi-web Project. It shows up in the browser
+      UI exactly like one you started by hand, with a real, working deep-link. You can watch an agent
+      work in real time, and if something needs a human, you can even answer it there — something the
+      upstream SSSF tool can't do at all, since it has no equivalent UI.
     </div>
 
     <h2 id="why">Why it exists</h2>
-    <p>Prompting a coding agent once and hoping is fine for a one-off. It stops being fine the moment you
-    want the same request to work the same way <i>every</i> time — with retries that don't throw away
-    context, a record of what each phase actually did, and a hard boundary on what a phase is allowed to
-    touch. That's what this adds on top of pi-web:</p>
     <ul>
-      <li><b>Typed output, every time.</b> An agent's only real output is one JSON object matching a
+      <li><b>Typed output, every time.</b> An agent Step's only real output is one JSON object matching a
         schema declared up front. If it doesn't parse, the harness re-prompts the <i>same</i> session
         with a correction naming exactly what was wrong — never a cold restart.</li>
-      <li><b>Enforced write boundaries.</b> Every agent identity has a <code>writes:</code> allowlist.
-        Anything it touches outside that allowlist gets rolled back automatically, and — importantly —
-        the phase is reported as <i>failed</i>, not silently patched up.</li>
-      <li><b>A full trace.</b> Every phase, every tool call, every gate result lands in a local SQLite
-        db (<code>factory.db</code>) as it happens, queryable independently of pi-web's own session
-        history.</li>
-      <li><b>One shared control plane, many projects.</b> Unlike upstream SSSF (one install per repo),
-        pi-web-factory is one install that can target any project by absolute path.</li>
+      <li><b>Enforced write boundaries.</b> Every agent Role has a <code>writes:</code> allowlist.
+        Anything it touches outside that allowlist gets rolled back automatically, and the Step is
+        reported as <i>failed</i>, not silently patched up.</li>
+      <li><b>A full trace.</b> Every Step, every tool call, every gate result, every token count lands in
+        a local SQLite db (<code>factory.db</code>) as it happens, queryable independently of pi-web's
+        own session history.</li>
+      <li><b>Workflows are data, not code.</b> A new sequence of Steps — including a bounded
+        correction loop — is a YAML file, not a new TypeScript module. One generic interpreter runs any
+        of them.</li>
+      <li><b>Isolation by default.</b> Every Workflow Run gets its own git worktree and branch, so
+        concurrent runs (or a run alongside your own manual work) never collide.</li>
     </ul>
 
+    <h2 id="terms">Terminology</h2>
+    <p>Formalized this session, used consistently everywhere below — in the code, the board cards, and
+    the design doc:</p>
+    <div class="termgrid">
+      <div class="term"><div class="name">Workflow Run</div><div class="desc">One top-level, open-ended
+        prompt execution — "do X." Has its own <code>adwId</code>, its own git worktree, its own pi-web
+        session (usually), and its own row of observability data.</div></div>
+      <div class="term"><div class="name">Workflow</div><div class="desc">A named, YAML-configured,
+        reusable template describing an ordered sequence of Steps a Workflow Run executes — e.g.
+        <code>plan-build-review</code>. Not hardcoded per-shape TypeScript.</div></div>
+      <div class="term"><div class="name">Step</div><div class="desc">One unit inside a Workflow: either
+        <code>kind: agent</code> (a pi-web prompt/response turn) or <code>kind: code</code> (a plain
+        subprocess, no model call). Every Step names a Role. A <code>kind: loop</code> Step repeats its
+        inner Steps up to a bound.</div></div>
+      <div class="term"><div class="name">Role</div><div class="desc">A unified agent/code identity —
+        <code>plan</code>, <code>build</code>, <code>review</code>, <code>run-tests</code>, etc. Carries
+        model, thinking level, write allowlist, and (for agent Roles) a real system prompt.</div></div>
+    </div>
+
     <h2 id="architecture">Architecture</h2>
-    <p>Seven small modules, each independently tested, plus a thin chain layer and a CLI on top. Only
-    one of them — <code>piwebClient.ts</code> — actually talks to pi-web.</p>
+    <p>Config/data modules, the generic interpreter, a thin chain layer, and a CLI on top. Only
+    <code>piwebClient.ts</code> talks to pi-web's session API directly; <code>piwebProject.ts</code>
+    talks to its Project/workspace registry.</p>
     <div class="arch">
-      <div class="box"><div class="name">tracer.ts</div><div class="desc">Writes every phase/event/gate result to <code>factory.db</code> (SQLite, WAL mode).</div></div>
-      <div class="box"><div class="name">piwebClient.ts</div><div class="desc">The only module that talks to pi-web. Starts sessions, sends prompts, waits for completion.</div></div>
-      <div class="box"><div class="name">envelopes.ts</div><div class="desc">Zod schemas for each agent identity's required JSON output shape.</div></div>
+      <div class="box"><div class="name">roles.ts</div><div class="desc">The unified Role registry — agent + code, loaded from <code>factory.config.yaml</code>, real system prompt files resolved per agent Role.</div></div>
+      <div class="box"><div class="name">workflowDef.ts</div><div class="desc">The Workflow YAML schema: agent/code/loop Steps, load-time validation of step-name uniqueness and loop conditions.</div></div>
+      <div class="box"><div class="name">workflow.ts</div><div class="desc">The generic interpreter. Walks any Workflow's Steps, runs loops, threads interpolation, records every result.</div></div>
+      <div class="box"><div class="name">tracer.ts</div><div class="desc">Writes every Workflow Run / Step / event / gate result / token count to <code>factory.db</code> (SQLite, WAL mode).</div></div>
+      <div class="box"><div class="name">piwebClient.ts</div><div class="desc">The only module that talks to pi-web's session API. Starts sessions, sends prompts, waits for completion.</div></div>
+      <div class="box"><div class="name">piwebProject.ts</div><div class="desc">Registers the target project as a pi-web Project, resolves its workspace id — what makes a real deep-link possible.</div></div>
+      <div class="box"><div class="name">worktree.ts</div><div class="desc">Creates one git worktree + branch per Workflow Run under <code>&lt;project&gt;/.pi-web-factory-worktrees/</code>.</div></div>
+      <div class="box"><div class="name">envelopes.ts</div><div class="desc">Zod schemas for each agent Role's required JSON output shape.</div></div>
       <div class="box"><div class="name">gates.ts</div><div class="desc">Verifies claims after the fact: files exist, JSON parses, tests pass, diff matches claims.</div></div>
       <div class="box"><div class="name">permissions.ts</div><div class="desc">Snapshots the repo before/after a turn; rolls back anything outside the allowlist.</div></div>
-      <div class="box"><div class="name">config.ts</div><div class="desc">Loads <code>factory.config.yaml</code>: the agent roster and per-project settings.</div></div>
-      <div class="box"><div class="name">run.ts</div><div class="desc">The shared phase-runner every chain calls — wires all of the above together.</div></div>
-      <div class="box"><div class="name">chains/planBuildTest.ts</div><div class="desc">The first real chain: plan → build → test.</div></div>
-      <div class="box"><div class="name">cli.ts</div><div class="desc">The command you actually type. Argument parsing and I/O only.</div></div>
+      <div class="box"><div class="name">config.ts</div><div class="desc">Shared primitives + per-project quality-gate config, read from <code>&lt;project&gt;/.pi-web-factory.yaml</code>.</div></div>
+      <div class="box"><div class="name">run.ts</div><div class="desc">The shared agent-Step runner — parse-retry loop, permissions enforcement, token/summary capture.</div></div>
+      <div class="box"><div class="name">chains/registry.ts</div><div class="desc">Registers every runnable Workflow by name, YAML-driven and hand-written alike, for <code>cli.ts</code>.</div></div>
+      <div class="box"><div class="name">cli.ts</div><div class="desc">The command you actually type. Argument parsing, registry lookup, and I/O only.</div></div>
     </div>
     <div class="callout warn">
       <b>Where this lives:</b> <code>jmfederico-pi-web/pi-web-factory/</code> in this repo — a sibling
       of pi-web itself, not stamped inside any target project's repo. Today it runs from a dev machine
-      over the network (<code>http://192.168.1.21:8080</code>); once baked into the container image
-      (M-068, not yet done), it'll run co-located as a sibling process, talking to pi-web over loopback.
+      over the LAN (<code>http://192.168.1.226:8080</code> — overridable via
+      <code>PI_WEB_FACTORY_BASE_URL</code>); once baked into the container image (M-068, deliberately
+      last), it'll run co-located as a sibling process, talking to pi-web over loopback.
     </div>
+    <div class="callout">
+      <b>Per-project config lives in the project, not here.</b> <code>&lt;project&gt;/.pi-web-factory.yaml</code>
+      declares that project's own <code>test</code>/<code>typecheck</code>/<code>lint</code> commands —
+      the same repo location a future ticket-storage layer will use. pi-web-factory's own
+      <code>factory.config.yaml</code> only holds the Role registry, which is shared across every
+      project.</div>
 
-    <h2 id="flow">How work flows through it</h2>
-    <p>This is what actually happens, step by step, when you run the <code>plan-build-test</code> chain
-    against a project — the exact sequence <code>chains/planBuildTest.ts</code> and <code>modules/run.ts</code>
-    execute together.</p>
+    <h2 id="flow">How a Workflow Run flows</h2>
+    <p>Walking through <code>bounded-build-review</code> — <code>build → loop{review, build} until
+    approved (max 3 rounds)</code> — since it exercises every mechanism the simpler Workflows share,
+    plus the loop.</p>
     <div class="flow">
       <div class="step">
         <div class="rail"><div class="dot">1</div><div class="line"></div></div>
         <div class="content">
-          <h4>cli.ts parses your command and loads the roster</h4>
-          <p><code>--project</code>, <code>--chain</code>, an optional <code>--session-id</code>, and your
-          prompt (literal text or a path to a file) get validated. <code>factory.config.yaml</code> loads;
-          an unknown project or chain name fails immediately with a specific message, not a stack trace.</p>
+          <h4>cli.ts parses your command, resolves the Workflow</h4>
+          <p><code>--project</code>, <code>--workflow</code>, an optional <code>--session-id</code>, and
+          your prompt (literal text or a path to a file) get validated. An unknown project config or
+          Workflow name fails immediately with a specific message, not a stack trace.</p>
         </div>
       </div>
       <div class="step">
         <div class="rail"><div class="dot">2</div><div class="line"></div></div>
         <div class="content">
-          <h4>A pi-web session starts (or an existing one resumes)</h4>
-          <p>One real session against your target project's working directory. This is the exact same
-          kind of session the browser UI creates — nothing distinguishes an API-started session from a
-          hand-started one.</p>
+          <h4>A fresh git worktree is created for this Workflow Run</h4>
+          <p><code>worktree.ts</code> creates <code>&lt;project&gt;/.pi-web-factory-worktrees/&lt;adwId&gt;</code>
+          on a new branch, invisible to the target project's own tracked files (<code>.git/info/exclude</code>,
+          not <code>.gitignore</code>). The project gets registered as a pi-web Project if it isn't
+          already, and its workspace id is resolved — this is what makes a real deep-link possible later.</p>
         </div>
       </div>
       <div class="step">
         <div class="rail"><div class="dot">3</div><div class="line"></div></div>
         <div class="content">
-          <h4>Phase 1 — <span style="color:var(--plan)">plan</span></h4>
-          <p>The <code>plan</code> agent (big-moe, high thinking) gets the task and a required JSON
-          schema. The repo is snapshotted <i>before</i> the prompt is sent.</p>
-          <div class="badge-row"><span class="badge">setModel</span><span class="badge">prompt</span><span class="badge">wait for agent.end</span></div>
-        </div>
-      </div>
-      <div class="step branch">
-        <div class="rail"><div class="dot">?</div><div class="line"></div></div>
-        <div class="content">
-          <h4>Did it parse?</h4>
-          <p>If the response isn't valid JSON matching the schema, the harness re-prompts the <i>same</i>
-          session with a correction naming exactly what was wrong — up to 3 attempts before the phase
-          fails as <code>unparseable</code>. In live testing, both agents got it right on the first try
-          every time — but the retry path is real and covered by its own tests.</p>
-          <div class="badge-row"><span class="badge wait">retry ≤ 3×</span></div>
+          <h4>A pi-web session starts, pointed at the worktree</h4>
+          <p>One real session, same kind the browser UI creates — nothing distinguishes an API-started
+          session from a hand-started one. It gets threaded through every Step in this Workflow Run.</p>
         </div>
       </div>
       <div class="step">
         <div class="rail"><div class="dot">4</div><div class="line"></div></div>
         <div class="content">
-          <h4>Permissions are enforced</h4>
-          <p>The repo is diffed against the pre-prompt snapshot. Anything outside the agent's
-          <code>writes:</code> allowlist is rolled back — tracked-file edits via <code>git checkout --</code>,
-          new untracked files by deletion. If <i>anything</i> was unauthorized, the phase is marked
-          <code>permissions-violation</code> and the chain stops — even though the rollback itself
-          succeeded. A violation always fails the phase; that's not optional.</p>
-          <div class="badge-row"><span class="badge err">any violation → phase fails</span></div>
+          <h4>Step 1 — <span style="color:var(--build)">build</span> (agent, medium-moe)</h4>
+          <p>The task prompt is injected on the Workflow's first agent Step, prefixed with a
+          <code>[[pi-web-factory:role=build]]</code> marker the <code>before_agent_start</code> pi
+          extension reads to inject <code>build</code>'s <i>real</i> system prompt (not prepended text —
+          see Roles below). The repo is snapshotted before and after; anything written outside
+          <code>build</code>'s <code>writes:</code> allowlist is rolled back and the Step fails as
+          <code>permissions-violation</code>.</p>
+          <div class="badge-row"><span class="badge">setModel</span><span class="badge">prompt</span><span class="badge">wait for agent.end</span></div>
         </div>
       </div>
-      <div class="step">
-        <div class="rail"><div class="dot">5</div><div class="line"></div></div>
+      <div class="step loop">
+        <div class="rail"><div class="dot">↻</div><div class="line"></div></div>
         <div class="content">
-          <h4>Phase 2 — <span style="color:var(--build)">build</span>, same session</h4>
-          <p>The <code>build</code> agent (medium-moe) continues the <i>same</i> pi-web session — not a
-          fresh one — with the plan's summary in context, and actually writes files using its real tools.
-          Same parse-retry and permissions-enforcement steps apply.</p>
-        </div>
-      </div>
-      <div class="step">
-        <div class="rail"><div class="dot">6</div><div class="line"></div></div>
-        <div class="content">
-          <h4>Phase 3 — <span style="color:var(--test)">test</span>, no agent involved</h4>
-          <p>A plain code phase: your project's configured test command runs as a subprocess. No model
-          call — this is exactly the kind of step SSSF's own philosophy says shouldn't cost a token.</p>
+          <h4>Loop — <span style="color:var(--review)">review</span> → (rejected?) → build → …</h4>
+          <p><code>review</code> (agent, big-moe, read-only) checks the diff against the task's
+          requirements and returns <code>{approved: boolean, findings: [...], blocking: [...]}</code>. If
+          <code>approved</code> is false, the interpreter builds a correction message from the concrete
+          <code>blocking</code> findings and re-runs <code>build</code> — same session, so it has the
+          rejection's exact reasoning in context. Capped at 3 rounds; a real, distinct
+          <code>loop-exhausted</code> outcome if it never converges — never silently reported as
+          success.</p>
+          <div class="badge-row"><span class="badge wait">up to 3 rounds</span><span class="badge">real correction message, not a generic retry</span></div>
         </div>
       </div>
       <div class="step">
         <div class="rail"><div class="dot">✓</div></div>
         <div class="content">
-          <h4>Result</h4>
-          <p>One of five outcomes, always carrying the <code>adwId</code>/<code>sessionId</code> so you
-          can always find the run again: <code>success</code>, <code>blocked-on-human</code> (the agent
-          asked a question — go answer it in pi-web's UI, then resume with <code>--session-id</code>),
-          <code>unparseable</code>, <code>permissions-violation</code>, or <code>failed</code>.</p>
+          <h4>Result — a 7-way discriminated outcome</h4>
+          <p><code>success</code>, <code>blocked-on-human</code> (the agent asked a question — answer it
+          in pi-web's UI, then resume with <code>--session-id</code>), <code>unparseable</code>,
+          <code>permissions-violation</code>, <code>failed</code>, <code>gate-failed</code> (a
+          <code>code</code> Step's checks didn't pass), or <code>loop-exhausted</code>. Every branch
+          carries the real deep-link.</p>
         </div>
       </div>
     </div>
@@ -392,69 +436,111 @@
     <h2 id="usage">How to use it</h2>
     <p>From <code>jmfederico-pi-web/pi-web-factory/</code>:</p>
     <pre><code>bun cli.ts --project /home/chris/turnstone-workspace/printer-dashboard \
-  --chain plan-build-test \
+  --workflow bounded-build-review \
   "Add a /health endpoint that returns 200 OK"</code></pre>
     <p>The prompt can also be a path to a file:</p>
     <pre><code>bun cli.ts --project /home/chris/turnstone-workspace/printer-dashboard \
-  --chain plan-build-test \
+  --workflow plan-build-review \
   ./specs/health-endpoint.md</code></pre>
     <p>Resume a session that got blocked waiting on a question (answer it in pi-web's UI first):</p>
     <pre><code>bun cli.ts --project /home/chris/turnstone-workspace/printer-dashboard \
-  --chain plan-build-test \
+  --workflow plan-build-review \
   --session-id 019fcb42-c0f9-73fb-881f-b80c1b232778 \
   "continue"</code></pre>
     <h3>Exit codes</h3>
     <table>
       <tr><th>Code</th><th>Meaning</th></tr>
-      <tr><td><code>0</code></td><td>Success — plan, build, and test all passed.</td></tr>
-      <tr><td><code>1</code></td><td>Failed (e.g. the test command failed).</td></tr>
+      <tr><td><code>0</code></td><td>Success.</td></tr>
+      <tr><td><code>1</code></td><td>Failed (a Step errored outright).</td></tr>
       <tr><td><code>2</code></td><td>Blocked on a human — the agent asked a question mid-turn.</td></tr>
-      <tr><td><code>3</code></td><td>Unparseable — the agent never produced valid JSON after 3 attempts.</td></tr>
-      <tr><td><code>4</code></td><td>Permissions violation — the agent wrote outside its allowlist (rolled back).</td></tr>
-      <tr><td><code>64</code></td><td>Usage/config error — bad flags, unknown project, or unknown chain.</td></tr>
+      <tr><td><code>3</code></td><td>Unparseable — an agent Step never produced valid JSON after retries.</td></tr>
+      <tr><td><code>4</code></td><td>Permissions violation — a Step wrote outside its allowlist (rolled back).</td></tr>
+      <tr><td><code>5</code></td><td>Gate failed — a <code>code</code> Step's checks didn't pass.</td></tr>
+      <tr><td><code>6</code></td><td>Loop exhausted — a loop Step's <code>until</code> condition was never satisfied within <code>max_rounds</code>.</td></tr>
+      <tr><td><code>64</code></td><td>Usage/config error — bad flags, unknown project, or unknown Workflow.</td></tr>
     </table>
 
-    <h2 id="config">The roster — <code>factory.config.yaml</code></h2>
-    <p>One agent identity per row. Models point at your box's already-seeded <code>local-litellm</code>
-    provider — <code>big-moe</code> and <code>medium-moe</code> are live model roles today, not placeholders.</p>
+    <h2 id="roles">Roles &amp; real system prompts</h2>
+    <p>One Role per row, in <code>factory.config.yaml</code>. Agent Roles point at your box's
+    already-seeded <code>local-litellm</code> provider; <code>run-tests</code> is a code Role — no model
+    call, just a subprocess.</p>
     <table>
-      <tr><th>Agent</th><th>Model</th><th>Writes</th><th>Why</th></tr>
-      <tr><td><code>plan</code></td><td>big-moe</td><td><code>specs/</code></td><td>A bad plan corrupts every phase built on it.</td></tr>
-      <tr><td><code>build</code></td><td>medium-moe</td><td>unrestricted*</td><td>Mechanical given a good plan; runs most often.</td></tr>
-      <tr><td><code>review</code></td><td>big-moe</td><td>none (read-only)</td><td>Last judgment checkpoint before success.</td></tr>
-      <tr><td><code>scout</code></td><td>medium-moe</td><td>none (read-only)</td><td>Pure recon.</td></tr>
-      <tr><td><code>document</code></td><td>medium-moe</td><td><code>docs/</code>, <code>*.md</code></td><td>Mechanical write-up of a known change.</td></tr>
+      <tr><th>Role</th><th>Kind</th><th>Model</th><th>Writes</th><th>Why</th></tr>
+      <tr><td><code>plan</code></td><td>agent</td><td>big-moe</td><td><code>specs/</code></td><td>A bad plan corrupts every Step built on it.</td></tr>
+      <tr><td><code>build</code></td><td>agent</td><td>medium-moe</td><td>unrestricted*</td><td>Mechanical given a good plan; runs most often.</td></tr>
+      <tr><td><code>review</code></td><td>agent</td><td>big-moe</td><td>none (read-only)</td><td>Last judgment checkpoint before success or a correction round.</td></tr>
+      <tr><td><code>scout</code></td><td>agent</td><td>medium-moe</td><td>none (read-only)</td><td>Pure recon.</td></tr>
+      <tr><td><code>document</code></td><td>agent</td><td>medium-moe</td><td><code>docs/</code>, <code>*.md</code></td><td>Mechanical write-up of a known change.</td></tr>
+      <tr><td><code>run-tests</code></td><td>code</td><td>—</td><td>none</td><td>Exactly the kind of Step SSSF's philosophy says shouldn't cost a token.</td></tr>
     </table>
     <p style="font-size:12.5px;color:var(--muted)">* still can't touch <code>defaults.protected_files</code>
-    (pi-web-factory's own machinery) — permissions.ts enforces that regardless of an agent's own <code>writes:</code>.</p>
-    <p>Per-project quality commands live in the same file's <code>projects:</code> map, keyed by absolute
-    path — this is what the <code>test</code> phase runs.</p>
+    (pi-web-factory's own machinery) — permissions.ts enforces that regardless of a Role's own <code>writes:</code>.</p>
+    <div class="callout">
+      <b>True system prompts, not prepended text.</b> Every agent Role's prompt lives in
+      <code>prompts/&lt;role&gt;.md</code> and is injected as a real <code>systemPrompt</code> by a
+      deployed pi extension (<code>before_agent_start</code> hook, live in
+      <code>jmfederico-pi-web/plugins/pi-web-factory-prompts/</code>) — not text glued onto the user
+      turn. The extension identifies which Role's prompt to inject via a
+      <code>[[pi-web-factory:role=&lt;name&gt;]]</code> marker prefixed onto that Step's first prompt,
+      the same pattern <code>pi-continue</code> already uses elsewhere on this box. Confirmed byte-for-byte
+      identical between the extension's own source of truth and pi-web-factory's copy.
+    </div>
+
+    <h2 id="workflows">The three shipped Workflows</h2>
+    <table>
+      <tr><th>Name</th><th>Shape</th><th>Ends in</th></tr>
+      <tr><td><code>plan-build-review</code></td><td>plan → build → review</td><td>an agent's judgment call, no loop</td></tr>
+      <tr><td><code>bounded-build-review</code></td><td>build → loop{review, build} until approved, max 3 rounds</td><td>either a converged review or a real <code>loop-exhausted</code></td></tr>
+      <tr><td><code>plan-build-test</code></td><td>plan → build → test</td><td>a <code>code</code> Step (your project's real test command), the one hand-written chain kept alongside the two YAML Workflows — genuinely a different shape (a mechanical gate, not a judgment call)</td></tr>
+    </table>
+    <p>All three are just entries in <code>chains/registry.ts</code>; <code>plan-build-review</code> and
+    <code>bounded-build-review</code> are pure YAML data (<code>workflows/*.yaml</code>) run by the one
+    generic interpreter — adding a fourth shape is a new YAML file, not new TypeScript.</p>
+
+    <h2 id="worktrees">Worktrees, Projects &amp; real deep-links</h2>
+    <p>Every Workflow Run gets its own git worktree under
+    <code>&lt;project&gt;/.pi-web-factory-worktrees/&lt;adwId&gt;</code>, on its own
+    <code>pi-web-factory/&lt;adwId&gt;</code> branch — concurrent runs, or a run alongside your own manual
+    work in the project's main checkout, never collide. Worktrees are excluded from the target project's
+    own tracked files via <code>.git/info/exclude</code> (not <code>.gitignore</code> — leaves zero
+    footprint on the project's own committed state) and kept forever after a run finishes, favoring
+    post-hoc inspectability over automatic cleanup at today's manual-trigger volume.</p>
+    <p>The target project is auto-registered as a real pi-web Project (idempotent — safe to call
+    repeatedly), and its workspace id is resolved from pi-web's own <code>git worktree list</code> view.
+    Every result — success or any failure branch — carries a real, working deep-link:</p>
+    <pre><code>http://192.168.1.226:8080/?project=&lt;id&gt;&amp;workspace=&lt;id&gt;&amp;session=&lt;id&gt;</code></pre>
+    <p style="font-size:12.5px;color:var(--muted)"><code>session</code> alone does nothing in pi-web's
+    router — <code>project</code> is read first. This is why deep-links weren't real in the first cut of
+    this doc, and are now.</p>
 
     <h2 id="dashboard">Connecting to pi-web's own dashboard</h2>
-    <p>There's no separate UI for pi-web-factory itself (yet) — and honestly, you may not need one. Every
-    session it starts is a normal pi-web session, so <b>pi-web's own browser UI is your dashboard</b>:</p>
-    <a class="btn" href="http://192.168.1.21:8080" target="_blank">Open pi-web → http://192.168.1.21:8080</a>
+    <p>There's still no separate UI for pi-web-factory's own control-plane state (that's M-077, in
+    progress) — but every session it starts is a normal pi-web session, so <b>pi-web's own browser UI
+    remains your dashboard for watching an agent actually work</b>:</p>
+    <a class="btn" href="http://192.168.1.226:8080" target="_blank">Open pi-web → http://192.168.1.226:8080</a>
     <div class="callout">
-      Print the <code>sessionId</code> from your <code>cli.ts</code> run (it's shown immediately, before
-      the chain even finishes) and find it in pi-web's session list on the LAN. You can watch tokens
-      stream in live, exactly as if you'd started the session by hand — because you didn't do anything
-      pi-web itself would treat differently.
+      Every <code>cli.ts</code> run now prints the exact deep-link it opened, not just a bare session id —
+      click it and you land directly on the right project/workspace/session, no manual hunting through
+      pi-web's session list required.
     </div>
     <p style="font-size:12.5px;color:var(--muted)">LAN-only, no auth — same explicit choice as the rest
     of this stack. Don't expose this port past your network boundary.</p>
 
     <h2 id="trace">Watching a run's trace (factory.db)</h2>
-    <p>Independent of pi-web's UI, every run is fully recorded in <code>factory.db</code> — phases,
-    tool calls, gate results, costs. Query it directly:</p>
+    <p>Independent of pi-web's UI, every Workflow Run is fully recorded in <code>factory.db</code> —
+    Steps, tool calls, gate results, and (as of this session) input/output/cached token counts and an
+    output summary per Step. Query it directly:</p>
     <pre><code>bun -e '
 import { Database } from "bun:sqlite";
 const db = new Database("factory.db", { readonly: true });
 console.log(db.query(
-  "select name, status, seq from phases where adw_id=? order by seq"
+  "select name, status, seq, kind, input_tokens, output_tokens, output_summary " +
+  "from phases where adw_id=? order by seq"
 ).all("adw_xxxxxxxxxxxx"));
 '</code></pre>
-    <p>There's no visualizer for this yet — that's an explicitly deferred piece of the design (see the
-    design doc's §3.5). For now, direct SQL is the tool.</p>
+    <p>A real-time Gantt-style visualizer on top of this data — one card per Workflow Run, idle time
+    collapsed, the currently-active Step highlighted live — is the next planned piece (M-077). For now,
+    direct SQL is the tool.</p>
 
     <h2 id="status">What's built, what's next</h2>
     <div class="statusgrid">
@@ -462,26 +548,37 @@ console.log(db.query(
       <div class="id">M-062</div><div class="title">piwebClient.ts — session client + completion wait-loop</div><div class="status-done">done</div>
       <div class="id">M-063</div><div class="title">envelopes.ts + gates.ts</div><div class="status-done">done</div>
       <div class="id">M-064</div><div class="title">permissions.ts — writes: enforcement</div><div class="status-done">done</div>
-      <div class="id">M-065</div><div class="title">factory.config.yaml + config.ts</div><div class="status-done">done</div>
+      <div class="id">M-065</div><div class="title">factory.config.yaml + config.ts (v1, agent roster)</div><div class="status-done">done</div>
       <div class="id">M-066</div><div class="title">chains/planBuildTest.ts + run.ts — first live-verified chain</div><div class="status-done">done</div>
       <div class="id">M-067</div><div class="title">cli.ts entrypoint</div><div class="status-done">done</div>
-      <div class="id">M-068</div><div class="title">Docker bake-in — ship it inside the jmfederico-pi-web image</div><div class="status-next">next</div>
-      <div class="id">M-069</div><div class="title">True per-role system prompts (pi extension hook)</div><div class="status-deferred">deferred</div>
+      <div class="id">M-069</div><div class="title">True per-role system prompts — before_agent_start extension, deployed live</div><div class="status-done">done</div>
+      <div class="id">M-070</div><div class="title">Per-project config moves into the target project's own repo</div><div class="status-done">done</div>
+      <div class="id">M-071</div><div class="title">Git worktree per run + pi-web Project registration + real deep-links</div><div class="status-done">done</div>
+      <div class="id">M-074</div><div class="title">Per-Step token/summary columns in the trace db</div><div class="status-done">done</div>
+      <div class="id">M-075</div><div class="title">roles.ts — unified agent + code Role registry</div><div class="status-done">done</div>
+      <div class="id">M-076</div><div class="title">workflowDef.ts + workflow.ts — generic, YAML-driven Workflow interpreter</div><div class="status-done">done</div>
+      <div class="id">M-072</div><div class="title">Agent Skill — trigger a Workflow from inside any pi-web session</div><div class="status-refine">needs-refinement</div>
+      <div class="id">M-077</div><div class="title">Real-time visualizer — one card per Workflow Run, Gantt-style Step timeline</div><div class="status-next">next</div>
+      <div class="id">M-068</div><div class="title">Docker bake-in — ship it inside the jmfederico-pi-web image</div><div class="status-deferred">last, deliberately</div>
     </div>
-    <p>Today, <code>pi-web-factory</code> runs from a dev machine over the network. <b>M-068</b> is what
-    makes it a real, always-available part of the stack — baked into the <code>jmfederico-pi-web</code>
-    image itself, the same way the <code>pi-continue-companion</code> plugin already is. <b>M-069</b>
-    (giving each agent identity a true system prompt instead of text prepended to the first message) is
-    deliberately parked pending a go/no-go decision — the interim workaround already works, this is a
-    fidelity improvement, not a blocker.</p>
+    <p><b>M-072</b> hit a real architectural fork rather than a routing detail: the pi-web container that
+    hosts every live session doesn't have <code>pi-web-factory</code> on its filesystem yet (expected —
+    that's M-068's job, and M-068 is deliberately last), so a Skill's bash tool has no path to
+    <code>cli.ts</code> today. The two live options both carry enough risk or novelty (restarting the
+    <i>interactive</i> pi-web container itself vs. an untested per-invocation disposable-container
+    pattern) to warrant a real decision rather than a unilateral pick — see the card for both options
+    in full.</p>
     <p>There's also a durable ticket layer sketched but not built: a trimmed <code>.fleet</code>-style
     <code>backlog/</code> → <code>now/</code> → <code>done/</code> queue that would let you author work
     items and have them picked up later, rather than every run being manually triggered. <code>cli.ts</code>'s
-    argument shape was deliberately designed to be that queue's eventual calling convention, unchanged.</p>
+    <code>--project</code>/<code>--workflow</code>/prompt/<code>--session-id</code> shape was deliberately
+    designed to be that queue's eventual calling convention, unchanged by this session's redesign.</p>
 
     <footer>
-      Built 2026-08-04, in <code>local-ai-machine</code>, cards M-061–M-067 on the <code>.fleet</code>
-      board. Full design record: <code>pi-web-adw-design.md</code> at the repo root.
+      Built 2026-08-04, in <code>local-ai-machine</code>, cards M-061 through M-078 on the
+      <code>.fleet</code> board (M-078 is a running human-review log of this session's judgment calls,
+      not a feature card — read it first if you want the "what did the agent decide on its own"
+      summary). Full design record: <code>pi-web-adw-design.md</code> at the repo root.
     </footer>
   </main>
 </div>
