@@ -1,0 +1,17 @@
+Qwen3.6-35B-A3B MTP GGUF (unsloth/Qwen3.6-35B-A3B-MTP-GGUF) — MTP live server timing, M-083
+Date: 2026-08-05
+Command (box) — llama-server with MTP flag set:
+  docker run --rm --device /dev/kfd --device /dev/dri --group-add 26 --group-add 303 \
+    -v /var/lib/ai-models/llamacpp-qwen3.6-35b-a3b-mtp:/models:ro \
+    -p 127.0.0.1:8132:8080 \
+    kyuz0/amd-strix-halo-toolboxes:vulkan-radv \
+    llama-server -m /models/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    -ngl 999 -fa 1 --spec-type draft-mtp --spec-draft-n-max 3 \
+    -np 1 -c 131072 -n 8192 --host 0.0.0.0 --port 8080
+MTP engagement CONFIRMED in startup logs: "creating MTP draft context against the target model".
+Prompt ~44 tokens, max_tokens 400, temperature 0.7. Results (predicted_per_second):
+  request 1: 77.35 tok/s
+  request 2: 70.65 tok/s
+  request 3: 73.53 tok/s
+  avg = 73.84 tok/s → ~1.16x speedup vs the plain llama-bench baseline tg128 63.81 ± 0.22.
+Steady-state memory with server resident: system used 28 GiB, GTT 23.5 GB.

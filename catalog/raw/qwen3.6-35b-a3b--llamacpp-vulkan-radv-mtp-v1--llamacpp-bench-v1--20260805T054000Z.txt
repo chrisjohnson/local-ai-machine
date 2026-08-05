@@ -1,0 +1,18 @@
+Qwen3.6-35B-A3B MTP GGUF (unsloth/Qwen3.6-35B-A3B-MTP-GGUF) — llama-bench plain baseline, M-083
+Date: 2026-08-05
+Command (box):
+  docker run --rm --device /dev/kfd --device /dev/dri --group-add 26 --group-add 303 \
+    -v /var/lib/ai-models/llamacpp-qwen3.6-35b-a3b-mtp:/models:ro \
+    kyuz0/amd-strix-halo-toolboxes:vulkan-radv \
+    llama-bench -m /models/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf -ngl 999 -fa 1 -lm none
+Pre-conditions: download queue paused (Ornith); all model-serving containers stopped; no other GPU load.
+Memory: base 3,872 MiB → peak system used 25,817 MiB; peak GTT 21,632 MiB (~21.1 GiB).
+
+ggml_vulkan: Found 1 Vulkan devices:
+ggml_vulkan: 0 = AMD Radeon 8060S Graphics (RADV GFX1151) (radv) | uma: 1 | fp16: 1 | bf16: 0 | fp4: 0 | warp size: 64 | shared memory: 65536 | int dot: 1 | matrix cores: KHR_coopmat
+| model                          |       size |     params | backend    | ngl |  fa |         lm |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | --: | ---------: | --------------: | -------------------: |
+| qwen35moe 35B.A3B Q4_K - Medium |  21.10 GiB |    35.51 B | Vulkan     | 999 |   1 |       none |           pp512 |      1108.05 ± 13.91 |
+| qwen35moe 35B.A3B Q4_K - Medium |  21.10 GiB |    35.51 B | Vulkan     | 999 |   1 |       none |           tg128 |         63.81 ± 0.22 |
+
+build: 0e4a03622 (10154)
