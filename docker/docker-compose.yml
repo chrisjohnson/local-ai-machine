@@ -839,6 +839,52 @@ services:
     ports:
       - "127.0.0.1:8110:8080"
 
+  # M-089: Ornith-1.0-35B MTP Q4_K_M — same singulared repo/graft as the Q8_0
+  # service above, added for GPU memory headroom (both big-moe + medium-moe
+  # loaded simultaneously left ~zero headroom and OOM-killed the Q8_0
+  # container twice under concurrent agentic load; M-079's decision log
+  # already flagged this quant as "cheap to switch later"). Same flags as
+  # the Q8_0 entry — the repo's own README recommends byte-identical
+  # spec-decoding flags for both quants; MTP head is kept at Q8_0 precision
+  # in this build too, so acceptance barely drops (0.847 vs 0.859) while
+  # decode throughput roughly follows the smaller body (~80 vs ~63-66 tok/s
+  # per singulared's own Strix-Halo Vulkan numbers). Additive only — the
+  # Q8_0 service above is untouched and both are defined; only one would
+  # typically run at a time given the memory constraint that's the whole
+  # point of this card. Not started here — deploy step only defines +
+  # triggers the download; starting the container is a later smoke-test
+  # step.
+  ornith-1.0-35b-mtp-q4--llamacpp-vulkan-radv-v1:
+    image: docker.io/kyuz0/amd-strix-halo-toolboxes:vulkan-radv
+    container_name: ornith-1.0-35b-mtp-q4--llamacpp-vulkan-radv-v1
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - "26"
+      - "303"
+    volumes:
+      - /var/lib/ai-models/llamacpp-ornith-1.0-35b-mtp-q4:/models:ro
+    command: >
+      llama-server
+      -m /models/ornith-1.0-35b-MTP-Q4_K_M.gguf
+      -ngl 999
+      -fa 1
+      --spec-type draft-mtp
+      --spec-draft-n-max 4
+      --spec-draft-p-min 0.6
+      -np 1
+      -c 131072
+      -n 8192
+      -ctk q8_0
+      -ctv q8_0
+      --host 0.0.0.0
+      --port 8080
+      -a ornith-1.0-35b-mtp-q4
+      --metrics
+    ports:
+      - "127.0.0.1:8113:8080"
+
   # M-079: KAT-Coder-V2.5-Dev (Kwaipilot) plain Q8_0 — no MTP (the source
   # model ships mtp_num_hidden_layers: 0; see the -mtp service below for
   # the grafted-head variant). Plain llama-server, no spec flags, -np 1 not

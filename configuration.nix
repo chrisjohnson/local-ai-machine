@@ -431,6 +431,30 @@ let
     { name = "llamacpp-ornith-1.0-35b-mtp-q8"; repo = "singulared/Ornith-1.0-35B-MTP-GGUF"; hfFiles = [
         "ornith-1.0-35b-MTP-Q8_0.gguf"
       ]; }
+    # M-089: Ornith-1.0-35B MTP Q4_K_M — same singulared repo as the Q8_0
+    # entry above, added for GPU memory headroom: with laguna-s-2.1-118b-q4km
+    # (big-moe) and Ornith Q8_0 (medium-moe) both loaded, the box sits at
+    # ~122/124GB total memory with essentially zero headroom, and running
+    # concurrent agentic workflows against both OOM-killed the Ornith
+    # container twice in one afternoon (confirmed via `docker inspect`:
+    # OOMKilled true, exit 137). M-079's own decision log flagged this exact
+    # swap as "cheap to do later" — this is that follow-up, at Chris's
+    # explicit request.
+    #
+    # MTP tensors VERIFIED present via direct GGUF header parse (ranged HTTP
+    # GET + hand-rolled struct parser, not trusting the filename or repo
+    # README): 753 tensors total, same as the Q8_0 build, including all 4
+    # blk.40.nextn.{eh_proj,enorm,hnorm,shared_head_norm} tensors. The repo's
+    # own README confirms the MTP head is kept at Q8_0 precision in *both*
+    # builds (only the body is requantized), which is why draft acceptance
+    # barely drops build-to-build (0.859 Q8_0 vs 0.847 Q4_K_M). Their own
+    # Strix-Halo Vulkan measurement: Q4_K_M+MTP ~80 tok/s vs Q8_0+MTP ~63-66
+    # tok/s — the number M-079 already cited secondhand, now confirmed
+    # firsthand. Confirmed exact file via HF API tree listing (not guessed):
+    # 22,064,714,912 bytes (~20.55 GiB).
+    { name = "llamacpp-ornith-1.0-35b-mtp-q4"; repo = "singulared/Ornith-1.0-35B-MTP-GGUF"; hfFiles = [
+        "ornith-1.0-35b-MTP-Q4_K_M.gguf"
+      ]; }
     # M-079: KAT-Coder-V2.5-Dev (Kwaipilot) — agentic coder, qwen35moe
     # arch, 40 layers, 262144 native context, 35B total / 3B active. Ships
     # mtp_num_hidden_layers: 0 — no MTP head of its own, so this is the
