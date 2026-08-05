@@ -160,7 +160,13 @@ describe("describeResult", () => {
     expect(message).toContain("project=proj_1");
   });
 
-  test("unparseable -> distinct message, non-zero exit code", () => {
+  test("unparseable with an empty rawResponse -> says the agent returned no text at all, not the generic fallback", () => {
+    // Regression test: rawResponse "" is falsy in JS, so a naive `rawResponse
+    // ? ... : fallback` check silently collapses this into the same generic
+    // message as a runner that never populated rawResponse at all -- hiding
+    // the single most useful, easiest-to-understand diagnosis (the agent
+    // said literally nothing). Confirmed live 2026-08-05 that this is a
+    // real, recurring failure mode, not a hypothetical edge case.
     const result: PlanBuildTestResult = {
       status: "unparseable",
       adwId: "adw_1",
@@ -173,6 +179,8 @@ describe("describeResult", () => {
     const { message, exitCode } = describeResult(result);
     expect(exitCode).not.toBe(0);
     expect(message).toContain("UNPARSEABLE");
+    expect(message).toContain("no response text");
+    expect(message).not.toContain("never matched the required envelope schema");
   });
 
   test("unparseable -> message includes the agent's actual raw response text, not just a generic phrase", () => {

@@ -201,10 +201,22 @@ export function describeResult(result: WorkflowResultBase, baseUrl: string = DEF
       };
     }
     case "unparseable": {
-      const rawResponse = "rawResponse" in result ? String((result as { rawResponse?: unknown }).rawResponse) : undefined;
-      const detail = rawResponse
-        ? ` — last response: ${rawResponse}`
-        : " — the agent's response never matched the required envelope schema after retries";
+      // `rawResponse` distinguishes THREE cases, not two — checked by
+      // presence (`in`), not truthiness, specifically because an empty
+      // string is itself a real, distinct, and diagnostically important
+      // case: confirmed live (2026-08-05) that the model sometimes returns
+      // NO text at all after retries (not malformed JSON, not prose-wrapped
+      // JSON — genuinely nothing). A falsy-string check here would silently
+      // collapse that case back into the old generic message, hiding the
+      // one piece of information ("the agent said nothing") that's easiest
+      // for a human to actually understand and act on.
+      const hasRawResponse = "rawResponse" in result;
+      const rawResponse = hasRawResponse ? String((result as { rawResponse?: unknown }).rawResponse) : undefined;
+      const detail = !hasRawResponse
+        ? " — the agent's response never matched the required envelope schema after retries"
+        : rawResponse === ""
+          ? " — the agent returned no response text at all (empty) after retries"
+          : ` — last response: ${rawResponse}`;
       return {
         message: `UNPARSEABLE (step=${stepName()}) — ${idLine} — ${link}${detail}`,
         exitCode: 3,
