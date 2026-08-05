@@ -669,3 +669,70 @@ work stays historical, per §7's own opening note):
 
 M-068 (Docker) stays last, now also blocked on M-074/075/076/077 in addition to
 M-069/070/071/072 (§6.3) — still "docker last," the set it's waiting on just grew.
+
+## 8. Docker bake-in, first real contact (2026-08-05, M-068)
+
+M-068's own bake-in mechanism (its Plan items 1-3: `COPY` into the image, confirm
+`bun` runs it, deploy) ended up pulled forward and done *before* M-068's remaining
+scope (items 4-5, this section), because M-072 (the triggering Skill) turned out to
+need `cli.ts` reachable inside a live pi-web session before it could be built at
+all — see M-072's own decision log for the full reasoning. What follows is what was
+actually true once pi-web-factory hit the real container, some of it diverging from
+what §3/§6/§7 assumed.
+
+**There are two, confusingly similarly-named compose services.** `docker-compose.yml`
+has both a `pi-web:` service (community `agegr/pi-web`, the original side-by-side
+comparison partner mentioned in §1.2/§6.2 — `network_mode: host`, port 30141) and a
+`jmfederico-pi-web:` service (the one this whole design has actually been built
+against, `container_name: pi-web`, port 8080→3000). Both produce a running container
+literally named `pi-web`, and the `jmfederico-pi-web:` block was the one carrying
+unrelated, unapplied Claude-bridge config (`IS_SANDBOX`, `CLAUDE_CODE_OAUTH_TOKEN`,
+M-039) that briefly looked like drift on the live container during this work — it
+wasn't; that config lived on the *other*, non-running `pi-web:` service block, a
+real but easy-to-make mixup given the shared name. Chris confirmed (2026-08-05) the
+comparison is long settled in `jmfederico-pi-web`'s favor; the `pi-web:` block, its
+`../pi-web` build-context directory, and the now-orphaned `pi-web-data` volume
+declaration were removed outright rather than left as inert cruft.
+
+**The bake-in pattern from §3.1/M-068's own framing held exactly as assumed** —
+mirrors `plugins/pi-continue-companion`/`plugins/pi-web-factory-prompts` precisely:
+`COPY pi-web-factory /app/.pi-web/pi-web-factory-seed` at build time (with
+`bun install --frozen-lockfile` baked in then too, so the sync step needs no network
+access), `docker-entrypoint.sh` always `rm -rf` + `cp -r`s it into place on every
+container start. One real difference from those two precedents, not anticipated
+until this card: **the live copy is NOT under `$PI_CODING_AGENT_DIR`** (unlike the
+plugin/extension, which are pi-web/pi-coding-agent config) — it lands at
+`$HOME/pi-web-factory` (i.e. `/home/piweb/pi-web-factory`), a fixed path outside any
+bind-mounted config directory, since it's a standalone tool a Skill's bash tool
+invokes directly, not something pi-web/pi-coding-agent themselves read.
+
+**`factory.db`'s path needed to move, or the always-sync step would destroy it.**
+Every prior section implicitly assumed `factory.db` lives next to `cli.ts` (true for
+every dev-machine run all session). Once `cli.ts` itself lives inside the
+always-resynced `pi-web-factory-seed` copy, that default would put `factory.db`
+somewhere `docker-entrypoint.sh`'s `rm -rf` deletes on every single container
+restart — silently destroying real, accumulated observability history, the exact
+thing §7.3's whole schema migration was built to preserve. Fixed with a new
+`PI_WEB_FACTORY_DB_PATH` env override (`cli.ts`, mirroring the existing
+`PI_WEB_FACTORY_CONFIG`/`PI_WEB_FACTORY_TEST_CWD` escape-hatch pattern), pointed by
+the Dockerfile at `/home/piweb/.pi-web/pi-web-factory-data/factory.db` — under
+`$PI_CODING_AGENT_DIR`, which IS bind-mounted from the host, so it survives both
+container restarts and image rebuilds. `resolveDbPath()` also `mkdirSync`s the
+parent directory first (`bun:sqlite`'s `create: true` makes the file, never missing
+parent directories).
+
+**First live end-to-end run, container-native** (M-068 Plan item 4): ran
+`bun $HOME/pi-web-factory/cli.ts --project <scratch-repo> --workflow
+plan-build-review "..."` from an ordinary shell *inside* the `pi-web` container
+itself (not over SSH+`docker exec` driving TS from the dev Mac, the pattern every
+other live test this session used) — the exact invocation path M-072's Skill will
+use. Real success: `adw_4a24f8c7dcf2`, three Steps (plan/build/review) all
+`success` in `factory.db` at its new persistent path, deep-link resolved (200), a
+real pi-web session with real model turns. Used an isolated scratch repo rather
+than `printer-dashboard` (the project this card originally named) — at the time,
+`printer-dashboard`'s shared main checkout had an unrelated agent's fleet work
+active (a `K-033` worktree) and an unmerged PR branch checked out as HEAD, so
+creating a pi-web-factory worktree off it risked branching from the wrong ref and
+interfering with that other work; a scratch repo proves the mechanism identically
+without that risk. Session archived+deleted, Project deregistered, scratch repo
+removed afterward.
