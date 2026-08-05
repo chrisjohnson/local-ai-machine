@@ -415,6 +415,48 @@ let
     { name = "laguna-s-2.1-dflash-draft"; repo = "poolside/Laguna-S-2.1-GGUF"; hfFiles = [
         "laguna-s-2.1-DFlash-BF16.gguf"
       ]; }
+    # M-079: Ornith-1.0-35B (deepreinforce-ai) — agentic coder fine-tuned
+    # from Qwen3.6-35B-A3B (same qwen35moe arch, same tokenizer, 40 layers,
+    # 262144 native context). Ornith's own release ships NO MTP head — this
+    # is singulared's build grafting Qwen3.6-35B-A3B's original blk.40 nextn
+    # MTP head back in, so llama.cpp self-speculation works. MTP tensors
+    # VERIFIED present in this exact GGUF via header parse (753 tensors,
+    # blk.40.nextn.{eh_proj,enorm,hnorm,shared_head_norm}); unsloth's plain
+    # Ornith Q8_0 has none (733 tensors) and was explicitly ruled out.
+    # singulared measured on Strix Halo gfx1151 (Vulkan): Q8_0+MTP ~63-66
+    # tok/s (0.859 accept) vs ~50 w/o MTP; their Q4_K_M build is the
+    # recommended faster one (~80 tok/s) if we ever want the smaller file.
+    # Confirmed exact file via HF API tree listing (not guessed):
+    # 37,801,096,064 bytes (~35.2 GiB).
+    { name = "llamacpp-ornith-1.0-35b-mtp-q8"; repo = "singulared/Ornith-1.0-35B-MTP-GGUF"; hfFiles = [
+        "ornith-1.0-35b-MTP-Q8_0.gguf"
+      ]; }
+    # M-079: KAT-Coder-V2.5-Dev (Kwaipilot) — agentic coder, qwen35moe
+    # arch, 40 layers, 262144 native context, 35B total / 3B active. Ships
+    # mtp_num_hidden_layers: 0 — no MTP head of its own, so this is the
+    # plain bartowski Q8_0 conversion (no MTP; see the -mtp entry below for
+    # the grafted-head variant). Confirmed exact file via HF API tree
+    # listing: 36,914,690,464 bytes (~34.4 GiB).
+    { name = "llamacpp-kat-coder-v2.5-dev-q8"; repo = "bartowski/Kwaipilot_KAT-Coder-V2.5-Dev-GGUF"; hfFiles = [
+        "Kwaipilot_KAT-Coder-V2.5-Dev-Q8_0.gguf"
+      ]; }
+    # M-079: KAT-Coder-V2.5-Dev MTP graft (gbuzhf) — KAT strips its MTP
+    # head, so this third-party build grafts Qwen3.6-35B-A3B's original
+    # blk.40 head back on, quantized with an imatrix calibrated on KAT's
+    # own output. MTP tensors VERIFIED present via header parse (753
+    # tensors, same 4 blk.40.nextn.* tensors as the Ornith entry above;
+    # donor head claimed byte-identical, sha256 fingerprint in the repo
+    # README). gbuzhf's measured serving notes: MTP ALONE is a net loss on
+    # this arch — run `--spec-type draft-mtp,ngram-mod` together (see the
+    # docker-compose entry for the full flag set). Q6_K is the top quant
+    # available (no Q8 MTP build exists). Confirmed exact file via HF API
+    # tree listing: 30,012,294,784 bytes (~28.0 GiB). Shared known
+    # limitation (both graft repos): no imatrix stats cover blk.40 — the
+    # MTP head never executes during imatrix calibration, so it is
+    # quantized unguided in every build.
+    { name = "llamacpp-kat-coder-v2.5-dev-mtp-q6"; repo = "gbuzhf/KAT-Coder-V2.5-Dev-MTP-GGUF"; hfFiles = [
+        "Kwaipilot_KAT-Coder-V2.5-Dev-MTP-UD-Q6_K.gguf"
+      ]; }
   ];
 in
 {
