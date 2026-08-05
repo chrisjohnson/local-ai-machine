@@ -5,28 +5,61 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>pi-web-factory — walkthrough</title>
 <style>
+  /* Theme: matches pi-web's own real, live-configured theme exactly (values
+     extracted directly from pi-web's own shipped JS bundle, same palette
+     used to restyle the visualizer, M-090) — Light by default, Dark via
+     prefers-color-scheme, same as pi-web's own "Auto" mode. Old generic
+     variable names (--bg, --panel, etc.) kept as the names every rule below
+     already references, just pointed at real pi-web values instead of a
+     one-off dark theme, so this file didn't need a line-by-line rewrite. */
   :root {
-    --bg: #0b0e14;
-    --panel: #131722;
-    --panel2: #1a1f2e;
-    --border: #262c3d;
-    --text: #e6e9f0;
-    --muted: #8b93a8;
-    --accent: #7c9fff;
-    --accent2: #62d6a0;
-    --warn: #f2b866;
-    --danger: #ef7a7a;
-    --code-bg: #0e1219;
-    --plan: #a78bfa;
-    --build: #62d6a0;
-    --review: #7c9fff;
-    --test: #f2b866;
-    --loop: #ef9a7a;
+    --bg: #f7f1e6;
+    --panel: #fff9ee;
+    --panel2: #f0e6d6;
+    --border: #c9bca8;
+    --text: #15131b;
+    --muted: #5f586a;
+    --accent: #6430d8;
+    --accent2: #008c82;
+    --warn: #b05f00;
+    --danger: #b51d49;
+    --code-bg: #15131b;
+    --code-text: #fff9ee;
+    --plan: #6430d8;
+    --build: #0f7a8c;
+    --review: #8a6a10;
+    --scout: #3454c4;
+    --document: #b23070;
+    --test: #3f7a4a;
+    --loop: #b23070;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #070912;
+      --panel: #101527;
+      --panel2: #151b31;
+      --border: #26304f;
+      --text: #f7f4ff;
+      --muted: #aaa4bd;
+      --accent: #7c3cff;
+      --accent2: #00f0d8;
+      --warn: #ffb000;
+      --danger: #ff4f7b;
+      --code-bg: #050710;
+      --code-text: #f7f4ff;
+      --plan: #b7a2ff;
+      --build: #5ee6f2;
+      --review: #f0d264;
+      --scout: #7aa2ff;
+      --document: #ff9ecf;
+      --test: #9fd9a8;
+      --loop: #ff9ecf;
+    }
   }
   * { box-sizing: border-box; }
   body {
     margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    font-family: system-ui, sans-serif;
     background: var(--bg);
     color: var(--text);
     line-height: 1.6;
@@ -93,12 +126,12 @@
     border: 1px solid var(--border);
   }
   code {
-    font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     background: var(--code-bg);
     padding: 1px 6px;
     border-radius: 4px;
     font-size: 0.88em;
-    color: #d6dcea;
+    color: var(--code-text);
   }
   pre {
     background: var(--code-bg);
@@ -211,13 +244,13 @@
     color: var(--muted);
     border: 1px solid var(--border);
   }
-  .badge.ok { color: var(--accent2); border-color: #2a4a3a; }
-  .badge.err { color: var(--danger); border-color: #4a2a2a; }
-  .badge.wait { color: var(--warn); border-color: #4a3a2a; }
+  .badge.ok { color: var(--accent2); border-color: var(--accent2); }
+  .badge.err { color: var(--danger); border-color: var(--danger); }
+  .badge.wait { color: var(--warn); border-color: var(--warn); }
   a.btn {
     display: inline-block;
     background: var(--accent);
-    color: #0b0e14;
+    color: #fff9ee;
     font-weight: 600;
     font-size: 13px;
     padding: 9px 16px;
@@ -397,35 +430,48 @@
     not new TypeScript.</p>
 
     <h2 id="visualizer">The visualizer</h2>
-    <p>A real-time dashboard over every Workflow Run's trace data, live at:</p>
+    <p>A real-time dashboard over every Workflow Run's trace data, restyled to match pi-web's own
+    configured theme exactly (same colors, same fonts, same light/dark "Auto" behavior — pulled straight
+    from pi-web's own shipped theme tokens, not approximated), live at:</p>
     <a class="btn" href="http://192.168.1.226:8090" target="_blank">Open the visualizer → http://192.168.1.226:8090</a>
     <p>Deployed as its own compose service (reusing the same image pi-web-factory is baked into, M-068) —
     comes up and down with the rest of the stack, no separate process to remember to start.</p>
 
-    <h3>List view, with a live run</h3>
-    <img class="shot" src="pi-web-factory-screenshots-2026-08-05/visualizer-list-running.png" alt="Visualizer list view showing a run in RUNNING state with a pulsing live badge, alongside past successes and failures">
-    <div class="shot-caption">Every Workflow Run ever recorded, most recent first, with a project filter
-    dropdown above the list. The amber <b>RUNNING</b> badge pulses live while a run is genuinely in
-    progress.</div>
+    <h3>A live-updating grid, SSSF-style</h3>
+    <p>The main page is a responsive grid of cards — every Workflow Run visible at a glance, each with its
+    own condensed live timeline, no click-through needed just to see what's happening. Sort order is
+    deliberate: still-running runs first (oldest-started at the very top), then completed runs
+    newest-first below.</p>
+    <img class="shot" src="pi-web-factory-screenshots-2026-08-05/visualizer-grid-light.png" alt="Visualizer grid view, light theme, showing a running card with a live progress bar alongside real success and fail cards with descriptive titles">
+    <div class="shot-caption">Light theme (pi-web's own sand/purple palette). Real, descriptive titles now
+    (derived from the task prompt at Workflow Run start — "Add rate limiting middleware that returns
+    H…" — not the bare adwId), a purple pulsing-glow border on the running card, green-tinted successes and
+    red-tinted failures, both dimmed slightly to read as "done, not active."</div>
+    <img class="shot" src="pi-web-factory-screenshots-2026-08-05/visualizer-grid-dark.png" alt="The same visualizer grid view in dark theme">
+    <div class="shot-caption">The same page, dark theme — follows your system's light/dark preference
+    automatically via <code>prefers-color-scheme</code>, exactly like pi-web's own "Auto" mode.</div>
 
-    <h3>Detail view — a clean pass</h3>
-    <img class="shot" src="pi-web-factory-screenshots-2026-08-05/visualizer-detail-passing.png" alt="Visualizer detail view showing a successful plan-build-review run's Gantt timeline, all three steps green">
-    <div class="shot-caption">A real <code>bounded-build-review</code> run (an inventory-tracker module),
-    approved on the first pass. Each Step's bar is drawn proportional to its real duration; the gaps
-    between Steps are compressed to a small fixed width rather than drawn to scale — a Workflow Run that
-    sat blocked-on-human for an hour won't produce an hour-long blank stretch here.</div>
+    <h3>Detail view — click any card for the full timeline</h3>
+    <img class="shot" src="pi-web-factory-screenshots-2026-08-05/visualizer-detail-running.png" alt="Visualizer detail view of an in-progress run, showing a live purple pulsing Step bar and a teal build role badge">
+    <div class="shot-caption">Clicking a card still drops you into the full per-Step Gantt timeline (kept
+    from the original design) — each Step's bar is drawn proportional to its real duration, gaps between
+    Steps compressed to a small fixed width rather than drawn to scale, so a run that sat
+    blocked-on-human for an hour won't produce an hour-long blank stretch. Each Role now gets its own
+    persistent color (purple/plan, teal/build, gold/review, blue/scout, pink/document, green/run-tests) —
+    the same palette shows up in the grid's condensed timelines too.</div>
 
     <h3>Filtered by project</h3>
-    <img class="shot" src="pi-web-factory-screenshots-2026-08-05/visualizer-project-filter.png" alt="Visualizer list view filtered to one project, showing both a passing and a failing run grouped together">
-    <div class="shot-caption">Selecting a project groups every run triggered against it — including a mix
-    of passing and failing runs — regardless of which git worktree each individual run actually used
-    under the hood (see the first finding below; this took a real bug fix to get right).</div>
+    <img class="shot" src="pi-web-factory-screenshots-2026-08-05/visualizer-project-filter.png" alt="Visualizer grid filtered to one project, showing a passing run">
+    <div class="shot-caption">Selecting a project groups every run triggered against it — regardless of
+    which git worktree each individual run actually used under the hood (a real bug found and fixed live,
+    see the findings below).</div>
 
     <h3>Watching it live in pi-web's own UI</h3>
-    <img class="shot" src="pi-web-factory-screenshots-2026-08-05/pi-web-session-live.png" alt="An ordinary pi-web session transcript showing a build agent's tool calls and JSON envelope response mid-conversation">
-    <div class="shot-caption">Every Workflow Run's Steps are ordinary pi-web sessions underneath — you can
-    always drop into pi-web's own browser UI (the deep-link every result carries) and watch the actual
-    conversation, tool calls and all, exactly as if you'd started it by hand.</div>
+    <img class="shot" src="pi-web-factory-screenshots-2026-08-05/pi-web-session-live.png" alt="An ordinary pi-web session transcript showing real iterative debugging: a failing test diagnosed, fixed, all tests passing, then committed">
+    <div class="shot-caption">Every Workflow Run's Steps are ordinary pi-web sessions underneath — real
+    iterative work, not a single canned response. This one diagnosed a failing test, fixed it, reran until
+    all 26 passed, then committed — you can always drop into pi-web's own browser UI (the deep-link every
+    result carries) and watch it happen exactly as if you'd started it by hand.</div>
 
     <h2 id="findings">What we learned running it for real</h2>
     <p>A live testing pass today (multiple real Workflow Runs, real failures, real infra hiccups) surfaced
@@ -648,9 +694,11 @@
       <div class="id">M-086.1</div><div class="title">Per-Workflow /skill:&lt;name&gt; commands, SSSF-style shorthand</div><div class="status-done">done</div>
       <div class="id">M-087</div><div class="title">Real failure detail in UNPARSEABLE/PERMISSIONS-VIOLATION messages</div><div class="status-done">done</div>
       <div class="id">M-088</div><div class="title">Visualizer project filter</div><div class="status-done">done</div>
+      <div class="id">M-090</div><div class="title">Visualizer redesign — match pi-web theme, SSSF-style live card grid</div><div class="status-done">done</div>
+      <div class="id">M-091</div><div class="title">Real Workflow Run titles, derived from the task prompt</div><div class="status-done">done</div>
       <div class="id">M-080</div><div class="title">A rejected review can still report top-level SUCCESS</div><div class="status-refine">needs your call</div>
       <div class="id">M-082</div><div class="title">Permissions enforcement flags incidental verification artifacts</div><div class="status-refine">needs your call</div>
-      <div class="id">M-089</div><div class="title">Ornith Q4_K_M — smaller quant for memory headroom</div><div class="status-next">download in progress</div>
+      <div class="id">M-089</div><div class="title">Ornith Q4_K_M — smaller quant for memory headroom</div><div class="status-next">downloaded, not yet smoke-tested</div>
     </div>
     <p>There's also a durable ticket layer sketched but not built: a trimmed <code>.fleet</code>-style
     <code>backlog/</code> → <code>now/</code> → <code>done/</code> queue that would let you author work
