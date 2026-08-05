@@ -66,8 +66,9 @@ async function getJson<T>(url: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-export function fetchRuns(): Promise<RunSummary[]> {
-  return getJson<RunSummary[]>("/api/runs");
+export function fetchRuns(project?: string | null): Promise<RunSummary[]> {
+  const query = project ? `?project=${encodeURIComponent(project)}` : "";
+  return getJson<RunSummary[]>(`/api/runs${query}`);
 }
 
 export function fetchRunDetail(adwId: string): Promise<RunDetail> {

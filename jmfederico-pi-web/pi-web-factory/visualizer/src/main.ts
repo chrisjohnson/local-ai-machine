@@ -32,7 +32,11 @@ function route(): void {
   currentView = null;
 
   const hash = window.location.hash || "#/";
-  const detailMatch = /^#\/runs\/([^/]+)$/.exec(hash);
+  // `#/runs/:adwId` (detail) vs `#/` or `#/?project=<cwd>` (list, optionally
+  // filtered) — the `?query` part, if present, lives after the hash's own
+  // path segment, so split it off before matching the detail route.
+  const [hashPath, hashQuery] = hash.split("?");
+  const detailMatch = /^#\/runs\/([^/]+)$/.exec(hashPath ?? hash);
 
   appEl!.innerHTML = `${renderHeader()}<div id="view-root"></div>`;
   const viewRoot = document.getElementById("view-root");
@@ -47,8 +51,9 @@ function route(): void {
     return;
   }
 
+  const project = new URLSearchParams(hashQuery ?? "").get("project");
   viewRoot.innerHTML = `<div class="loading">Loading runs…</div>`;
-  const view = new ListView(viewRoot);
+  const view = new ListView(viewRoot, project);
   currentView = view;
   void view.start();
 }

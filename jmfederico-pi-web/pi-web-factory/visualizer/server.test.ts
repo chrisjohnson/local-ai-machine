@@ -26,6 +26,9 @@ let proc: ReturnType<typeof Bun.spawn>;
 let baseUrl: string;
 
 const ADW_ID = "adw_servertest01";
+const ADW_ID_PROJECT_B = "adw_servertest02";
+const ADW_ID_PROJECT_B_2 = "adw_servertest03";
+const PROJECT_B_CWD = "/tmp/other-project";
 
 function seed(): void {
   const tracer = new Tracer(dbPath);
@@ -46,6 +49,14 @@ function seed(): void {
     outputTokens: 50,
   });
   tracer.event({ adwId: ADW_ID, phaseId: `${ADW_ID}_plan`, type: "log", name: "note", payload: { hi: true } });
+
+  // Two more sessions against a second, distinct project_cwd — used by the
+  // `/api/runs?project=` filtering tests below.
+  tracer.sessionStart(ADW_ID_PROJECT_B, { engineer: "test", projectCwd: PROJECT_B_CWD, adwName: "plan-build-review" });
+  tracer.sessionSetTitle(ADW_ID_PROJECT_B, "project B run 1");
+  tracer.sessionStart(ADW_ID_PROJECT_B_2, { engineer: "test", projectCwd: PROJECT_B_CWD, adwName: "plan-build-review" });
+  tracer.sessionSetTitle(ADW_ID_PROJECT_B_2, "project B run 2");
+
   tracer.close();
 }
 
@@ -96,6 +107,33 @@ describe("visualizer server (real spawned process, real HTTP)", () => {
     const run = runs.find((r) => r.adwId === ADW_ID)!;
     expect(run.title).toBe("server test run");
     expect(run.status).toBe("running"); // sessionStart sets it running; never finished here
+  });
+
+  test("GET /api/runs?project=<cwd> filters to only runs matching that project_cwd exactly", async () => {
+    const res = await fetch(`${baseUrl}/api/runs?project=${encodeURIComponent(PROJECT_B_CWD)}`);
+    expect(res.status).toBe(200);
+    const runs = (await res.json()) as Array<{ adwId: string; projectCwd: string | null }>;
+    expect(runs.length).toBe(2);
+    expect(runs.every((r) => r.projectCwd === PROJECT_B_CWD)).toBe(true);
+    expect(runs.some((r) => r.adwId === ADW_ID_PROJECT_B)).toBe(true);
+    expect(runs.some((r) => r.adwId === ADW_ID_PROJECT_B_2)).toBe(true);
+    expect(runs.some((r) => r.adwId === ADW_ID)).toBe(false);
+  });
+
+  test("GET /api/runs?project=<cwd> with no matching runs returns an empty array (not 404)", async () => {
+    const res = await fetch(`${baseUrl}/api/runs?project=${encodeURIComponent("/tmp/does-not-exist")}`);
+    expect(res.status).toBe(200);
+    const runs = (await res.json()) as unknown[];
+    expect(runs).toEqual([]);
+  });
+
+  test("GET /api/runs with no project param returns runs across all projects (unchanged default behavior)", async () => {
+    const res = await fetch(`${baseUrl}/api/runs`);
+    expect(res.status).toBe(200);
+    const runs = (await res.json()) as Array<{ adwId: string }>;
+    expect(runs.some((r) => r.adwId === ADW_ID)).toBe(true);
+    expect(runs.some((r) => r.adwId === ADW_ID_PROJECT_B)).toBe(true);
+    expect(runs.some((r) => r.adwId === ADW_ID_PROJECT_B_2)).toBe(true);
   });
 
   test("GET /api/runs/:adwId returns the run plus its Steps in seq order", async () => {

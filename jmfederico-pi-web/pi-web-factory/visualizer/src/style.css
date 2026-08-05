@@ -57,6 +57,28 @@ a.back-link:hover {
 
 /* ── list view ─────────────────────────────────────────────────────────── */
 
+.run-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+.project-filter-select {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 12.5px;
+  max-width: 360px;
+}
+.project-filter-select:hover {
+  border-color: var(--accent);
+}
+
 .run-list {
   display: flex;
   flex-direction: column;

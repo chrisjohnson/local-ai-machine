@@ -191,17 +191,40 @@ const server = Bun.serve({
     // ── static frontend (bundled by Bun.serve from the HTML import) ──────
     "/": index,
 
-    // ── GET /api/runs — list, most recent first ───────────────────────────
+    // ── GET /api/runs?project=<cwd> — list, most recent first, optionally
+    // filtered to runs whose project_cwd exactly matches `project` ─────────
+    //
+    // No dedicated `/api/projects` endpoint: `/api/runs` is already a single
+    // unpaginated query over the whole `sessions` table (no pagination exists
+    // anywhere in this API), so the frontend already has the full set of
+    // `projectCwd` values in hand after its first unfiltered fetch — deriving
+    // the distinct list client-side (see `listView.ts`) is a plain `Set` over
+    // data already on the wire, not an extra round trip's worth of DISTINCT
+    // query. A dedicated endpoint would only pay for itself once this table
+    // is large enough to need pagination/limits on `/api/runs` itself, which
+    // it isn't (a local trace db, not a multi-tenant service).
     "/api/runs": {
-      GET() {
-        const rows = db
-          .query<SessionRow, []>(
-            `SELECT adw_id, adw_name, project_cwd, title, request, status, engineer,
-                    started_at, ended_at, total_tokens, total_cost, archived
-             FROM sessions
-             ORDER BY started_at DESC, adw_id DESC`,
-          )
-          .all();
+      GET(req) {
+        const url = new URL(req.url);
+        const project = url.searchParams.get("project");
+        const rows = project
+          ? db
+              .query<SessionRow, [string]>(
+                `SELECT adw_id, adw_name, project_cwd, title, request, status, engineer,
+                        started_at, ended_at, total_tokens, total_cost, archived
+                 FROM sessions
+                 WHERE project_cwd = ?
+                 ORDER BY started_at DESC, adw_id DESC`,
+              )
+              .all(project)
+          : db
+              .query<SessionRow, []>(
+                `SELECT adw_id, adw_name, project_cwd, title, request, status, engineer,
+                        started_at, ended_at, total_tokens, total_cost, archived
+                 FROM sessions
+                 ORDER BY started_at DESC, adw_id DESC`,
+              )
+              .all();
         return json(rows.map(runToApi));
       },
     },
