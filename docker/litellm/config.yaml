@@ -84,14 +84,16 @@ model_list:
   # schema onto the shared dynamic roles would break every non-handoff use
   # of them.
   #
-  # medium-moe-continue-json: qwen3.6-35b-a3b-mtp (127.0.0.1:8109) — the
-  # original, empirically-verified route (renamed 2026-08-03 from
-  # "coder-continue-json" when roles were renamed size/architecture-first;
-  # same backend, same schema, name change only).
+  # medium-moe-continue-json: ornith-1.0-35b-mtp-q8 (127.0.0.1:8110) — the
+  # original route was qwen3.6-35b-a3b-mtp (8109); repointed 2026-08-05 to
+  # ornith per M-084 (Chris directive: ornith owns the medium roles). The
+  # JSON-schema trick was re-verified empirically against this exact backend
+  # (schema-exact content, reasoning quarantined in reasoning_content) before
+  # repointing — same discipline as the qwen route's original verification.
   - model_name: medium-moe-continue-json
     litellm_params:
-      model: openai/qwen3.6-35b-a3b-mtp
-      api_base: http://127.0.0.1:8109/v1
+      model: openai/ornith-1.0-35b-mtp-q8
+      api_base: http://127.0.0.1:8110/v1
       api_key: "none"
       response_format:
         type: json_schema
