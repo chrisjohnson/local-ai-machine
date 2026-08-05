@@ -1213,7 +1213,14 @@ services:
     image: ghcr.io/jmfederico/pi-web:latest
     container_name: pi-web-factory-visualizer
     entrypoint: /usr/local/bin/docker-entrypoint.sh
-    command: ["sh", "-c", "bun $HOME/pi-web-factory/visualizer/server.ts"]
+    # Hardcoded absolute path rather than $HOME: docker compose interpolates
+    # bare $VAR/${VAR} in this YAML file using the HOST's own environment at
+    # `docker compose up` time (caught live — first attempt resolved to the
+    # box's own /home/chris, not the container's /home/piweb, before this
+    # was ever reachable at runtime), not the container's shell at runtime.
+    # $$HOME (compose's own escape syntax) would also work; this is simpler
+    # and matches this image's one fixed runtime user (piweb) always.
+    command: ["sh", "-c", "bun /home/piweb/pi-web-factory/visualizer/server.ts"]
     restart: unless-stopped
     labels:
       com.local-ai-machine.always-up: "true"
