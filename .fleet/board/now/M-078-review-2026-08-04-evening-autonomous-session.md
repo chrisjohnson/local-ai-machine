@@ -94,6 +94,26 @@ needs your eyes.
   to gamble on restarting the container everyone's live sessions run through
   without you around to notice if something broke. Full writeup + both options in
   M-072's own decision log/handoff notes.
+- 2026-08-05T02:50Z — Ran a manual, non-fixture live test (real bug-fix task —
+  editing an existing `calc.py`'s subtraction-instead-of-addition bug — via
+  `plan-build-review` against an isolated scratch repo) as the explicitly-requested
+  "test different types of work" pass, complementing the automated suite's mostly
+  create-a-file-from-scratch fixtures. Passed clean end to end (correct fix,
+  correct commit, correct review approval); cleaned up the session/project/scratch
+  repo afterward, confirmed no dirty state. Also discovered mid-pass:
+  `printer-dashboard`'s shared main checkout on the box currently has an *unmerged*
+  PR branch (`fix/ams-code-review-fixes`, PR #29 — open, not merged, contrary to my
+  own earlier assumption) checked out as HEAD, and has its own separate, currently
+  active `.fleet`/worktree activity (a `K-033` card) from a different agent — so I
+  deliberately did NOT run further live workflow tests against printer-dashboard
+  itself this pass (would have branched off the wrong ref and risked interfering
+  with that other agent's in-progress work). Used an isolated scratch repo instead.
+  Worth knowing PR #29 is still open if you want it merged or closed.
+- 2026-08-05T02:55Z — Regenerated and opened the HTML dashboard
+  (`docs/pi-web-factory-walkthrough-2026-08-04.html`), rewritten to match the
+  current architecture (Workflow/Step/Role terms, M-076's interpreter, M-071's
+  worktrees/deep-links, M-069's real system prompts, M-070's per-project config,
+  M-074/M-076's token tracking, updated exit codes, status grid through M-078).
 
 ## Signals
 <!-- append-only -->
