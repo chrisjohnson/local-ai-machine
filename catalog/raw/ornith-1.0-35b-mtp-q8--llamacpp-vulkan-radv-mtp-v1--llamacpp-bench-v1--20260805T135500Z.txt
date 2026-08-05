@@ -1,0 +1,13 @@
+=== PEAK_MEMORY ===
+base_used_mib: 4554
+peak_system_used_mib: 40261
+peak_gtt_used_mib: 35858
+=== RESULT ===
+ggml_vulkan: Found 1 Vulkan devices:
+ggml_vulkan: 0 = AMD Radeon 8060S Graphics (RADV GFX1151) (radv) | uma: 1 | fp16: 1 | bf16: 0 | fp4: 0 | warp size: 64 | shared memory: 65536 | int dot: 1 | matrix cores: KHR_coopmat
+| model                          |       size |     params | backend    | ngl |  fa |         lm |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | --: | ---------: | --------------: | -------------------: |
+| qwen35moe 35B.A3B Q8_0         |  35.19 GiB |    35.51 B | Vulkan     | 999 |   1 |       none |           pp512 |       1158.02 ± 9.99 |
+| qwen35moe 35B.A3B Q8_0         |  35.19 GiB |    35.51 B | Vulkan     | 999 |   1 |       none |           tg128 |         55.26 ± 0.15 |
+
+build: 0e4a03622 (10154)

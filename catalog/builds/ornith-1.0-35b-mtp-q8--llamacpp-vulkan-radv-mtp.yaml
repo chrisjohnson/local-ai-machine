@@ -1,0 +1,90 @@
+id: ornith-1.0-35b-mtp-q8--llamacpp-vulkan-radv-mtp
+model:
+  display_name: Ornith-1.0-35B-MTP
+  family: Ornith
+  hf_repo: singulared/Ornith-1.0-35B-MTP-GGUF
+  hf_revision: null
+  architecture: qwen35moe 35B.A3B (MoE, llama-bench model string) — MTP-tensor-bearing Q8_0 quant
+  total_params: 35.51e9
+  active_params: null
+  num_experts: null
+  quantization: GGUF-Q8_0
+  context_length_native: null
+  modality: text
+  files:
+  - ornith-1.0-35b-MTP-Q8_0.gguf
+  local_path: /var/lib/ai-models/llamacpp-ornith-1.0-35b-mtp-q8
+  size_on_disk_gb: 35.19
+versions:
+- version: v1
+  compose_service_id: null
+  engine_ref: llamacpp-vulkan-radv-mtp-v1
+  role: MTP speculative-decoding comparison tier — download completed 2026-08-05T13:44Z
+    (M-083 directive: benchmark it since it finished mid-sweep)
+  notes: 'Ornith-1.0-35B-MTP Q8_0 (singulared HF repo, MTP head tensors included).
+    No dedicated compose service — benchmarked via docker run (llama-bench for the
+    plain-decode baseline on the SAME file, then llama-server live timing with
+    --spec-type draft-mtp --spec-draft-n-max 3 for the MTP side).
+
+    Measured 2026-08-05: plain llama-bench pp512 1158.02 ± 9.99, tg128 55.26 ± 0.15
+    tok/s. MTP live server timing 63.64/66.81/63.74 tok/s avg 64.73 → 1.17x speedup
+    vs the plain tg128 baseline; draft acceptance 0.583 (253 accepted / 434 generated),
+    mean draft len 2.74. MTP gains smaller than the dense-model qwen3.6-27b MTP
+    (2.07x) — consistent with the MoE pattern (qwen3.6-35b-a3b MTP was also ~1.16x):
+    MTP draft heads pay off most on dense models. GTT peak 35,858 MiB, peak system
+    40,261 MiB. NOTE: first run attempt was CORRUPTED (base_used 118,931 MiB — the
+    docker-compose-app systemd unit had just brought the whole stack up on Ornith
+    download-complete, loading ~70GB of co-resident llama.cpp servers + ollama);
+    discarded, re-run clean at 4.5GB base.'
+  status: WORKING
+  created: '2026-08-05'
+  last_verified: '2026-08-05'
+  benchmark_runs:
+  - timestamp: '2026-08-05T13:55:00Z'
+    benchmark_id: llamacpp-bench-v1
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: 5cdc0cfe3467a77f51148fb5d9ef65277edc8b7a
+      host_gpu_driver: Mesa 25.3.6
+      concurrent_load:
+        downloads_paused: true
+        vllm_co_resident_or_stopped: stopped_for_run
+      host_metrics_window:
+        start: '2026-08-05T13:55:00Z'
+        end: '2026-08-05T14:02:00Z'
+      image_digest: '[kyuz0/amd-strix-halo-toolboxes@sha256:1648e4195154aef5dc975253d962e1e1b8358af26b0e54b4faf89a156131c320]'
+      engine_version: 0e4a03622 (10154)
+    result:
+      pp512_tok_s: 1158.02 ± 9.99
+      tg128_tok_s: 55.26 ± 0.15
+      memory_footprint_gtt_mib: 35858
+      memory_peak_system_used_mib: 40261
+      engine_build: 0e4a03622 (10154)
+      raw_stdout_file: catalog/raw/ornith-1.0-35b-mtp-q8--llamacpp-vulkan-radv-mtp-v1--llamacpp-bench-v1--20260805T135500Z.txt
+  - timestamp: '2026-08-05T14:02:00Z'
+    benchmark_id: llamacpp-mtp-v1
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: 5cdc0cfe3467a77f51148fb5d9ef65277edc8b7a
+      host_gpu_driver: Mesa 25.3.6
+      concurrent_load:
+        downloads_paused: true
+        vllm_co_resident_or_stopped: stopped_for_run
+      host_metrics_window:
+        start: '2026-08-05T14:02:00Z'
+        end: '2026-08-05T14:10:00Z'
+      image_digest: '[kyuz0/amd-strix-halo-toolboxes@sha256:1648e4195154aef5dc975253d962e1e1b8358af26b0e54b4faf89a156131c320]'
+      engine_version: 0e4a03622 (10154)
+    result:
+      mtp_tg_tok_s_samples:
+      - 63.64
+      - 66.81
+      - 63.74
+      mtp_tg_tok_s_avg: 64.73
+      speedup_vs_plain_baseline_x: 1.17
+      draft_acceptance_rate: 0.583
+      draft_mean_len: 2.74
+      note: MTP context creation confirmed in server logs ("creating MTP draft context
+        against the target model"). Measured via /v1/chat/completions predicted_per_second.
+        Server stopped after run; box back to 4.0Gi baseline.
+      raw_stdout_file: catalog/raw/ornith-1.0-35b-mtp-q8--llamacpp-vulkan-radv-mtp-v1--llamacpp-mtp-v1--20260805T135500Z.txt
