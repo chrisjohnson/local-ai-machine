@@ -162,6 +162,33 @@ function newId(prefix: string): string {
   return `${prefix}_${hex}`;
 }
 
+/** Cap applied to a title derived from a task prompt — short enough to read as an actual title (a card heading, a browser tab), not a second copy of the full prompt (that's what `sessions.request` is for). */
+const TITLE_CAP = 72;
+
+/**
+ * Derives a short, human-readable title from a Workflow Run's task prompt —
+ * no model call, just a deterministic string operation, so it's free and
+ * instant to compute at Workflow Run start. Takes the prompt's first
+ * sentence (up to the first `.`/`!`/`?` followed by whitespace, or the
+ * first newline, whichever comes first) as the most likely "the actual
+ * ask" boundary, then hard-caps to `TITLE_CAP` chars with an ellipsis if
+ * still too long. Falls back to a hard truncation of the whole prompt if it
+ * has no sentence/line boundary within a reasonable window (e.g. one long
+ * run-on clause) — always returns a non-empty string for any non-empty
+ * input.
+ */
+export function deriveTitleFromPrompt(prompt: string): string {
+  const trimmed = prompt.trim();
+  if (!trimmed) return "(no task description)";
+
+  const firstLine = trimmed.split("\n")[0] ?? trimmed;
+  const sentenceMatch = /^(.*?[.!?])(\s|$)/.exec(firstLine);
+  const candidate = (sentenceMatch?.[1] ?? firstLine).trim();
+
+  if (candidate.length <= TITLE_CAP) return candidate;
+  return `${candidate.slice(0, TITLE_CAP - 1).trimEnd()}…`;
+}
+
 export class Tracer {
   readonly db: Database;
 
@@ -200,9 +227,7 @@ export class Tracer {
   }
 
   /**
-   * Sets a Workflow Run's title (M-074: `sessions.title`, new column — not
-   * populated by any caller in this card, just made settable for later
-   * cards, e.g. deriving it from the prompt or a future ticket's title).
+   * Sets a Workflow Run's title (M-074: `sessions.title`).
    */
   sessionSetTitle(adwId: string, title: string): void {
     this.db.run("UPDATE sessions SET title=? WHERE adw_id=?", [title.slice(0, 500), adwId]);

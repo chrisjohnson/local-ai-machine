@@ -84,7 +84,7 @@ import { PlanOutputSchema, BuildOutputSchema, type BuildOutput, type PlanOutput 
 import { testsPass } from "../modules/gates.ts";
 import { DEFAULT_BASE_URL, startSession, roleMarker } from "../modules/piwebClient.ts";
 import { agentRoleFor, type RolesConfig } from "../modules/roles.ts";
-import { Tracer, type GateReport } from "../modules/tracer.ts";
+import { Tracer, deriveTitleFromPrompt, type GateReport } from "../modules/tracer.ts";
 import { runAgentPhase, type RunAgentPhaseResult } from "../modules/run.ts";
 import type { PermissionsResult } from "../modules/permissions.ts";
 import { ensureProjectRegistered, resolveWorkspaceId } from "../modules/piwebProject.ts";
@@ -288,6 +288,7 @@ export async function planBuildTest(opts: PlanBuildTestOptions): Promise<PlanBui
   // `--project` on a `--session-id` resume (see sessionId's doc comment).
   opts.tracer.sessionStart(adwId, { engineer: opts.engineer, projectCwd: sessionCwd, adwName: "planBuildTest" });
   opts.tracer.sessionRequest(adwId, opts.taskPrompt);
+  opts.tracer.sessionSetTitle(adwId, deriveTitleFromPrompt(opts.taskPrompt));
 
   const planAgent = agentRoleFor(opts.config, "plan");
   const buildAgent = agentRoleFor(opts.config, "build");

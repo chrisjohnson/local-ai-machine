@@ -61,7 +61,7 @@ import { randomUUID } from "node:crypto";
 import type { ReviewOutput } from "./envelopes.ts";
 import { DEFAULT_BASE_URL, startSession, roleMarker } from "./piwebClient.ts";
 import { agentRoleFor, codeRoleFor, type RolesConfig } from "./roles.ts";
-import { Tracer, type GateReport } from "./tracer.ts";
+import { Tracer, deriveTitleFromPrompt, type GateReport } from "./tracer.ts";
 import { runAgentPhase, type RunAgentPhaseResult } from "./run.ts";
 import type { PermissionsResult } from "./permissions.ts";
 import { ensureProjectRegistered, resolveWorkspaceId } from "./piwebProject.ts";
@@ -540,6 +540,7 @@ export async function runWorkflow(opts: WorkflowRunOptions): Promise<WorkflowRun
 
   opts.tracer.sessionStart(adwId, { engineer: opts.engineer, projectCwd: sessionCwd, adwName: opts.workflow.name });
   opts.tracer.sessionRequest(adwId, opts.taskPrompt);
+  opts.tracer.sessionSetTitle(adwId, deriveTitleFromPrompt(opts.taskPrompt));
 
   const session = opts.sessionId
     ? { id: opts.sessionId }

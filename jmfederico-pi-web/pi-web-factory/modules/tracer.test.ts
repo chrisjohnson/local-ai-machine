@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Tracer } from "./tracer.ts";
+import { Tracer, deriveTitleFromPrompt } from "./tracer.ts";
 
 let dir: string;
 let dbPath: string;
@@ -439,5 +439,44 @@ describe("Tracer — M-074 schema additions", () => {
       .get(phaseId);
     expect(row?.status).toBe("fail");
     expect(row?.output_summary).toBe("2 failing");
+  });
+});
+
+// ── deriveTitleFromPrompt (used by workflow.ts/planBuildTest.ts to
+// populate sessions.title at Workflow Run start — a real title, not the
+// bare adwId or the full untruncated prompt) ──────────────────────────────
+describe("deriveTitleFromPrompt", () => {
+  test("takes the first sentence when the prompt has one, dropping everything after it", () => {
+    const prompt =
+      "Create a Python file named stack.py implementing a Stack class. " +
+      "Include push, pop, peek, and is_empty methods with proper error handling.";
+    expect(deriveTitleFromPrompt(prompt)).toBe("Create a Python file named stack.py implementing a Stack class.");
+  });
+
+  test("takes the first line when there's no sentence-ending punctuation before it", () => {
+    const prompt = "Add a health endpoint\nThe endpoint should return 200 OK with a JSON body.";
+    expect(deriveTitleFromPrompt(prompt)).toBe("Add a health endpoint");
+  });
+
+  test("hard-truncates with an ellipsis when the first sentence/line is itself too long", () => {
+    const longSentence = "Implement a comprehensive inventory tracking system with add, remove, and query operations plus full audit logging.";
+    const result = deriveTitleFromPrompt(longSentence);
+    expect(result.length).toBeLessThanOrEqual(72);
+    expect(result.endsWith("…")).toBe(true);
+    expect(longSentence.startsWith(result.slice(0, -1))).toBe(true);
+  });
+
+  test("a short prompt with no punctuation at all returns the whole trimmed prompt", () => {
+    expect(deriveTitleFromPrompt("  fix the bug  ")).toBe("fix the bug");
+  });
+
+  test("empty or whitespace-only input returns a real placeholder string, not an empty title", () => {
+    expect(deriveTitleFromPrompt("")).toBe("(no task description)");
+    expect(deriveTitleFromPrompt("   \n  ")).toBe("(no task description)");
+  });
+
+  test("question and exclamation marks count as sentence boundaries too, not just periods", () => {
+    expect(deriveTitleFromPrompt("Can you fix the login bug? It happens on every retry.")).toBe("Can you fix the login bug?");
+    expect(deriveTitleFromPrompt("Fix this now! It's breaking prod.")).toBe("Fix this now!");
   });
 });
