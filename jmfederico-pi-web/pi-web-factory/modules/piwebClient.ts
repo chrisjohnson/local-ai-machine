@@ -125,8 +125,20 @@ export type SessionUiEvent = { type: string; seq?: number; [key: string]: unknow
 
 // ── Config ──────────────────────────────────────────────────────────────
 
-/** Default base URL for this box's `jmfederico-pi-web` instance, LAN-reachable. */
-export const DEFAULT_BASE_URL = "http://192.168.1.21:8080/api";
+/**
+ * Default base URL for this box's `jmfederico-pi-web` instance, LAN-reachable.
+ *
+ * Overridable via `PI_WEB_FACTORY_BASE_URL` — added 2026-08-05 after the
+ * hardcoded LAN IP went stale mid-session (the box's wired interface dropped,
+ * DHCP reassigned a new address on WiFi: `192.168.1.21` -> `192.168.1.226`),
+ * breaking every dev/test invocation until the constant was updated by hand.
+ * This is a genuinely dev-only convenience value — once pi-web-factory is
+ * baked into the `jmfederico-pi-web` container itself (M-068), the real
+ * default becomes a loopback address (design doc §2), which won't have this
+ * problem at all. Until then, the env var means a future IP change is a
+ * one-line shell export, not a code edit + redeploy.
+ */
+export const DEFAULT_BASE_URL = process.env["PI_WEB_FACTORY_BASE_URL"] ?? "http://192.168.1.226:8080/api";
 
 export class PiWebClientError extends Error {
   constructor(

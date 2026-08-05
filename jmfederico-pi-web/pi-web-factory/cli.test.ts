@@ -20,15 +20,15 @@ const TEST_LINK: PlanBuildTestLinkInfo = { projectId: "proj_1", workspaceId: "ws
 
 describe("parseArgs", () => {
   test("parses the full flag set plus a positional prompt", () => {
-    const args = parseArgs(["--project", "/abs/path", "--chain", "plan-build-test", "do the thing"]);
-    expect(args).toEqual({ project: "/abs/path", chain: "plan-build-test", sessionId: undefined, promptArg: "do the thing" });
+    const args = parseArgs(["--project", "/abs/path", "--workflow", "plan-build-test", "do the thing"]);
+    expect(args).toEqual({ project: "/abs/path", workflow: "plan-build-test", sessionId: undefined, promptArg: "do the thing" });
   });
 
   test("parses an optional --session-id", () => {
     const args = parseArgs([
       "--project",
       "/abs/path",
-      "--chain",
+      "--workflow",
       "plan-build-test",
       "--session-id",
       "sess_123",
@@ -38,37 +38,37 @@ describe("parseArgs", () => {
   });
 
   test("flags may appear in any order relative to the positional", () => {
-    const args = parseArgs(["do the thing", "--chain", "plan-build-test", "--project", "/abs/path"]);
+    const args = parseArgs(["do the thing", "--workflow", "plan-build-test", "--project", "/abs/path"]);
     expect(args.promptArg).toBe("do the thing");
   });
 
   test("missing --project throws CliUsageError naming what's missing", () => {
-    expect(() => parseArgs(["--chain", "plan-build-test", "prompt"])).toThrow(CliUsageError);
-    expect(() => parseArgs(["--chain", "plan-build-test", "prompt"])).toThrow(/--project/);
+    expect(() => parseArgs(["--workflow", "plan-build-test", "prompt"])).toThrow(CliUsageError);
+    expect(() => parseArgs(["--workflow", "plan-build-test", "prompt"])).toThrow(/--project/);
   });
 
-  test("missing --chain throws CliUsageError naming what's missing", () => {
-    expect(() => parseArgs(["--project", "/abs/path", "prompt"])).toThrow(/--chain/);
+  test("missing --workflow throws CliUsageError naming what's missing", () => {
+    expect(() => parseArgs(["--project", "/abs/path", "prompt"])).toThrow(/--workflow/);
   });
 
   test("missing positional prompt throws CliUsageError", () => {
-    expect(() => parseArgs(["--project", "/abs/path", "--chain", "plan-build-test"])).toThrow(/prompt/);
+    expect(() => parseArgs(["--project", "/abs/path", "--workflow", "plan-build-test"])).toThrow(/prompt/);
   });
 
   test("more than one positional argument throws CliUsageError", () => {
     expect(() =>
-      parseArgs(["--project", "/abs/path", "--chain", "plan-build-test", "prompt one", "prompt two"]),
+      parseArgs(["--project", "/abs/path", "--workflow", "plan-build-test", "prompt one", "prompt two"]),
     ).toThrow(/exactly one positional/);
   });
 
   test("an unknown flag throws CliUsageError", () => {
     expect(() =>
-      parseArgs(["--project", "/abs/path", "--chain", "plan-build-test", "--bogus", "x", "prompt"]),
+      parseArgs(["--project", "/abs/path", "--workflow", "plan-build-test", "--bogus", "x", "prompt"]),
     ).toThrow(/unknown flag/);
   });
 
   test("a flag with a missing value throws CliUsageError", () => {
-    expect(() => parseArgs(["--project", "--chain", "plan-build-test", "prompt"])).toThrow(/requires a value/);
+    expect(() => parseArgs(["--project", "--workflow", "plan-build-test", "prompt"])).toThrow(/requires a value/);
   });
 
   test("usage errors include the usage string", () => {

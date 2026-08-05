@@ -73,7 +73,7 @@ import { join } from "node:path";
 import { Tracer } from "../modules/tracer.ts";
 import { loadRolesConfig } from "../modules/roles.ts";
 import { DEFAULT_BASE_URL, startSession } from "../modules/piwebClient.ts";
-import { sessionDeepLink } from "../cli.ts";
+import { sessionDeepLink, browserOriginFromApiBaseUrl } from "../cli.ts";
 import { planBuildTest } from "./planBuildTest.ts";
 
 const SCRATCH_CWD = "/tmp/pi-web-factory-m066-test"; // path inside the pi-web CONTAINER — the MAIN checkout
@@ -245,9 +245,16 @@ describe("planBuildTest chain (live pi-web server)", () => {
         expect(sessionStatus.sessionId).toBe(result.sessionId);
 
         // ── M-071: the printed deep-link itself is well-formed AND every id in it verified above ──
+        // Expected origin is derived from DEFAULT_BASE_URL itself (via the
+        // same browserOriginFromApiBaseUrl the real code path uses), not a
+        // second hardcoded IP literal — 2026-08-05, after the box's actual
+        // LAN address changed mid-session (192.168.1.21 -> 192.168.1.226,
+        // wired interface dropped, DHCP reassigned on WiFi) and broke this
+        // exact hardcoded assertion. See piwebClient.ts's DEFAULT_BASE_URL
+        // doc comment for the full story.
         const link = sessionDeepLink(DEFAULT_BASE_URL, result.link, result.sessionId);
         expect(link).toBe(
-          `http://192.168.1.21:8080/?project=${result.link.projectId}&session=${result.sessionId}&workspace=${result.link.workspaceId}`,
+          `${browserOriginFromApiBaseUrl(DEFAULT_BASE_URL)}/?project=${result.link.projectId}&session=${result.sessionId}&workspace=${result.link.workspaceId}`,
         );
         // Fetch the deep-link's own origin (confirms it's a real, reachable
         // HTTP endpoint, not just a well-formed string) — the client-side
