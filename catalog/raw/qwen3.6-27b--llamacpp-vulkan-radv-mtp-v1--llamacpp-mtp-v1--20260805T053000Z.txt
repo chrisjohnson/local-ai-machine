@@ -1,0 +1,20 @@
+Qwen3.6-27B MTP-tensor GGUF (unsloth/Qwen3.6-27B-MTP-GGUF) — MTP live server timing, M-083
+Date: 2026-08-05
+Command (box) — llama-server with MTP flag set (per llama.cpp PR #22673 recipe):
+  docker run --rm --device /dev/kfd --device /dev/dri --group-add 26 --group-add 303 \
+    -v /var/lib/ai-models/llamacpp-qwen3.6-27b-mtp:/models:ro \
+    -p 127.0.0.1:8131:8080 \
+    kyuz0/amd-strix-halo-toolboxes:vulkan-radv \
+    llama-server -m /models/Qwen3.6-27B-Q4_K_M.gguf \
+    -ngl 999 -fa 1 --spec-type draft-mtp --spec-draft-n-max 3 \
+    -np 1 -c 131072 -n 8192 --host 0.0.0.0 --port 8080
+MTP engagement CONFIRMED in startup logs: "creating MTP draft context against the target model".
+Prompt ~44 tokens, max_tokens 400, temperature 0.7. Results (predicted_per_second):
+  request 1: 25.13 tok/s
+  request 2: 26.45 tok/s
+  request 3: 27.55 tok/s
+  avg = 26.38 tok/s → ~2.07x speedup vs the plain-decode llama-bench baseline tg128 12.77 ± 0.01.
+Steady-state memory with server resident (c=131072, dense model): system used 55 GiB, GTT 49.6 GB
+(KV cache allocation dominates for the dense model at this context; llama-bench peak GTT was only
+16,234 MiB without the KV reservation).
+This corrects the build's prior BROKEN status: MTP mechanism VERIFIED WORKING on this file.

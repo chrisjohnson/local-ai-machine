@@ -13,24 +13,76 @@ model:
   modality: text
   files:
   - Qwen3.6-27B-Q4_K_M.gguf
-  local_path: /var/lib/ai-models/ollama-qwen3.6-27b
-  size_on_disk_gb: 15.65
+  local_path: /var/lib/ai-models/llamacpp-qwen3.6-27b-mtp
+  size_on_disk_gb: 15.92
 versions:
 - version: v1
   compose_service_id: qwen3.6-27b--llamacpp-vulkan-radv-mtp-v1
   engine_ref: llamacpp-vulkan-radv-mtp-v1
-  role: BROKEN — file lacks MTP head tensors, mechanism itself proven fine
-  notes: 'Exact error from llama_init_from_model: "context type MTP requested but model doesn''t contain
-    MTP layers." Server exits cleanly with code 1. Root cause: unsloth publishes MTP-head-bearing GGUFs
-    as a SEPARATE HF repo (unsloth/Qwen3.6-27B-MTP-GGUF, confirmed to exist via the HF API), not bundled
-    as extra files alongside this plain quant. Reproducing a real MTP speedup for this model requires
-    downloading that separate repo — a new-model-download decision requiring Chris''s check-in, not done
-    here. The mechanism/flags themselves are confirmed real and correctly wired, matching the upstream
-    PR author''s own invocation exactly (llama.cpp PR #22673) — this is a missing-artifact failure, not
-    a broken engine.
+  role: MTP speculative-decoding comparison tier for qwen3.6-27b — 2.07x measured speedup, real production candidate
+  notes: 'STATUS CORRECTED 2026-08-05 (M-083): this file was previously marked BROKEN because the build
+    pointed at the WRONG local_path (ollama-qwen3.6-27b — the plain quant that lacks MTP head tensors).
+    The actual MTP-tensor-bearing download lives at /var/lib/ai-models/llamacpp-qwen3.6-27b-mtp
+    (unsloth/Qwen3.6-27B-MTP-GGUF) and MTP LOADS AND WORKS on it — "creating MTP draft context against
+    the target model" confirmed in server startup logs, no error. The prior BROKEN notes are historical
+    and describe only the wrong-file attempt; the mechanism was always fine on the correct artifact.
+
+    Measured 2026-08-05: MTP live server timing (--spec-type draft-mtp --spec-draft-n-max 3, -np 1)
+    25.13/26.45/27.55 tok/s avg 26.38 → 2.07x speedup vs plain-decode llama-bench baseline tg128
+    12.77 ± 0.01 tok/s (pp512 343.32 ± 13.39). This is the strongest MTP gain measured on this box so
+    far (vs KAT-Coder MTP-graft''s ~1.08x) — consistent with the dense vs MoE difference: MTP draft
+    heads pay off most on dense models where each draft token costs little extra compute. NOTE: 27B is
+    dense, so even 2x MTP speed still trails the MoE-class tg128 numbers by a wide margin (26.4 vs
+    63-95 tok/s).
 
     '
-  status: BROKEN
+  status: WORKING
   created: '2026-07-24'
-  last_verified: '2026-07-24'
-  benchmark_runs: []
+  last_verified: '2026-08-05'
+  benchmark_runs:
+  - timestamp: '2026-08-05T05:25:00Z'
+    benchmark_id: llamacpp-bench-v1
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: 5cdc0cfe3467a77f51148fb5d9ef65277edc8b7a
+      host_gpu_driver: Mesa 25.3.6
+      concurrent_load:
+        downloads_paused: true
+        vllm_co_resident_or_stopped: stopped_for_run
+      host_metrics_window:
+        start: '2026-08-05T05:25:00Z'
+        end: '2026-08-05T05:26:30Z'
+      image_digest: '[kyuz0/amd-strix-halo-toolboxes@sha256:1648e4195154aef5dc975253d962e1e1b8358af26b0e54b4faf89a156131c320]'
+      engine_version: 0e4a03622 (10154)
+    result:
+      pp512_tok_s: 343.32 ± 13.39
+      tg128_tok_s: 12.77 ± 0.01
+      memory_footprint_gtt_mib: 16234
+      memory_peak_system_used_mib: 20235
+      engine_build: 0e4a03622 (10154)
+      raw_stdout_file: catalog/raw/qwen3.6-27b--llamacpp-vulkan-radv-mtp-v1--llamacpp-bench-v1--20260805T052500Z.txt
+  - timestamp: '2026-08-05T05:30:00Z'
+    benchmark_id: llamacpp-mtp-v1
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: 5cdc0cfe3467a77f51148fb5d9ef65277edc8b7a
+      host_gpu_driver: Mesa 25.3.6
+      concurrent_load:
+        downloads_paused: true
+        vllm_co_resident_or_stopped: stopped_for_run
+      host_metrics_window:
+        start: '2026-08-05T05:30:00Z'
+        end: '2026-08-05T05:36:00Z'
+      image_digest: '[kyuz0/amd-strix-halo-toolboxes@sha256:1648e4195154aef5dc975253d962e1e1b8358af26b0e54b4faf89a156131c320]'
+      engine_version: 0e4a03622 (10154)
+    result:
+      mtp_tg_tok_s_samples:
+      - 25.13
+      - 26.45
+      - 27.55
+      mtp_tg_tok_s_avg: 26.38
+      speedup_vs_plain_baseline_x: 2.07
+      note: MTP context creation confirmed in server logs; measured via /v1/chat/completions
+        predicted_per_second. Steady-state server memory (c=131072, dense model) system 55 GiB /
+        GTT 49.6 GB — KV cache reservation dominates.
+      raw_stdout_file: catalog/raw/qwen3.6-27b--llamacpp-vulkan-radv-mtp-v1--llamacpp-mtp-v1--20260805T053000Z.txt

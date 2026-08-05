@@ -1,0 +1,20 @@
+Qwen3.6-27B MTP-tensor GGUF (unsloth/Qwen3.6-27B-MTP-GGUF) — llama-bench plain baseline, M-083
+Date: 2026-08-05
+Command (box):
+  docker run --rm --device /dev/kfd --device /dev/dri --group-add 26 --group-add 303 \
+    -v /var/lib/ai-models/llamacpp-qwen3.6-27b-mtp:/models:ro \
+    kyuz0/amd-strix-halo-toolboxes:vulkan-radv \
+    llama-bench -m /models/Qwen3.6-27B-Q4_K_M.gguf -ngl 999 -fa 1 -lm none
+Pre-conditions: download queue paused (Ornith); all model-serving containers stopped; no other GPU load.
+Memory: base 3,855 MiB → peak system used 20,235 MiB; peak GTT 16,234 MiB (~15.9 GiB).
+NOTE: this is the MTP-tensor-bearing download (llamacpp-qwen3.6-27b-mtp), which the build file's
+status previously listed as BROKEN (pointing at the wrong local_path). MTP load verified working.
+
+ggml_vulkan: Found 1 Vulkan devices:
+ggml_vulkan: 0 = AMD Radeon 8060S Graphics (RADV GFX1151) (radv) | uma: 1 | fp16: 1 | bf16: 0 | fp4: 0 | warp size: 64 | shared memory: 65536 | int dot: 1 | matrix cores: KHR_coopmat
+| model                          |       size |     params | backend    | ngl |  fa |         lm |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | --: | ---------: | --------------: | -------------------: |
+| qwen35 27B Q4_K - Medium       |  15.92 GiB |    27.32 B | Vulkan     | 999 |   1 |       none |           pp512 |       343.32 ± 13.39 |
+| qwen35 27B Q4_K - Medium       |  15.92 GiB |    27.32 B | Vulkan     | 999 |   1 |       none |           tg128 |         12.77 ± 0.01 |
+
+build: 0e4a03622 (10154)
