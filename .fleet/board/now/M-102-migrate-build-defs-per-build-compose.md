@@ -43,11 +43,12 @@ is included.
 6. [x] Write build.yaml for every build dir (catalog-derived metadata + status notes)
 7. [x] Update builds/README.md + docs/benchmark-api.md for the new layout
 8. [x] Verify: python yaml parse of every file; docker compose config per build; global service names == builds/ dir names (1:1 script check)
-9. [ ] Commit + push
+9. [x] Commit + push (source 421a4b9 + board 6efb1d7 on main)
 
 ## Signals
 <!-- signal: big-pickle 2026-08-06T21:20Z — claiming; starting with inventory -->
 <!-- signal: big-pickle 2026-08-06T22:10Z — 46 build dirs generated; global compose 46 model services; all 1:1 verified -->
+<!-- signal: big-pickle 2026-08-06T22:15Z — committed + pushed; awaiting box deploy + compose validation before done/ -->
 
 ## Decision log
 - 2026-08-06T21:20Z — Human confirmed: dedicated ollama compose service per ollama build (not shared `ollama`), and full parity for BROKEN / other-machine / ad-hoc catalog builds with a status note in build.yaml. (big-pickle)
