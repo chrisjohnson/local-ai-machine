@@ -961,6 +961,472 @@ services:
       - "127.0.0.1:8112:8080"
 
   # ---------------------------------------------------------------------------
+  # Additional llama.cpp / laguna-fork / ds4 builds (catalog parity, M-102).
+  # These mirror the build's catalog entry (status in the build.yaml) and were
+  # previously only run via ad hoc `docker run` or were absent entirely.
+  # ---------------------------------------------------------------------------
+
+  # Best-effort standing service for a catalog build previously run via
+  # llama-bench only. Catalog status WORKING.
+  deepseek-v4-flash-iq2xxs--llamacpp-vulkan-radv-v1:
+    image: docker.io/kyuz0/amd-strix-halo-toolboxes:vulkan-radv
+    container_name: deepseek-v4-flash-iq2xxs--llamacpp-vulkan-radv-v1
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - "26"
+      - "303"
+    volumes:
+      - /var/lib/ai-models/llamacpp-deepseek-v4-flash-iq2xxs:/models:ro
+    command: >
+      llama-server
+      -m /models/UD-IQ2_XXS/DeepSeek-V4-Flash-UD-IQ2_XXS-00001-of-00003.gguf
+      -ngl 999
+      -fa 1
+      -np 1
+      -c 131072
+      -n 8192
+      -ctk q8_0
+      -ctv q8_0
+      --host 0.0.0.0
+      --port 8080
+      -a deepseek-v4-flash-iq2xxs
+      --metrics
+    ports:
+      - "127.0.0.1:8114:8080"
+
+  gemma-4-26b-a4b-it--llamacpp-vulkan-radv-v1:
+    image: docker.io/kyuz0/amd-strix-halo-toolboxes:vulkan-radv
+    container_name: gemma-4-26b-a4b-it--llamacpp-vulkan-radv-v1
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - "26"
+      - "303"
+    volumes:
+      - /var/lib/ai-models/ollama-gemma-4-26b-a4b-it:/models:ro
+    command: >
+      llama-server
+      -m /models/gemma-4-26B-A4B-it-UD-Q4_K_M.gguf
+      -ngl 999
+      -fa 1
+      -np 1
+      -c 131072
+      -n 8192
+      -ctk q8_0
+      -ctv q8_0
+      --host 0.0.0.0
+      --port 8080
+      -a gemma-4-26b-a4b-it
+      --metrics
+    ports:
+      - "127.0.0.1:8115:8080"
+
+  gpt-oss-120b--llamacpp-vulkan-radv-v1:
+    image: docker.io/kyuz0/amd-strix-halo-toolboxes:vulkan-radv
+    container_name: gpt-oss-120b--llamacpp-vulkan-radv-v1
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - "26"
+      - "303"
+    volumes:
+      - /var/lib/ai-models/llamacpp-gpt-oss-120b:/models:ro
+    command: >
+      llama-server
+      -m /models/gpt-oss-120b-MXFP4.gguf
+      -ngl 999
+      -fa 1
+      -np 1
+      -c 131072
+      -n 8192
+      -ctk q8_0
+      -ctv q8_0
+      --host 0.0.0.0
+      --port 8080
+      -a gpt-oss-120b-llamacpp
+      --metrics
+    ports:
+      - "127.0.0.1:8116:8080"
+
+  minimax-m2.7--llamacpp-vulkan-radv-v1:
+    image: docker.io/kyuz0/amd-strix-halo-toolboxes:vulkan-radv
+    container_name: minimax-m2.7--llamacpp-vulkan-radv-v1
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - "26"
+      - "303"
+    volumes:
+      - /var/lib/ai-models/llamacpp-minimax-m2.7:/models:ro
+    command: >
+      llama-server
+      -m /models/UD-Q3_K_S/MiniMax-M2.7-UD-Q3_K_S-00001-of-00003.gguf
+      -ngl 999
+      -fa 1
+      -np 1
+      -c 131072
+      -n 8192
+      -ctk q8_0
+      -ctv q8_0
+      --host 0.0.0.0
+      --port 8080
+      -a minimax-m2.7
+      --metrics
+    ports:
+      - "127.0.0.1:8117:8080"
+
+  nvidia-nemotron-3-super-120b-a12b--llamacpp-vulkan-radv-v1:
+    image: docker.io/kyuz0/amd-strix-halo-toolboxes:vulkan-radv
+    container_name: nvidia-nemotron-3-super-120b-a12b--llamacpp-vulkan-radv-v1
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - "26"
+      - "303"
+    volumes:
+      - /var/lib/ai-models/llamacpp-nemotron-3-super-120b:/models:ro
+    command: >
+      llama-server
+      -m /models/UD-Q4_K_XL/NVIDIA-Nemotron-3-Super-120B-A12B-UD-Q4_K_XL-00001-of-00003.gguf
+      -ngl 999
+      -fa 1
+      -np 1
+      -c 131072
+      -n 8192
+      -ctk q8_0
+      -ctv q8_0
+      --host 0.0.0.0
+      --port 8080
+      -a nemotron-3-super-120b
+      --metrics
+    ports:
+      - "127.0.0.1:8118:8080"
+
+  qwen3.6-27b--llamacpp-vulkan-radv-v1:
+    image: docker.io/kyuz0/amd-strix-halo-toolboxes:vulkan-radv
+    container_name: qwen3.6-27b--llamacpp-vulkan-radv-v1
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - "26"
+      - "303"
+    volumes:
+      - /var/lib/ai-models/ollama-qwen3.6-27b:/models:ro
+    command: >
+      llama-server
+      -m /models/Qwen3.6-27B-Q4_K_M.gguf
+      -ngl 999
+      -fa 1
+      -np 1
+      -c 131072
+      -n 8192
+      -ctk q8_0
+      -ctv q8_0
+      --host 0.0.0.0
+      --port 8080
+      -a qwen3.6-27b-llamacpp
+      --metrics
+    ports:
+      - "127.0.0.1:8119:8080"
+
+  # MTP-tensor-bearing GGUF (Qwen3.6-27B-Q4_K_M.gguf from the mtp dir is the
+  # MTP variant, not the plain one — serves with draft-mtp speculation).
+  qwen3.6-27b--llamacpp-vulkan-radv-mtp-v1:
+    image: docker.io/kyuz0/amd-strix-halo-toolboxes:vulkan-radv
+    container_name: qwen3.6-27b--llamacpp-vulkan-radv-mtp-v1
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - "26"
+      - "303"
+    volumes:
+      - /var/lib/ai-models/llamacpp-qwen3.6-27b-mtp:/models:ro
+    command: >
+      llama-server
+      -m /models/Qwen3.6-27B-Q4_K_M.gguf
+      -ngl 999
+      -fa 1
+      --spec-type draft-mtp
+      --spec-draft-n-max 3
+      -np 1
+      -c 131072
+      -n 8192
+      -ctk q8_0
+      -ctv q8_0
+      --host 0.0.0.0
+      --port 8080
+      -a qwen3.6-27b-mtp
+      --metrics
+    ports:
+      - "127.0.0.1:8120:8080"
+
+  qwen3.6-35b-a3b--llamacpp-vulkan-radv-v1:
+    image: docker.io/kyuz0/amd-strix-halo-toolboxes:vulkan-radv
+    container_name: qwen3.6-35b-a3b--llamacpp-vulkan-radv-v1
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - "26"
+      - "303"
+    volumes:
+      - /var/lib/ai-models/ollama-qwen3.6-35b-a3b:/models:ro
+    command: >
+      llama-server
+      -m /models/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
+      -ngl 999
+      -fa 1
+      -np 1
+      -c 131072
+      -n 8192
+      -ctk q8_0
+      -ctv q8_0
+      --host 0.0.0.0
+      --port 8080
+      -a qwen3.6-35b-a3b-llamacpp
+      --metrics
+    ports:
+      - "127.0.0.1:8121:8080"
+
+  # ---------------------------------------------------------------------------
+  # Laguna-S-2.1 + DFlash draft (poolside laguna fork) — catalog parity
+  # ---------------------------------------------------------------------------
+
+  laguna-s-2.1-118b-q4km--llamacpp-laguna-fork-rocm-7.2.2-dflash-v1:
+    image: local-ai-machine/llamacpp-laguna-fork:rocm-7.2.2
+    container_name: laguna-s-2.1-118b-q4km--llamacpp-laguna-fork-rocm-7.2.2-dflash-v1
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - "26"
+      - "303"
+    mem_limit: 110g
+    volumes:
+      - /var/lib/ai-models/laguna-s-2.1-118b-q4km:/models:ro
+      - /var/lib/ai-models/laguna-s-2.1-dflash-draft:/models-draft:ro
+    command: >
+      /build/build/bin/llama-server
+      -m /models/UD-Q4_K_M/Laguna-S-2.1-UD-Q4_K_M-00001-of-00003.gguf
+      -md /models-draft/laguna-s-2.1-DFlash-BF16.gguf
+      --spec-type draft-dflash
+      --spec-draft-n-max 15
+      -ngl 999
+      -fa 1
+      --no-mmap
+      -dio
+      --swa-full
+      --reasoning-format deepseek
+      -np 1
+      -c 131072
+      -n 8192
+      -ctk q8_0
+      -ctv q8_0
+      --host 0.0.0.0
+      --port 8080
+      -a laguna-dflash-rocm-722
+      --metrics
+    ports:
+      - "127.0.0.1:8122:8080"
+
+  # M-055 ROCm control build — never got past loading (see engine gotchas).
+  laguna-s-2.1-118b-q4km--llamacpp-laguna-fork-rocm-dflash-v1:
+    image: local-ai-machine/llamacpp-laguna-fork:rocm-7.14
+    container_name: laguna-s-2.1-118b-q4km--llamacpp-laguna-fork-rocm-dflash-v1
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - "26"
+      - "303"
+    volumes:
+      - /var/lib/ai-models/laguna-s-2.1-118b-q4km:/models:ro
+      - /var/lib/ai-models/laguna-s-2.1-dflash-draft:/models-draft:ro
+    command: >
+      /build/build/bin/llama-server
+      -m /models/UD-Q4_K_M/Laguna-S-2.1-UD-Q4_K_M-00001-of-00003.gguf
+      -md /models-draft/laguna-s-2.1-DFlash-BF16.gguf
+      --spec-type draft-dflash
+      --spec-draft-n-max 15
+      -ngl 999
+      -fa 0
+      --swa-full
+      --reasoning-format deepseek
+      -np 1
+      -c 131072
+      -n 8192
+      -ctk q8_0
+      -ctv q8_0
+      --host 0.0.0.0
+      --port 8080
+      -a laguna-dflash-rocm
+      --metrics
+    ports:
+      - "127.0.0.1:8123:8080"
+
+  # Original Vulkan DFlash build — measured negative (M-053), kept for parity.
+  laguna-s-2.1-118b-q4km--llamacpp-laguna-fork-vulkan-dflash-v1:
+    image: local-ai-machine/llamacpp-laguna-fork:vulkan-radv
+    container_name: laguna-s-2.1-118b-q4km--llamacpp-laguna-fork-vulkan-dflash-v1
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - "26"
+      - "303"
+    volumes:
+      - /var/lib/ai-models/laguna-s-2.1-118b-q4km:/models:ro
+      - /var/lib/ai-models/laguna-s-2.1-dflash-draft:/models-draft:ro
+    command: >
+      /build/build/bin/llama-server
+      -m /models/UD-Q4_K_M/Laguna-S-2.1-UD-Q4_K_M-00001-of-00003.gguf
+      -md /models-draft/laguna-s-2.1-DFlash-BF16.gguf
+      --spec-type draft-dflash
+      --spec-draft-n-max 15
+      -ngl 999
+      -fa 1
+      --swa-full
+      --reasoning-format deepseek
+      -np 1
+      -c 131072
+      -n 8192
+      -ctk q8_0
+      -ctv q8_0
+      --host 0.0.0.0
+      --port 8080
+      -a laguna-dflash-vulkan
+      --metrics
+    ports:
+      - "127.0.0.1:8124:8080"
+
+  # v2 = quantized-draft result (Q4_K_M draft, n2, 33-35 tok/s) — the ONE
+  # DFlash config that beats the 30.0 tok/s plain baseline (M-086).
+  laguna-s-2.1-118b-q4km--llamacpp-laguna-fork-vulkan-dflash-v2:
+    image: local-ai-machine/llamacpp-laguna-fork:vulkan-radv
+    container_name: laguna-s-2.1-118b-q4km--llamacpp-laguna-fork-vulkan-dflash-v2
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - "26"
+      - "303"
+    volumes:
+      - /var/lib/ai-models/laguna-s-2.1-118b-q4km:/models:ro
+      - /var/lib/ai-models/laguna-s-2.1-dflash-draft-quant:/models-draft:ro
+    command: >
+      /build/build/bin/llama-server
+      -m /models/UD-Q4_K_M/Laguna-S-2.1-UD-Q4_K_M-00001-of-00003.gguf
+      -md /models-draft/laguna-s-2.1-DFlash-Q4_K_M.gguf
+      --spec-type draft-dflash
+      --spec-draft-n-max 2
+      -ngl 999
+      -fa 1
+      --swa-full
+      --reasoning-format deepseek
+      -np 1
+      -c 131072
+      -n 8192
+      -ctk q8_0
+      -ctv q8_0
+      --host 0.0.0.0
+      --port 8080
+      -a laguna-dflash-vulkan-v2
+      --metrics
+    ports:
+      - "127.0.0.1:8125:8080"
+
+  # BROKEN — classic-speculative attempt with the poolside DFlash draft
+  # checkpoint on the plain toolbox (M-0xx); no draft-server support there.
+  laguna-s-2.1-118b-q4km--llamacpp-vulkan-radv-speculative-dflash-v1:
+    image: docker.io/kyuz0/amd-strix-halo-toolboxes:vulkan-radv
+    container_name: laguna-s-2.1-118b-q4km--llamacpp-vulkan-radv-speculative-dflash-v1
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - "26"
+      - "303"
+    volumes:
+      - /var/lib/ai-models/laguna-s-2.1-118b-q4km:/models:ro
+      - /var/lib/ai-models/laguna-s-2.1-dflash-draft:/models-draft:ro
+    command: >
+      llama-server
+      -m /models/UD-Q4_K_M/Laguna-S-2.1-UD-Q4_K_M-00001-of-00003.gguf
+      -md /models-draft/laguna-s-2.1-DFlash-BF16.gguf
+      --spec-type draft-dflash
+      --spec-draft-n-max 15
+      -ngl 999
+      -fa 1
+      --swa-full
+      --reasoning-format deepseek
+      -np 1
+      -c 131072
+      -n 8192
+      -ctk q8_0
+      -ctv q8_0
+      --host 0.0.0.0
+      --port 8080
+      -a laguna-dflash-classic
+      --metrics
+    ports:
+      - "127.0.0.1:8126:8080"
+
+  # ---------------------------------------------------------------------------
+  # DS4 (DwarfStar) engine builds — antirez/ds4, ad hoc docker run previously
+  # ---------------------------------------------------------------------------
+
+  ds4-deepseek-v4-flash-iq2xxs--ds4-strix-halo-v1:
+    image: kyuz0/strix-halo-ds4-toolbox:rocm-7.14
+    container_name: ds4-deepseek-v4-flash-iq2xxs--ds4-strix-halo-v1
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - "26"
+      - "303"
+    volumes:
+      - /var/lib/ai-models/ds4-deepseek-v4-flash-iq2xxs:/models:ro
+    command: >
+      ds4-server
+      -m /models/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2.gguf
+      --ctx 128000
+      --prefill-chunk 1024
+      --host 0.0.0.0
+      --port 8080
+    ports:
+      - "127.0.0.1:8127:8080"
+
+  # Recommended imatrix GGUF variant (STRIXHALO.md) — M-051 corrected re-run.
+  ds4-deepseek-v4-flash-iq2xxs-imatrix--ds4-strix-halo-v1:
+    image: kyuz0/strix-halo-ds4-toolbox:rocm-7.14
+    container_name: ds4-deepseek-v4-flash-iq2xxs-imatrix--ds4-strix-halo-v1
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - "26"
+      - "303"
+    volumes:
+      - /var/lib/ai-models/ds4-deepseek-v4-flash-iq2xxs-imatrix:/models:ro
+    command: >
+      ds4-server
+      -m /models/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf
+      --ctx 128000
+      --prefill-chunk 1024
+      --host 0.0.0.0
+      --port 8080
+    ports:
+      - "127.0.0.1:8128:8080"
+
+  # ---------------------------------------------------------------------------
   # Ollama — shared single instance, port 11434
   # ---------------------------------------------------------------------------
   # Ollama can only serve one instance on one port. Model switching is
@@ -986,6 +1452,108 @@ services:
       - "303"
     ports:
       - "127.0.0.1:11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+      - /var/lib/ai-models:/gguf-source:ro
+
+  # ---------------------------------------------------------------------------
+  # Dedicated ollama instances — one per ollama catalog build (M-102).
+  # Each has its own container_name + port so the orchestrator can stop/start
+  # it independently for benchmarking. All share the ollama_data model store
+  # (models are registered once via scripts/ollama_register_model.sh) and the
+  # /var/lib/ai-models read-only GGUF source for re-registration. No
+  # always-up label: these are benchmark targets.
+  # ---------------------------------------------------------------------------
+
+  gemma-4-26b-a4b-it--ollama-vulkan-0177-v1:
+    image: ollama/ollama:0.17.7
+    container_name: gemma-4-26b-a4b-it--ollama-vulkan-0177-v1
+    environment:
+      - OLLAMA_VULKAN=1
+      - HIP_VISIBLE_DEVICES=-1
+      - ROCR_VISIBLE_DEVICES=-1
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - "26"
+      - "303"
+    ports:
+      - "127.0.0.1:11435:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+      - /var/lib/ai-models:/gguf-source:ro
+
+  glm-4.7-flash--ollama-vulkan-0177-v1:
+    image: ollama/ollama:0.17.7
+    container_name: glm-4.7-flash--ollama-vulkan-0177-v1
+    environment:
+      - OLLAMA_VULKAN=1
+      - HIP_VISIBLE_DEVICES=-1
+      - ROCR_VISIBLE_DEVICES=-1
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - "26"
+      - "303"
+    ports:
+      - "127.0.0.1:11436:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+      - /var/lib/ai-models:/gguf-source:ro
+
+  # BROKEN config preserved verbatim: the -rocm tag crashes on gfx1151 after
+  # the first real request (catalog status BROKEN).
+  glm-4.7-flash--ollama-rocm-0177-broken-v1:
+    image: ollama/ollama:0.17.7-rocm
+    container_name: glm-4.7-flash--ollama-rocm-0177-broken-v1
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - "26"
+      - "303"
+    ports:
+      - "127.0.0.1:11437:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+      - /var/lib/ai-models:/gguf-source:ro
+
+  qwen3.6-27b--ollama-vulkan-0177-v1:
+    image: ollama/ollama:0.17.7
+    container_name: qwen3.6-27b--ollama-vulkan-0177-v1
+    environment:
+      - OLLAMA_VULKAN=1
+      - HIP_VISIBLE_DEVICES=-1
+      - ROCR_VISIBLE_DEVICES=-1
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - "26"
+      - "303"
+    ports:
+      - "127.0.0.1:11438:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+      - /var/lib/ai-models:/gguf-source:ro
+
+  qwen3.6-35b-a3b--ollama-vulkan-0177-v1:
+    image: ollama/ollama:0.17.7
+    container_name: qwen3.6-35b-a3b--ollama-vulkan-0177-v1
+    environment:
+      - OLLAMA_VULKAN=1
+      - HIP_VISIBLE_DEVICES=-1
+      - ROCR_VISIBLE_DEVICES=-1
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - "26"
+      - "303"
+    ports:
+      - "127.0.0.1:11439:11434"
     volumes:
       - ollama_data:/root/.ollama
       - /var/lib/ai-models:/gguf-source:ro

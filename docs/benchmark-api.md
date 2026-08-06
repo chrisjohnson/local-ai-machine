@@ -16,6 +16,11 @@ idle.
 - Web UI: same URL (`GET /`) — enqueue form + live streaming log panel
 - Code: `docker/llm-inference-bench/` · bench checkout on the box:
   `/home/chris/local-ai-machine-bench` (the checkout results are pushed from)
+- Build identity: `builds/<name>/` holds `build.yaml` (derived metadata +
+  optional `bench:` overrides) and `docker-compose.yaml` (the build's compose
+  service, 1:1 with the global `docker/docker-compose.yml`). See
+  `builds/README.md` — the orchestrator reads service defs from the global
+  compose, never from per-build files, so the two stay in lockstep.
 
 ## The whole flow, condensed
 

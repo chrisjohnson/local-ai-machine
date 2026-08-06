@@ -1,37 +1,5 @@
 name: qwen3.5-4b--vllm-therock-gfx1151-v1
-compose: |
-  qwen3.5-4b--vllm-therock-gfx1151-v1:
-    image: docker.io/kyuz0/vllm-therock-gfx1151:latest
-    container_name: qwen3.5-4b--vllm-therock-gfx1151-v1
-    devices:
-      - /dev/kfd:/dev/kfd
-      - /dev/dri:/dev/dri
-    group_add:
-      - video
-      - render
-    security_opt:
-      - seccomp:unconfined
-    ipc: host
-    volumes:
-      - /var/lib/ai-models:/models
-      - vllm-qwen3.5-4b-cache:/root/.cache/vllm
-    command: >
-      vllm serve /models/qwen3.5-4b
-      --served-model-name qwen3.5-4b-judge
-      --host 0.0.0.0
-      --port 8000
-      --tensor-parallel-size 1
-      --gpu-memory-utilization 0.20
-      --dtype auto
-      --trust-remote-code
-      --max-num-seqs 64
-      --enable-prefix-caching
-      --max-model-len 131072
-      --enable-auto-tool-choice
-      --tool-call-parser qwen3_coder
-      --reasoning-parser qwen3
-    ports:
-      - "127.0.0.1:8001:8000"
+status: WORKING
 derived:
   engine: vllm-therock-gfx1151-v1
   model: Qwen3.5-4B
@@ -42,11 +10,10 @@ derived:
   dflash: false
   notes: >-
     Small judge/utility model (served as qwen3.5-4b-judge), gpu-memory-
-    utilization 0.20, max-model-len 131072. First hand-authored build.yaml
-    (M-101 smoke-test target).
+    utilization 0.20, max-model-len 131072. M-101 smoke-test target.
 bench:
-  concurrency: "1,2"
-  contexts: "0,8192"
+  concurrency: 1,2
+  contexts: 0,8192
   duration: 15
   max_tokens: 1024
   kv_budget: 0

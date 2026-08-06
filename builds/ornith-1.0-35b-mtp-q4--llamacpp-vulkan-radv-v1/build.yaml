@@ -1,0 +1,12 @@
+name: ornith-1.0-35b-mtp-q4--llamacpp-vulkan-radv-v1
+status: WORKING
+derived:
+  engine: llamacpp-vulkan-radv-mtp-v1
+  model: Ornith-1.0-35B-MTP (Q4_K_M)
+  params: 35.5B
+  active_params: null
+  quant: Q4_K_M
+  mtp: true
+  dflash: false
+  notes: >-
+    M-089 smoke test + benchmark, 2026-08-06. Download confirmed.

@@ -1,0 +1,15 @@
+name: qwen3.6-27b--ollama-vulkan-0177-v1
+status: WORKING
+derived:
+  engine: ollama-vulkan-0177-v1
+  model: Qwen3.6-27B
+  params: 26.9B
+  active_params: null
+  quant: Q4_K_M
+  mtp: false
+  dflash: false
+  notes: >-
+    Single /api/generate request measured (eval_count 613). Bench targets the
+    shared ollama_data store.
+bench:
+  model: qwen3.6-27b
