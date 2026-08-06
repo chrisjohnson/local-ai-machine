@@ -33,16 +33,16 @@
   --pi-accent: #6430d8;
   --pi-accent-border: #6430d8;
   --pi-selection-bg: #eadff8;
-  --pi-success: #008c82;
-  --pi-success-border: #008c82;
+  --pi-success: #008c58;
+  --pi-success-border: #008c58;
   --pi-success-bg: #e1f4ef;
-  --pi-success-surface: #d7f0ec;
+  --pi-success-surface: #d7f0e4;
   --pi-warning: #b05f00;
   --pi-warning-border: #b05f00;
   --pi-warning-surface: #fff2d2;
-  --pi-danger: #b51d49;
-  --pi-danger-border: #b51d49;
-  --pi-danger-surface: #fbe2ea;
+  --pi-danger: #b51d23;
+  --pi-danger-border: #b51d23;
+  --pi-danger-surface: #fbe2e4;
   --pi-purple: #6430d8;
   --pi-purple-border: #6430d8;
   --pi-purple-surface: #eadff8;
@@ -86,16 +86,16 @@
     --pi-accent: #7c3cff;
     --pi-accent-border: #5a47b0;
     --pi-selection-bg: #1d2547;
-    --pi-success: #00f0d8;
-    --pi-success-border: #00f0d8;
+    --pi-success: #00f088;
+    --pi-success-border: #00f088;
     --pi-success-bg: #071e22;
-    --pi-success-surface: #092d31;
+    --pi-success-surface: #093129;
     --pi-warning: #ffb000;
     --pi-warning-border: #ffb000;
     --pi-warning-surface: #16140d;
-    --pi-danger: #ff4f7b;
-    --pi-danger-border: #ff4f7b;
-    --pi-danger-surface: #2a0f18;
+    --pi-danger: #ff4f58;
+    --pi-danger-border: #ff4f58;
+    --pi-danger-surface: #2a0f11;
     --pi-purple: #b7a2ff;
     --pi-purple-border: #7c3cff;
     --pi-purple-surface: #181026;
@@ -218,29 +218,41 @@ a.back-link:hover {
 /* Status-driven card treatment (spec §5). Running: full brightness + pulsing
    glow (the "this is live right now" signal — CSS `@keyframes` on
    `box-shadow`/`opacity`, GPU-cheap, never JS-driven per-frame). Success/
-   fail: tinted toward their status color, then dimmed slightly to read as
-   "done, not active" — no pulse. */
+   fail: tinted toward their status color, then covered with a dark scrim
+   (`::after`) to read clearly as "done, not active" — no pulse. Hover lifts
+   the scrim back to full visibility. */
 .run-card.run-card-running {
   border-color: var(--pi-accent-border);
   animation: card-pulse-glow 2s ease-in-out infinite alternate;
 }
 
+.run-card.run-card-success,
+.run-card.run-card-fail {
+  position: relative;
+}
+.run-card.run-card-success::after,
+.run-card.run-card-fail::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: rgba(0, 0, 0, 0.32);
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+.run-card.run-card-success:hover::after,
+.run-card.run-card-fail:hover::after {
+  opacity: 0;
+}
+
 .run-card.run-card-success {
   background: var(--pi-success-surface);
   border-color: var(--pi-success-border);
-  opacity: 0.85;
-}
-.run-card.run-card-success:hover {
-  opacity: 1;
 }
 
 .run-card.run-card-fail {
   background: var(--pi-danger-surface);
   border-color: var(--pi-danger-border);
-  opacity: 0.85;
-}
-.run-card.run-card-fail:hover {
-  opacity: 1;
 }
 
 @keyframes card-pulse-glow {
