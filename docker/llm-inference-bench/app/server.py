@@ -5,11 +5,12 @@ resumes across container restarts."""
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 
 from .config import Config
@@ -78,6 +79,56 @@ def get_run(run_id: str):
     if run is None:
         raise HTTPException(status_code=404, detail=f"no run {run_id}")
     return run
+
+
+async def _log_stream(path: Path, run_id: str):
+    """SSE tail of a run's activity log. Replays existing content, then
+    streams new lines as the worker appends them; closes with an `end` event
+    once the run is terminal and the file is fully drained."""
+    while not path.exists():
+        # Queued runs have no activity file yet (worker hasn't picked them
+        # up) — hold the stream open until it appears or the run goes
+        # terminal without ever creating one.
+        if orchestrator.run_terminal(run_id):
+            yield "event: end\ndata: {}\n\n"
+            return
+        yield ": waiting\n\n"
+        await asyncio.sleep(1)
+    with open(path) as f:
+        while True:
+            line = f.readline()
+            if line:
+                yield f"data: {line.rstrip()}\n\n"
+                continue
+            if orchestrator.run_terminal(run_id):
+                yield "event: end\ndata: {}\n\n"
+                return
+            await asyncio.sleep(1)
+
+
+@app.get("/runs/{run_id}/log")
+async def run_log(run_id: str, build: Optional[str] = None, stream: bool = False):
+    run = orchestrator.get_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"no run {run_id}")
+    if build is not None:
+        if build not in run.get("per_build", {}):
+            raise HTTPException(status_code=404, detail=f"no build {build} in run {run_id}")
+        rel = run["per_build"][build].get("stdout_log")
+        if not rel:
+            return PlainTextResponse("")
+        path = config.checkout_dir / rel
+    else:
+        path = orchestrator.activity_log_path(run_id)
+    if stream:
+        return StreamingResponse(
+            _log_stream(path, run_id),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+    if not path.exists():
+        return PlainTextResponse("")
+    return PlainTextResponse(path.read_text())
 
 
 @app.get("/builds")

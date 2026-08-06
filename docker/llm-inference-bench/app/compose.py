@@ -13,6 +13,8 @@ from pathlib import Path
 
 import yaml
 
+from . import log
+
 # Compose project name on the box. The existing orchestrator runs from
 # ~/local-ai-machine/docker with no explicit -p, so the inferred project
 # name is the directory basename "docker". Our checkout lives at
@@ -29,13 +31,13 @@ def run(cmd, cwd=None, check=True, timeout=None, text=True, env=None):
     """Run a command, log it, return CompletedProcess. Mirrors the old
     orchestrator's run() so behavior stays familiar and debuggable."""
     printable = cmd if isinstance(cmd, str) else " ".join(cmd)
-    print(f"$ {printable}", flush=True)
+    log.line(f"$ {printable}")
     kwargs = dict(cwd=cwd, timeout=timeout, text=text, env=env)
     if text:
         kwargs.update(stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     result = subprocess.run(cmd, shell=isinstance(cmd, str), **kwargs)
     if result.stdout:
-        print(result.stdout[-4000:], flush=True)
+        log.line(result.stdout[-4000:])
     if check and result.returncode != 0:
         raise RuntimeError(f"Command failed (exit {result.returncode}): {printable}")
     return result

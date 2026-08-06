@@ -38,6 +38,7 @@ from pathlib import Path
 import yaml
 
 from . import compose as dc
+from . import log
 from .config import Config
 
 STATE_VERSION = 1
@@ -75,7 +76,7 @@ class Orchestrator:
                 if data.get("version") == STATE_VERSION:
                     self._state = data
             except (json.JSONDecodeError, OSError) as e:
-                print(f"WARNING: could not load queue state from {path}: {e}; starting fresh", flush=True)
+                log.line(f"WARNING: could not load queue state from {path}: {e}; starting fresh")
 
     def _save_state(self):
         path = self.config.state_path
@@ -195,31 +196,48 @@ class Orchestrator:
     # Run lifecycle
     # ------------------------------------------------------------------
 
+    def activity_log_path(self, run_id: str) -> Path:
+        """Per-run activity log: every worker stage marker, echoed command
+        and subprocess line the run produces, streamed live to the UI. Lives
+        under the gitignored .orchestrator dir so it is never committed."""
+        return self.config.checkout_dir / "builds" / ".orchestrator" / "runs" / f"{run_id}.log"
+
+    def run_terminal(self, run_id: str) -> bool:
+        run = self.get_run(run_id)
+        return run is not None and run["status"] in ("done", "failed")
+
     def _execute_run(self, run_id: str):
         self._update_run(run_id, status="running", started_at=utcnow_iso())
+        log_path = self.activity_log_path(run_id)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
         try:
-            self._git_sync()
-            services = self.services()
-            targets = list(self.get_run(run_id)["builds"])
-            unknown = [b for b in targets if b not in services]
-            if unknown:
-                raise RuntimeError(f"Unknown build/service names after git sync: {unknown}")
+            with open(log_path, "w") as sink:
+                log.set_sink(sink)
+                try:
+                    self._git_sync()
+                    services = self.services()
+                    targets = list(self.get_run(run_id)["builds"])
+                    unknown = [b for b in targets if b not in services]
+                    if unknown:
+                        raise RuntimeError(f"Unknown build/service names after git sync: {unknown}")
 
-            self._establish_exclusivity(targets, services)
-            self._wait_all_healthy(targets, services)
+                    self._establish_exclusivity(targets, services)
+                    self._wait_all_healthy(targets, services)
 
-            for build in targets:
-                self._benchmark_build(run_id, build, services)
+                    for build in targets:
+                        self._benchmark_build(run_id, build, services)
 
-            self._update_run(run_id, status="done", finished_at=utcnow_iso())
+                    self._update_run(run_id, status="done", finished_at=utcnow_iso())
+                finally:
+                    log.clear_sink()
         except Exception as e:  # noqa: BLE001
-            print(f"[run {run_id}] FAILED: {e}", flush=True)
+            log.line(f"[run {run_id}] FAILED: {e}")
             self._update_run(run_id, status="failed", error=str(e), finished_at=utcnow_iso())
 
     def _git_sync(self):
         checkout = self.config.checkout_dir
         env = self._git_env()
-        print("[git] fetching + hard resetting checkout to origin/main ...", flush=True)
+        log.line("[git] fetching + hard resetting checkout to origin/main ...")
         dc.run(["git", "fetch", "origin", self.config.git_branch], cwd=str(checkout), env=env, timeout=300)
         dc.run(["git", "reset", "--hard", f"origin/{self.config.git_branch}"], cwd=str(checkout), env=env)
 
@@ -241,9 +259,9 @@ class Orchestrator:
         themselves. Matches the old orchestrator's label-driven semantics."""
         stoppable = [name for name in dc.exclusive_services(services) if name not in targets]
         if not stoppable:
-            print("[exclusivity] no non-target exclusive services running/defined — nothing to stop", flush=True)
+            log.line("[exclusivity] no non-target exclusive services running/defined — nothing to stop")
             return
-        print(f"[exclusivity] stopping exclusive services not in this run: {stoppable}", flush=True)
+        log.line(f"[exclusivity] stopping exclusive services not in this run: {stoppable}")
         dc.compose(["stop", *stoppable], self.config.docker_dir, timeout=600)
 
     def _wait_all_healthy(self, targets: list, services: dict):
@@ -251,10 +269,10 @@ class Orchestrator:
             info = services[build]
             if info["always_up"]:
                 # Always-up targets (ollama) are already up — just confirm healthy.
-                print(f"[health] {build} is always-up, confirming reachable ...", flush=True)
+                log.line(f"[health] {build} is always-up, confirming reachable ...")
                 self._wait_healthy(build, info, already_up=True)
             else:
-                print(f"[health] bringing up {build} ...", flush=True)
+                log.line(f"[health] bringing up {build} ...")
                 dc.compose(["up", "-d", build], self.config.docker_dir, timeout=600)
                 self._wait_healthy(build, info, already_up=False)
 
@@ -265,7 +283,7 @@ class Orchestrator:
         deadline = time.time() + self.config.health_wait_s
         while time.time() < deadline:
             if self._probe(port):
-                print(f"[health] {build} healthy on :{port}", flush=True)
+                log.line(f"[health] {build} healthy on :{port}")
                 return
             time.sleep(10)
         raise RuntimeError(f"Timed out waiting for {build} to become healthy on port {port}")
@@ -289,7 +307,7 @@ class Orchestrator:
         info = services[build]
         port = info["port"]
         overrides = self._build_overrides(build)
-        print(f"[bench] {build} on :{port}", flush=True)
+        log.line(f"[bench] {build} on :{port}")
 
         out_dir = self.config.checkout_dir / "builds" / build / "benchmarks" / _bench_key()
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -310,7 +328,7 @@ class Orchestrator:
                 if not crashed:
                     break
                 if attempt < max_attempts:
-                    print(f"[bench] {build} crashed during attempt {attempt} — restarting and re-running once", flush=True)
+                    log.line(f"[bench] {build} crashed during attempt {attempt} — restarting and re-running once")
                     dc.compose(["up", "-d", build], self.config.docker_dir, timeout=600)
                     self._wait_healthy(build, info, already_up=False)
                 else:
@@ -320,7 +338,7 @@ class Orchestrator:
                     raise RuntimeError(f"{build} crashed twice during benchmark; logs saved to {crash_log.relative_to(self.config.checkout_dir)}")
 
             self._validate_results(raw_json)
-            print(f"[bench] {build} complete: {raw_json.relative_to(self.config.checkout_dir)}", flush=True)
+            log.line(f"[bench] {build} complete: {raw_json.relative_to(self.config.checkout_dir)}")
             self._update_build(
                 run_id, build, status="done",
                 raw_json=str(raw_json.relative_to(self.config.checkout_dir)),
@@ -357,7 +375,7 @@ class Orchestrator:
         try:
             data = yaml.safe_load(build_yaml.read_text()) or {}
         except (yaml.YAMLError, OSError) as e:
-            print(f"[bench] WARNING: could not parse {build_yaml}: {e}; using defaults", flush=True)
+            log.line(f"[bench] WARNING: could not parse {build_yaml}: {e}; using defaults")
             return {}
         return dict(data.get("bench") or {})
 
@@ -365,7 +383,14 @@ class Orchestrator:
         """Run the tool, capturing stdout. Returns True if the model
         container crashed during the run (caller restarts + re-runs)."""
         with open(stdout_log, "w") as logf:
-            proc = subprocess.Popen(bench_cmd, stdout=logf, stderr=subprocess.STDOUT, text=True)
+            # Pipe stdout and tee it: the full transcript lands in the
+            # committed stdout_log while each line also streams into the run
+            # activity log, so the UI is never silent during a long bench.
+            proc = subprocess.Popen(
+                bench_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+            )
+            reader = threading.Thread(target=self._tee_bench, args=(proc, logf), daemon=True)
+            reader.start()
             started = time.time()
             try:
                 while True:
@@ -390,8 +415,17 @@ class Orchestrator:
                     # as failure; validation below adds the specific reason.
                     raise RuntimeError(f"llm_decode_bench.py exited {proc.returncode} for {build}")
             finally:
+                reader.join(timeout=5)
                 logf.flush()
         return False
+
+    @staticmethod
+    def _tee_bench(proc: subprocess.Popen, logf):
+        for line in proc.stdout:
+            logf.write(line)
+            logf.flush()
+            log.line(line.rstrip("\n"))
+        logf.flush()
 
     def _save_crash_log(self, build: str, crash_log: Path):
         log = dc.run(["docker", "logs", build, "--tail", "300"], check=False).stdout

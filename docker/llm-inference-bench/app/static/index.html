@@ -15,6 +15,8 @@
   .st-failed { background: #4a2020; color: #e07a6a; }
   .st-pending, .st-running.b { background: #3a3a3a; color: #ccc; }
   pre { white-space: pre-wrap; background: #11131a; padding: 0.5rem; border-radius: 6px; font-size: 0.8rem; }
+  #log { min-height: 8rem; max-height: 22rem; overflow: auto; }
+  .log-btn, .stdout-link { font-size: 0.7rem; margin-left: 0.4rem; cursor: pointer; color: #6aaee0; background: none; border: none; padding: 0; text-decoration: underline; }
   select { min-height: 12rem; width: 100%; }
   .row { display: flex; gap: 2rem; align-items: flex-start; }
   .col { flex: 1; }
@@ -42,6 +44,10 @@
     <div id="queue"></div>
   </div>
 </div>
+<div class="card">
+  <h2>Log <span class="muted" id="log-label">auto-follows the active run</span></h2>
+  <pre id="log"><span class="muted">Run logs stream here as the worker executes — stages, commands, and bench output.</span></pre>
+</div>
 
 <script>
 const $ = (id) => document.getElementById(id);
@@ -58,12 +64,47 @@ function statusBadge(status) {
   return `<span class="status st-${status}">${status}</span>`;
 }
 
-function buildCell(b) {
+function buildCell(runId, buildName, b) {
   const bits = [statusBadge(b.status)];
   if (b.attempts) bits.push(`attempts ${b.attempts}`);
   if (b.raw_json) bits.push(`<a href="#" data-copy="${b.raw_json}" class="copy">${b.raw_json}</a>`);
+  if (b.stdout_log) bits.push(`<button class="stdout-link" data-run="${runId}" data-build="${buildName}">stdout</button>`);
   if (b.error) bits.push(`<span class="error">${b.error}</span>`);
   return `<div style="margin:4px 0">${bits.join(" · ")}</div>`;
+}
+
+let currentLog = { runId: null, build: null, es: null };
+let autoFollow = true;
+
+function stopStream() {
+  if (currentLog.es) { currentLog.es.close(); currentLog.es = null; }
+}
+
+function showLog(runId, build = null) {
+  if (currentLog.runId === runId && currentLog.build === build) return;
+  stopStream();
+  currentLog.runId = runId;
+  currentLog.build = build;
+  const pre = $("log");
+  pre.textContent = "";
+  $("log-label").textContent = `Run ${runId}${build ? ` · ${build}` : ""}`;
+  const url = `/runs/${runId}/log${build ? `?build=${encodeURIComponent(build)}` : ""}`;
+  if (build) {
+    fetch(url).then(r => r.ok ? r.text() : "").then(t => {
+      if (currentLog.runId !== runId || currentLog.build !== build) return;
+      pre.textContent = t || `(no stdout log for ${build} yet)`;
+      pre.scrollTop = pre.scrollHeight;
+    });
+    return;
+  }
+  const es = new EventSource(`${url}?stream=1`);
+  currentLog.es = es;
+  es.onmessage = (e) => {
+    pre.textContent += e.data + "\n";
+    pre.scrollTop = pre.scrollHeight;
+  };
+  es.addEventListener("end", stopStream);
+  es.onerror = stopStream;
 }
 
 async function refreshQueue() {
@@ -71,15 +112,23 @@ async function refreshQueue() {
   const { runs } = await r.json();
   if (!runs.length) {
     $("queue").innerHTML = '<div class="muted">No runs yet.</div>';
-    return;
+  } else {
+    $("queue").innerHTML = runs.map(run => `
+      <div style="border-top:1px solid #2a2e3d; padding:8px 0">
+        <div><b>Run ${run.id}</b> ${statusBadge(run.status)} <button class="log-btn" data-run="${run.id}">log</button> <span class="muted">${run.created_at}</span></div>
+        ${run.error ? `<div class="error">${run.error}</div>` : ""}
+        <div style="margin-left:1rem">${run.builds.map(b => buildCell(run.id, b, run.per_build[b] || {status:"?"})).join("")}</div>
+      </div>
+    `).join("");
   }
-  $("queue").innerHTML = runs.map(run => `
-    <div style="border-top:1px solid #2a2e3d; padding:8px 0">
-      <div><b>Run ${run.id}</b> ${statusBadge(run.status)} <span class="muted">${run.created_at}</span></div>
-      ${run.error ? `<div class="error">${run.error}</div>` : ""}
-      <div style="margin-left:1rem">${run.builds.map(b => buildCell(run.per_build[b] || {status:"?"})).join("")}</div>
-    </div>
-  `).join("");
+  document.querySelectorAll(".log-btn").forEach(btn =>
+    btn.addEventListener("click", () => { autoFollow = false; showLog(btn.dataset.run); })
+  );
+  document.querySelectorAll(".stdout-link").forEach(btn =>
+    btn.addEventListener("click", () => { autoFollow = false; showLog(btn.dataset.run, btn.dataset.build); })
+  );
+  const active = runs.find(r => r.status === "queued" || r.status === "running");
+  if (autoFollow && active && currentLog.runId !== active.id) showLog(active.id);
 }
 
 async function enqueue(builds) {
