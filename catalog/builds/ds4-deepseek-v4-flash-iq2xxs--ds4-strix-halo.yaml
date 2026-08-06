@@ -1,3 +1,8 @@
+# SUPERSEDED (correctness, not capacity): this build ran on the WRONG (non-imatrix) GGUF variant --
+# see the "Known gap" note below. M-051 re-ran the identical MTP-on/off methodology on the CORRECT
+# imatrix-calibrated variant: catalog/builds/ds4-deepseek-v4-flash-iq2xxs-imatrix--ds4-strix-halo.yaml.
+# Both throughput numbers here turned out to be a close match to the corrected run (imatrix calibration
+# changes output quality, not raw tok/s) -- kept in place as historical record, not deleted.
 id: ds4-deepseek-v4-flash-iq2xxs--ds4-strix-halo
 model:
   display_name: DeepSeek-V4-Flash (DS4/DwarfStar, IQ2XXS)

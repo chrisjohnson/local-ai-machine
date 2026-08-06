@@ -1,0 +1,24 @@
+{
+  "result": {
+    "prompt_file": "/tmp/ds4-imatrix-bench/long_prompt_120k.txt",
+    "max_tokens_requested": 300,
+    "wall_clock_s": 841.180925239998,
+    "n_stream_chunks": 8,
+    "usage": {
+      "prompt_tokens": 115837,
+      "completion_tokens": 300,
+      "total_tokens": 116137,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "cache_write_tokens": 115837
+      }
+    },
+    "finish_reason": "length",
+    "time_to_first_chunk_s": 840.5882242009975,
+    "prefill_tok_s": 137.80469041201033,
+    "decode_span_s": 0.5925803520003683,
+    "decode_chunks_after_first": 7,
+    "decode_tok_s": 11.812744004032806
+  },
+  "generated_text_preview": "The notes consistently reference core computing concepts such"
+}

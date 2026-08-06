@@ -1,0 +1,19 @@
+{
+  "result": {
+    "prompt_file": "/tmp/ds4-imatrix-bench/long_prompt_120k.txt",
+    "max_tokens_requested": 300,
+    "wall_clock_s": 1192.5132539760016,
+    "n_stream_chunks": 0,
+    "usage": {
+      "prompt_tokens": 115837,
+      "completion_tokens": 300,
+      "total_tokens": 116137,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "cache_write_tokens": 115837
+      }
+    },
+    "finish_reason": "length"
+  },
+  "generated_text_preview": ""
+}

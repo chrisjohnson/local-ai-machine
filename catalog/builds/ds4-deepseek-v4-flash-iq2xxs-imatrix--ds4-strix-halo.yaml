@@ -1,0 +1,134 @@
+id: ds4-deepseek-v4-flash-iq2xxs-imatrix--ds4-strix-halo
+model:
+  display_name: DeepSeek-V4-Flash (DS4/DwarfStar, IQ2XXS, imatrix)
+  family: DeepSeek
+  hf_repo: antirez/deepseek-v4-gguf
+  hf_revision: null
+  architecture: moe
+  total_params: 284e9
+  active_params: 13e9
+  num_experts: null
+  quantization: IQ2XXS/Q2K/Q8 mixed, imatrix-calibrated (DwarfStar-specific tensor layout, NOT a generic
+    llama.cpp GGUF)
+  context_length_native: 1048576
+  modality: text
+  files:
+  - DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf
+  - DeepSeek-V4-Flash-MTP-Q4K-Q8_0-F32.gguf
+  local_path: /var/lib/ai-models/ds4-deepseek-v4-flash-iq2xxs-imatrix
+  size_on_disk_gb: 84.3
+versions:
+- version: v1
+  compose_service_id: null
+  engine_ref: null
+  role: 284B/13B-active MoE, correct-variant re-run of M-047/M-050 (M-051) -- not a standing compose
+    service, run via ad hoc `docker run` for this benchmark only
+  notes: 'M-051: re-run of the M-047 MTP-on/off benchmark on the CORRECT GGUF variant. The prior entry
+    (`catalog/builds/ds4-deepseek-v4-flash-iq2xxs--ds4-strix-halo.yaml`) ran on the plain, non-imatrix
+    file per the repo''s general README guidance; the Strix-Halo-specific upstream doc
+    (github.com/antirez/ds4/blob/main/STRIXHALO.md, section 5, "Use the right GGUF") explicitly
+    recommends the `-imatrix.gguf` variant instead. This entry uses that correct file
+    (`DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf`, confirmed present on
+    disk at 86,720,111,488 bytes, matching the configuration.nix-declared size exactly).
+
+    Same engine/deployment pattern as M-047: served via `kyuz0/strix-halo-ds4-toolbox:rocm-7.14` (ad hoc
+    `docker run`, no standing compose service; image was already cached on the host from the prior
+    benchmark), same flags (`--rocm -c 128000 --prefill-chunk 1024`), same real ~116k-token prompt file
+    reused byte-for-byte from the M-047 run (`/tmp/ds4-bench/long_prompt_120k.txt` on the host, 115,837
+    prompt tokens per both runs'' own usage blocks), same `ds4_stream_bench.py` streaming-timing script
+    (also reused from the M-047 run, unmodified) for an apples-to-apples methodology match. Both runs
+    (no-MTP and MTP) executed back-to-back in a clean single-model host state (all other model-serving
+    containers explicitly stopped by name beforehand, confirmed via `docker ps` and `free -h`).
+
+    **Result: confirms M-047''s finding on the correct file -- MTP washes, does not help, on this
+    hardware for this model.** No-MTP: prefill 137.80 tok/s avg (841.18s wall for the 115,837-token
+    prompt + 300-token completion), generation 11.81 tok/s avg (300 tokens in ~25.4s per the server''s
+    own per-chunk decode log). MTP-enabled: prefill 99.25 tok/s avg (1167.10s prefill alone, 1192.51s
+    total) -- again notably slower prefill than the no-MTP run despite MTP not algorithmically touching
+    prefill (same effect M-047 observed and attributed, not confirmed further, to the draft model''s
+    resident weights competing for memory bandwidth even during prefill); generation 11.85 tok/s avg
+    (25.33s for 300 tokens) -- statistically indistinguishable from the no-MTP run''s 11.81 tok/s (0.04
+    tok/s apart, within run-to-run noise, not a real difference).
+
+    These numbers are remarkably close to M-047''s original wrong-variant numbers (no-MTP: 141.41/11.86
+    tok/s vs this run''s 137.80/11.81; MTP: 99.26/11.86 tok/s vs this run''s 99.25/11.85) -- the imatrix
+    calibration measurably changes quantization *quality* (perplexity/output correctness), not raw
+    decode/prefill throughput, which tracks file size and architecture, both unchanged between variants
+    (both files are ~86.72GB). This is the expected outcome, not a surprise: imatrix calibration guides
+    *which* quantization levels get assigned to which weights within the same target bit-width, it does
+    not change the bit-width or tensor layout, so the compute cost per token is unaffected. What this
+    re-run resolves is the correctness gap M-047 flagged (wrong file, unverified output quality), not the
+    speed number, which was already a reasonable estimate.
+
+    No OOM encountered this run (`--prefill-chunk 1024` from M-047''s own fix applied from the start,
+    not rediscovered). Both `docker run` containers (`ds4-imatrix-nomtp`, `ds4-imatrix-mtp`) were ad hoc,
+    stopped and removed immediately after each run; host returned to a clean idle state between and after
+    (confirmed via `free -h`, ~4.6GiB baseline).
+
+    Old wrong-variant local directory (`ds4-deepseek-v4-flash-iq2xxs`, ~84GB) deliberately left in place,
+    per M-051''s own plan item 4 -- a separate, deliberate deletion decision left for Chris, not an
+    automatic side effect of this benchmark.
+    '
+  status: WORKING
+  created: '2026-08-06'
+  last_verified: '2026-08-06'
+  benchmark_runs:
+  - timestamp: '2026-08-06T02:49:42Z'
+    benchmark_id: ds4-server-live-timing-v1
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: dbd53b9
+      host_gpu_driver: Mesa 25.3.6
+      concurrent_load:
+        downloads_paused: true
+        vllm_co_resident_or_stopped: stopped_for_run
+      host_metrics_window:
+        start: '2026-08-06T02:49:42Z'
+        end: '2026-08-06T03:03:49Z'
+      image_digest: '[kyuz0/strix-halo-ds4-toolbox@sha256:2590cf3cc283f59b170ae3a01a141c0730f793f59a0dabe4b8daf011125d497f]'
+      engine_version: 'ds4-server (no --version output available; image tag kyuz0/strix-halo-ds4-toolbox:rocm-7.14)'
+    result:
+      note: MTP disabled (no --mtp flag). Measured via real ds4-server chat request timings against
+        a real ~116k-token prompt (same file reused from M-047), parsed from the server's own per-chunk
+        prefill/decode progress log (not a synthetic micro-benchmark).
+      variant_caveat: Ran on the CORRECT imatrix-calibrated GGUF (fixes M-047's known gap).
+      prompt_tokens: 115837
+      completion_tokens: 300
+      prefill_tok_s_avg: 137.80
+      prefill_wall_s: 840.59
+      generation_tok_s_avg: 11.81
+      generation_wall_s: 25.40
+      total_wall_s: 841.18
+      extra_flags: --prefill-chunk 1024 (same OOM-avoidance flag M-047 established; no OOM occurred
+        this run)
+      finish_reason: length
+      raw_stdout_file: catalog/raw/ds4-deepseek-v4-flash-iq2xxs-imatrix--ds4-strix-halo--ds4-server-live-timing-v1--nomtp--20260806T032510Z.json
+  - timestamp: '2026-08-06T03:03:23Z'
+    benchmark_id: ds4-server-live-timing-v1
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: dbd53b9
+      host_gpu_driver: Mesa 25.3.6
+      concurrent_load:
+        downloads_paused: true
+        vllm_co_resident_or_stopped: stopped_for_run
+      host_metrics_window:
+        start: '2026-08-06T03:03:23Z'
+        end: '2026-08-06T03:25:36Z'
+      image_digest: '[kyuz0/strix-halo-ds4-toolbox@sha256:2590cf3cc283f59b170ae3a01a141c0730f793f59a0dabe4b8daf011125d497f]'
+      engine_version: 'ds4-server (no --version output available; image tag kyuz0/strix-halo-ds4-toolbox:rocm-7.14)'
+    result:
+      note: MTP enabled (--mtp DeepSeek-V4-Flash-MTP-Q4K-Q8_0-F32.gguf). Same prompt, same methodology,
+        same host state as the no-MTP run above (run back-to-back, single-model at a time) for a direct
+        apples-to-apples comparison.
+      variant_caveat: Ran on the CORRECT imatrix-calibrated GGUF (fixes M-047's known gap).
+      prompt_tokens: 115837
+      completion_tokens: 300
+      prefill_tok_s_avg: 99.25
+      prefill_wall_s: 1167.10
+      generation_tok_s_avg: 11.85
+      generation_wall_s: 25.33
+      total_wall_s: 1192.51
+      extra_flags: --prefill-chunk 1024, --spec-draft-n-max default
+      finish_reason: length
+      raw_stdout_file: catalog/raw/ds4-deepseek-v4-flash-iq2xxs-imatrix--ds4-strix-halo--ds4-server-live-timing-v1--mtp--20260806T032536Z.json

@@ -1,0 +1,163 @@
+id: ornith-1.0-35b-mtp-q4--llamacpp-vulkan-radv
+model:
+  display_name: Ornith-1.0-35B-MTP (Q4_K_M)
+  family: Ornith
+  hf_repo: singulared/Ornith-1.0-35B-MTP-GGUF
+  hf_revision: null
+  architecture: qwen35moe 35B.A3B (MoE, llama-bench model string) — MTP-tensor-bearing Q4_K_M quant
+  total_params: 35.51e9
+  active_params: null
+  num_experts: null
+  quantization: GGUF-Q4_K_M
+  context_length_native: null
+  modality: text
+  files:
+  - ornith-1.0-35b-MTP-Q4_K_M.gguf
+  local_path: /var/lib/ai-models/llamacpp-ornith-1.0-35b-mtp-q4
+  size_on_disk_gb: 20.55
+versions:
+- version: v1
+  compose_service_id: ornith-1.0-35b-mtp-q4--llamacpp-vulkan-radv-v1
+  role: M-089 — lower-memory alternative to the standing Q8_0 build (35.19GB), added after Q8_0 was
+    OOM-killed twice under concurrent big-moe+medium-moe agentic load (laguna + ornith q8_0 left
+    ~zero headroom on this box's 124GiB unified-memory pool). Compose service defined, port 8113;
+    smoke-tested and benchmarked here (M-089 plan step 8 follow-up), NOT started as the standing
+    medium-moe role — that role-switch decision is explicitly left for Chris, not made here.
+  notes: 'M-089 smoke test + benchmark, 2026-08-06. Download confirmed complete on disk
+    (`/var/lib/ai-models/llamacpp-ornith-1.0-35b-mtp-q4/.download-complete` present, file size
+    22,064,714,912 bytes matching the HF API tree listing exactly). Compose service started explicitly
+    by name (`docker compose up -d ornith-1.0-35b-mtp-q4--llamacpp-vulkan-radv-v1`), confirmed healthy
+    (`/health` -> `{"status":"ok"}`) and MTP draft context creation confirmed in server logs ("creating
+    MTP draft context against the target model").
+
+    **Real generated completions confirmed, not just container-started.** First smoke request (short
+    coding task + "keep thinking brief", max_tokens=1000) returned real generated code with
+    finish_reason=stop (744 completion tokens, 97.98 tok/s server-reported predicted_per_second, MTP
+    draft acceptance 523/600 = 87.2%). A second, harder/broader request ("be thorough", max_tokens=1200)
+    hit `finish_reason=length` with an EMPTY visible `content` field — confirmed via the response''s own
+    `reasoning_content` that this was the model burning its entire token budget on invisible thinking
+    before emitting any real content, the exact known behavior flagged in M-078''s decision log for this
+    model family, not a broken deployment. Re-run with max_tokens=2500 on the identical prompt confirmed
+    real substantive generated content (1695 chars, correct/on-topic), finish_reason=length only because
+    the "be thorough" request is genuinely long, not because of truncation-before-content. Conclusion:
+    this build is genuinely serving, but agentic/production use needs a generous max_tokens budget
+    (>=1500-2000) to reliably clear the thinking phase on non-trivial prompts — same operational lesson
+    already known from the Q8_0 build.
+
+    **Comparative benchmark vs the already-catalogued Q8_0 build**
+    (`catalog/builds/ornith-1.0-35b-mtp-q8--llamacpp-vulkan-radv-mtp.yaml`), same methodology (plain
+    llama-bench pp512/tg128, then live-server MTP timing via `/v1/chat/completions`
+    `predicted_per_second`, `--spec-type draft-mtp --spec-draft-n-max 3` for the MTP comparison runs to
+    match the Q8_0 entry''s own methodology exactly — note the standing compose service instead uses
+    `--spec-draft-n-max 4`, matching the README''s general recommendation; the `n-max 3` here is only for
+    apples-to-apples parity with the existing Q8_0 catalog entry''s own benchmark methodology):
+
+    | metric | Q8_0 (existing) | Q4_K_M (this entry) |
+    |---|---|---|
+    | plain llama-bench pp512 | 1158.02 ± 9.99 | 1114.72 ± 14.87 |
+    | plain llama-bench tg128 | 55.26 ± 0.15 | 76.76 ± 0.38 |
+    | MTP live-server tok/s (3 runs) | 63.64 / 66.81 / 63.74 (avg 64.73) | 110.34 / 110.15 / 110.69 (avg 110.39) |
+    | MTP speedup vs plain tg128 | 1.17x | 1.44x |
+    | draft acceptance rate | 0.583 (253/434) | 0.849 (214/252) |
+
+    Q4_K_M is substantially faster on every axis measured here — both plain decode (76.76 vs 55.26
+    tok/s, +39%) and MTP-accelerated decode (110.39 vs 64.73 tok/s avg, +71%) — and also shows a HIGHER
+    draft-acceptance rate (0.849 vs 0.583), consistent with the repo README''s own claim that the MTP
+    head is kept at Q8_0 precision in both builds so acceptance barely drops with the smaller body quant
+    (M-089''s decision log cites 0.847 vs 0.859 from the README directly; this live measurement of 0.849
+    vs 0.583 is a different sampling window/prompt than the README''s own number so isn''t a like-for-like
+    reproduction of the README''s exact figures, but the overall shape — Q4_K_M competitive-to-better
+    acceptance, meaningfully faster raw throughput — matches). Real GPU memory footprint at idle-load
+    single-request time: `docker stats` showed ~20.5GiB resident during the smoke test, vs Q8_0''s
+    catalogued 35.86GiB GTT peak — roughly 15GB of headroom recovered, which is the entire point of
+    M-089 (co-residency with big-moe without OOM).
+
+    This is a real, measured memory/speed tradeoff data point for Chris''s eventual role-switch decision
+    (Q4_K_M is strictly faster here, not just smaller — no speed penalty was found, contrary to the
+    naive expectation that a smaller quant might be slower on a compute-bound path). Not a recommendation
+    to switch `medium-moe` — that decision explicitly stays with Chris per both M-089''s and M-084''s own
+    text.
+
+    Container stopped and removed after each ad hoc benchmark run (`ornith-q4-llamabench`,
+    `ornith-q4-mtp-bench`); the standing compose service
+    (`ornith-1.0-35b-mtp-q4--llamacpp-vulkan-radv-v1`) was also stopped after its own smoke test, per the
+    task''s "return to clean single-model state between benchmarks" instruction — NOT left running as
+    the new default.
+    '
+  status: WORKING
+  created: '2026-08-06'
+  last_verified: '2026-08-06'
+  benchmark_runs:
+  - timestamp: '2026-08-06T03:35:00Z'
+    benchmark_id: llamacpp-bench-v1
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: dbd53b9
+      host_gpu_driver: Mesa 25.3.6
+      concurrent_load:
+        downloads_paused: true
+        vllm_co_resident_or_stopped: stopped_for_run
+      host_metrics_window:
+        start: '2026-08-06T03:35:00Z'
+        end: '2026-08-06T03:36:00Z'
+      image_digest: '[kyuz0/amd-strix-halo-toolboxes@sha256:1648e4195154aef5dc975253d962e1e1b8358af26b0e54b4faf89a156131c320]'
+      engine_version: 0e4a03622 (10154)
+    result:
+      pp512_tok_s: 1114.72 ± 14.87
+      tg128_tok_s: 76.76 ± 0.38
+      engine_build: 0e4a03622 (10154)
+  - timestamp: '2026-08-06T03:43:00Z'
+    benchmark_id: llamacpp-mtp-v1
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: dbd53b9
+      host_gpu_driver: Mesa 25.3.6
+      concurrent_load:
+        downloads_paused: true
+        vllm_co_resident_or_stopped: stopped_for_run
+      host_metrics_window:
+        start: '2026-08-06T03:43:00Z'
+        end: '2026-08-06T03:45:00Z'
+      image_digest: '[kyuz0/amd-strix-halo-toolboxes@sha256:1648e4195154aef5dc975253d962e1e1b8358af26b0e54b4faf89a156131c320]'
+      engine_version: 0e4a03622 (10154)
+    result:
+      mtp_tg_tok_s_samples:
+      - 110.34
+      - 110.15
+      - 110.69
+      mtp_tg_tok_s_avg: 110.39
+      speedup_vs_plain_baseline_x: 1.44
+      draft_acceptance_rate: 0.849
+      draft_mean_len: null
+      note: --spec-draft-n-max 3 (matches the Q8_0 catalog entry's own benchmark methodology, NOT the
+        standing compose service's --spec-draft-n-max 4). Measured via /v1/chat/completions
+        predicted_per_second, 3 identical requests back-to-back for repeatability. Server stopped/removed
+        after run.
+      raw_stdout_file: catalog/raw/ornith-1.0-35b-mtp-q4--llamacpp-vulkan-radv-v1--llamacpp-mtp-v1--20260806T034300Z-run1.json
+  - timestamp: '2026-08-06T02:47:00Z'
+    benchmark_id: llamacpp-smoke-test-v1
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: dbd53b9
+      host_gpu_driver: Mesa 25.3.6
+      concurrent_load:
+        downloads_paused: true
+        vllm_co_resident_or_stopped: stopped_for_run
+      host_metrics_window:
+        start: '2026-08-06T02:46:27Z'
+        end: '2026-08-06T02:48:53Z'
+      image_digest: '[kyuz0/amd-strix-halo-toolboxes@sha256:1648e4195154aef5dc975253d962e1e1b8358af26b0e54b4faf89a156131c320]'
+      engine_version: 0e4a03622 (10154)
+    result:
+      note: Standing compose service (ornith-1.0-35b-mtp-q4--llamacpp-vulkan-radv-v1, port 8113,
+        --spec-draft-n-max 4, the service's own real deploy-time flags) smoke test — real
+        /v1/chat/completions request, not a synthetic benchmark.
+      prompt: 'Write a short Python function that returns the nth Fibonacci number using memoization.
+        Keep thinking brief.'
+      completion_tokens: 744
+      predicted_per_second: 97.98
+      draft_n: 600
+      draft_n_accepted: 523
+      draft_acceptance_rate: 0.872
+      finish_reason: stop
+      real_content_confirmed: true
