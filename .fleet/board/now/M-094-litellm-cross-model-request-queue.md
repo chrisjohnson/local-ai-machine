@@ -281,24 +281,74 @@ callback idea — see prior git history of this card for that version):**
 17. [ ] Not reached — blocked on 15.
 18. [ ] Not reached — blocked on 15. Card stays in `now/`, NOT done.
 
-### Phase 3 — new, required before any further cutover attempt
-19. [ ] Add a maximum-hold-time safety valve to the proxy's semaphore: if a
-    slot has been held longer than some generous ceiling (e.g. 5-10 minutes
-    — long enough never to fire on legitimate real generation, short enough
-    to bound the blast radius of a stuck request), forcibly release it with
-    a loud warning log. This doesn't fix the root cause but bounds the
-    damage — currently a single stuck request can wedge the proxy
-    permanently until someone notices and manually restarts the container.
-20. [ ] Add a health-check bypass (or a separate, ungated health endpoint)
-    so the proxy's own liveness can be checked even while the main
-    semaphore is held — the current design made this incident harder to
-    detect/diagnose than it needed to be, since :4001's health check was
-    ALSO stuck behind the same jam.
-21. [ ] Try to actually reproduce the abrupt-disconnect hypothesis directly
-    (e.g., a test that opens a connection to the mock backend and kills the
-    TCP connection mid-stream without a clean cancel) rather than relying
-    on production evidence + a plausible theory alone.
-22. [ ] Once 19-21 are done and tested, retry Phase 2 items 15-18 for real.
+### Phase 3 — REVISED: replaced the custom proxy with HAProxy entirely
+Rather than patch the bespoke Bun implementation's specific gaps (items
+19-21 as originally planned — a timeout safety valve, a health-check
+bypass, a deliberate disconnect reproduction), researched whether existing,
+mature software already solves this class of problem well. It does.
+
+19. [x] Researched alternatives. Ruled out: litellm's own native
+    `max_parallel_requests`/Redis rate-limiting (real, but rejects with a
+    429 rather than queuing — confirmed against litellm's actual config
+    docs and an open GitHub feature request (#26693) asking for queue
+    behavior specifically because litellm doesn't have it); llama-swap
+    (real per-model semaphore, but scoped per-model/per-process, not
+    global — doesn't address cross-model contention, our actual problem).
+    Confirmed first that our own custom proxy never had any real litellm/
+    LLM-protocol-specific logic — pure transparent forwarding + a
+    connection-scoped concurrency gate — so a generic reverse proxy is a
+    direct replacement, not a compromise. **Chose HAProxy**: `maxconn` +
+    queue + `timeout queue` is exactly this pattern, battle-tested for two
+    decades, with the timeout safety valve already built in (no need to
+    build item 19's original plan by hand).
+20. [x] Built `docker/litellm-queue-haproxy/haproxy.cfg` — `maxconn 1` on
+    litellm as the single backend server (global serialization, since
+    every request routes through litellm as one upstream regardless of
+    target model), `timeout queue 900s` as the built-in safety valve,
+    `network_mode: host` (same reason the Bun version needed it). Replaced
+    the `litellm-queue-proxy` compose service with `litellm-queue-haproxy`
+    (old Bun implementation's source kept as-is at
+    `docker/litellm-queue-proxy/` for reference — its card history
+    documents the real bug). Config validated locally (`haproxy -c`) before
+    every deploy, both initial and the one revision below.
+21. [x] **The critical test — deliberately reproduced the abrupt-disconnect
+    scenario directly** (not just theorized about it): opened a raw TCP
+    socket, sent a real streaming request through HAProxy on the real box
+    against a real model, read only the first 200 bytes of what should
+    have been a much longer stream, then called `sock.close()` — an
+    abrupt, non-graceful termination, no clean HTTP-level stream
+    completion. Immediately fired a follow-up request: **200 OK in 787ms**
+    — not stuck, not delayed, no sign of a leaked slot. HAProxy's
+    connection tracking operates at the actual OS socket level, not a
+    higher-level stream abstraction, so it correctly detects the closed
+    connection and releases the slot — this is the exact class of bug that
+    broke the custom Bun proxy, confirmed fixed by construction, not by
+    patching.
+22. [x] Real concurrency re-confirmed on the box against real models
+    post-disconnect-test: 3 concurrent requests showed a clean staircase
+    (989ms / 1967ms / 2615ms) — genuine serialization, nothing left in a
+    bad state by the disconnect test.
+23. [x] Investigated a real, secondary finding along the way: HAProxy
+    relays streaming responses in coarser chunks than litellm's native
+    per-token delivery (measured: direct litellm ~33ms between chunks,
+    119 distinct arrival times over a 3.7s response vs. through HAProxy
+    ~230ms between chunks, 22 distinct arrivals over a comparable-length
+    response). Tried `tune.h1.zero-copy-fwd-send off` (a documented,
+    relevant HAProxy tunable for exactly this class of delay) — measured
+    no meaningful improvement (22 → 20 buckets, noise-level), reverted to
+    keep the config simple rather than keep an unproven tweak. **This does
+    NOT threaten the core correctness property** — total time-to-complete
+    (and therefore the semaphore hold duration) matches real generation
+    time either way (4.4s direct vs. 5.1s via HAProxy for the same
+    request) — it's a real but minor streaming-smoothness tradeoff (a
+    human watching a live session would see slightly chunkier token
+    bursts, not silky-smooth per-token updates), not a functional bug.
+    Left as a known, non-blocking polish item, not chased further.
+24. [ ] Retry the real Phase 2 end-to-end tests (original items 15-18) —
+    two concurrent real Workflow Runs against roles sharing physical
+    resources — with HAProxy in place instead of the Bun proxy. NOT done
+    yet — still needs a fresh go-ahead before repointing pi-web, per the
+    same caution as the first attempt.
 
 ## Signals
 <!-- signal: claude 2026-08-06T04:15Z — claiming, card written after live
@@ -380,32 +430,66 @@ launches — filing separately, not part of M-094. -->
   `docker compose run` a service whose `depends_on` chain includes anything
   sharing a name with real production infra, even locally — use `docker
   run` directly against the single service under test instead.
+- 2026-08-06 (claude): after the revert, researched whether existing
+  software already solves this rather than keep patching the custom Bun
+  proxy. Chris's own suggestion to check litellm's native
+  `max_parallel_requests`/Redis config led to confirming (against real
+  docs, not memory) that it rejects with 429 rather than queuing — ruled
+  out. llama-swap looked purpose-built but its concurrency limit is scoped
+  per-model, not global — doesn't solve cross-model contention, our actual
+  problem — ruled out. HAProxy's `maxconn`+queue+`timeout queue` is a
+  direct match, mature for two decades. Confirmed our own proxy never had
+  real LLM-protocol-specific logic before committing to the swap, so this
+  is a like-for-like replacement, not a scope reduction.
+- 2026-08-06 (claude): built + deployed HAProxy replacement, then
+  deliberately reproduced the exact abrupt-disconnect scenario the custom
+  proxy's hang bug was theorized to come from — raw socket, real streaming
+  request, real model, killed mid-stream with no clean HTTP close.
+  Follow-up request succeeded in 787ms, not stuck. This is a direct,
+  reproduced confirmation (not just a plausible theory this time) that the
+  new implementation doesn't share the old one's failure mode.
+- 2026-08-06 (claude): found and investigated a secondary, real but minor
+  issue — HAProxy relays streamed chunks in coarser bursts than litellm's
+  native per-token delivery (~230ms vs ~33ms between arrivals). Tried one
+  documented-relevant tunable (`tune.h1.zero-copy-fwd-send off`), measured
+  no real improvement, reverted rather than keep unproven config
+  complexity. Confirmed this doesn't affect the semaphore's actual
+  hold-duration correctness (total completion time is comparable either
+  way) — logged as a known streaming-smoothness tradeoff, not chased
+  further since it's not blocking.
 
 ## Handoff notes
-**Current real state (2026-08-06, post-revert): pi-web talks to litellm
-directly on :4000 again — the queue proxy is NOT in the live path.** This
-is the known-good, pre-M-094 state. `docker/litellm-queue-proxy/server.ts`
-(the proxy), its test harness, and the compose service are all still
-committed to `main` and the proxy container is still running on the box
-(`litellm-queue-proxy`, port 4001) — it just has zero callers pointed at
-it right now, same as right after Phase 1. `PI_WEB_FACTORY_STEP_TIMEOUT_MS`
-support is still live in `piwebClient.ts` and the compose env (harmless,
-unused while nothing points at the proxy).
+**Current real state (2026-08-06): pi-web talks to litellm directly on
+:4000 — the queue proxy is deployed and verified but NOT in the live path
+yet.** This is still the known-good, pre-cutover state.
+
+The OLD custom Bun proxy (`docker/litellm-queue-proxy/server.ts`) has been
+stopped and its compose service replaced — source stays in the repo for
+reference/history (its own decision log documents the real bug it had),
+container no longer running. The NEW HAProxy-based proxy
+(`docker/litellm-queue-haproxy/haproxy.cfg`) is running on the box right
+now and has passed every test the old one did, PLUS a real, deliberate
+reproduction of the abrupt-disconnect scenario the old one's bug is
+theorized to have come from (see Decision log — 787ms follow-up, not
+stuck). `PI_WEB_FACTORY_STEP_TIMEOUT_MS` support is still live in
+`piwebClient.ts` and the compose env (harmless, unused while nothing
+points at the proxy).
 
 To check the proxy's live status on the box:
-`ssh local-ai-machine 'docker ps --format "{{.Names}}\t{{.Status}}" | grep litellm-queue-proxy'`
-`ssh local-ai-machine 'docker logs litellm-queue-proxy'`
+`ssh local-ai-machine 'docker ps --format "{{.Names}}\t{{.Status}}" | grep litellm-queue-haproxy'`
+`ssh local-ai-machine 'docker logs litellm-queue-haproxy'`
 
-**A real bug was found and reverted during Phase 2** — see the Phase 2
-items above for the full account. Short version: a real request through
-the proxy can hang indefinitely with no visible error, and while stuck it
-blocks the proxy's own health endpoint too (no bypass). This was live and
-affecting every pi-web session (human and automated) for roughly 20
-minutes before being caught and reverted. **Do not repoint pi-web at the
-proxy again until Phase 3 (items 19-22) is done** — a timeout safety
-valve, a health-check bypass, and an actual reproduction of the suspected
-root cause (abrupt client disconnect not triggering the stream's
-`cancel()` path), not just the theory.
+**The original Phase 2 cutover attempt found a real bug and was reverted**
+(see Phase 2 items above for the full account — the custom Bun proxy could
+hang indefinitely with no visible error, and blocked its own health
+endpoint while stuck, live for ~20 minutes affecting every pi-web session
+before being caught). That specific bug class has since been directly
+disproven against the new HAProxy implementation via deliberate
+reproduction, not just theory — see item 21. **Still needed before
+repointing pi-web again:** the real end-to-end test (item 24 — two
+concurrent real Workflow Runs with HAProxy in place) has NOT been re-run
+yet, and any cutover attempt still needs a fresh go-ahead per the same
+caution as the first attempt.
 
 Separately, filed for its own investigation (not M-094): pi-web-factory's
 own project-registration flow (`piwebProject.ts`'s `resolveWorkspaceId`)
