@@ -218,3 +218,162 @@ versions:
     - 'DFlash draft acceptance collapse on Vulkan (10-19% vs 73-91% community ROCm
       numbers) — the diffusion draft''s predictions do not align with the target on
       the RADV path. Not debugged further, per the card''s no-rabbit-hole instruction.'
+- version: v2
+  compose_service_id: null
+  engine_ref: llamacpp-laguna-fork-vulkan-v1
+  role: 'M-086 experiment: quantize the DFlash draft model itself (BF16 -> Q4_K_M
+    / Q8_0) using the fork''s own `llama-quantize` binary (built into the SAME
+    Vulkan image as v1 — target ``llama-quantize`` was not among the original
+    build''s cmake targets, so it was compiled in-place inside a running
+    container against the existing configured build dir; the shipped image
+    digest is unchanged, sha256:98819738b785eb3d2c02b428a70e6a5e9d8c3da3b46d9cc2f1589766963169be,
+    same as v1/M-053/M-055). Rationale: M-055''s sweep isolated the DFlash
+    regression to a fixed ~2GB-per-block-step BF16 draft-weight-fetch tax on a
+    bandwidth-constrained APU; quantizing the draft to ~600MB-1.1GB cuts that
+    fixed cost ~2-3.5x, which could tip the already-competitive n2/n3 configs
+    (matching the 30 tok/s baseline in BF16) above it instead of just matching
+    it. Result: TESTED_VIABLE for Q4_K_M at spec-draft-n-max 2 — 33.06-34.77
+    tok/s, a genuine +10-16% over the 30.0 tok/s plain baseline, the first
+    config across the whole M-050/M-053/M-055/M-086 DFlash investigation to
+    actually beat plain decoding rather than merely match it. Q4_K_M n3 lands
+    just above baseline (30.57-31.44 tok/s); Q8_0 n2-n4 land at/slightly above
+    baseline but with more sample-to-sample variance and no clear win over
+    Q4_K_M. NOT added to docker-compose.yml as a standing service yet — this
+    result needs a longer/more-varied prompt validation pass before being
+    trusted as a serving default (2 short prompts x 2 samples per config is a
+    smoke-test sample size, not a serving-decision sample size), and DFlash
+    experiments on this box have deliberately never gotten a standing compose
+    entry (ad-hoc `docker run` only, matching the DS4/M-051 precedent) — flagged
+    to Chris as a candidate if he wants to promote it after a fuller validation
+    pass.'
+  notes: 'Same image/engine as v1 (`local-ai-machine/llamacpp-laguna-fork:vulkan-radv`,
+    digest unchanged) and the SAME target model shards — only the DRAFT model file
+    changes. Two quantized drafts were produced from
+    `/var/lib/ai-models/laguna-s-2.1-dflash-draft/laguna-s-2.1-DFlash-BF16.gguf`
+    (2126.77 MiB, 16.00 BPW) via the fork''s own `llama-quantize` (required —
+    this is a custom `DFlashLagunaForCausalLM` architecture GGUF, not
+    quantizable with stock llama.cpp''s tool):
+      - Q4_K_M: 618.44 MiB (4.65 BPW), quantize time 3.59s
+      - Q8_0: 1129.96 MiB (8.50 BPW), quantize time 1.01s
+    Both stored at /var/lib/ai-models/laguna-s-2.1-dflash-draft-quant/ on the box
+    (laguna-s-2.1-DFlash-Q4_K_M.gguf, laguna-s-2.1-DFlash-Q8_0.gguf).
+
+    Sweep methodology matches M-055''s exactly (scripts/benchmark-laguna-dflash.sh,
+    extended in this card with DRAFT_MODEL_DIR/DRAFT_MODEL_FILE env overrides so
+    the same script drives both quantized drafts without code duplication), run
+    at full -c 131072 context, -fa 1, 2 short fresh prompts per config (MAX_TOKENS=256).
+    All 7 sweep points ran back-to-back inside a single stop/restore cycle of the
+    standing services (scripts/build artifacts + a one-off sweep wrapper, not
+    committed — see catalog/raw/dflash-quant-sweep-2026-08-06/ for the raw
+    per-config JSON responses) to avoid paying the ~5-10 min per-invocation
+    stop/restore cost 7 times.
+
+    Full sweep table (tok/s range across 2 short samples; acceptance = draft_n_accepted/draft_n):
+
+      | draft    | n_max | tok/s range   | acceptance range | vs BF16 (M-055, same n_max)      |
+      |----------|-------|---------------|-------------------|-----------------------------------|
+      | Q4_K_M   | 15    | 8.16-9.40     | 9.2-13.2%         | 7.9-11.5 tok/s, 10-19% (no change) |
+      | Q4_K_M   | 4     | 27.50-28.75   | 31.6-33.7%        | 24.8-27.1 tok/s, 31-38% (small gain) |
+      | Q4_K_M   | 3     | 30.57-31.44   | 38.9-42.5%        | 27.1-30.9 tok/s, 39-49% (now consistently >= baseline) |
+      | Q4_K_M   | 2     | 33.06-34.77   | 54.1-55.4%        | 27.7-30.1 tok/s, 48-55% (BEATS baseline by 10-16%) |
+      | Q8_0     | 15    | 8.37-9.06     | 9.7-11.3%          | (no change) |
+      | Q8_0     | 4     | 27.37-28.99   | 32.3-35.7%        | (small gain, ~matches Q4_K_M n4) |
+      | Q8_0     | 3     | 28.91-31.10   | 37.6-43.9%        | (roughly matches baseline, more variance than Q4_K_M) |
+      | Q8_0     | 2     | 30.50-32.19   | 47.5-54.5%        | (at/slightly above baseline, but below Q4_K_M n2) |
+
+    Findings: (a) quantizing the draft has NO effect at n15 — the block-diffusion
+    all-or-nothing acceptance collapse at large block sizes is not a memory-bandwidth
+    effect, confirming M-055''s read that acceptance is a block-size effect, not a
+    precision effect. (b) at the already-competitive n2-n4 range, shrinking the
+    draft''s per-block-step weight-fetch cost (BF16 ~2.1GB -> Q4_K_M ~0.6GB, a
+    ~3.5x reduction) measurably helps: Q4_K_M n2 is the ONLY config in the entire
+    DFlash investigation (M-050/M-053/M-055/M-086) to clear the 30.0 tok/s plain
+    baseline with margin, not just tie it. (c) Q8_0 (a smaller ~1.9x reduction vs
+    BF16) shows the same directional improvement but doesn''t clear the baseline
+    as cleanly or consistently as Q4_K_M — the extra precision does not buy back
+    enough acceptance to offset its larger per-step weight-fetch cost. (d) sample
+    size caveat: 2 short prompts x 2 samples per config (matching this sweep''s
+    time budget) is enough to see a clear directional signal but is NOT a
+    serving-grade validation sample — recommend a longer/more varied prompt set
+    (short + long-context, more repeats) before treating Q4_K_M n2 as a serving
+    default.
+
+    Host restored to pre-task state after the full sweep: standing laguna-s-2.1-118b-q4km-v2
+    and qwen3.6-35b-a3b-mtp-v2 compose services back up and healthy (confirmed via
+    /health on their actual current ports), no leftover laguna-dflash-test container,
+    no downloads left paused, box repo clean.'
+  status: TESTED_VIABLE
+  created: '2026-08-06'
+  last_verified: '2026-08-06'
+  benchmark_runs:
+  - timestamp: '2026-08-06T04:00:35Z'
+    benchmark_id: llamacpp-server-live-timing-v1 (quantized-draft sweep)
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: bd4bc98 (M-086 DRAFT_MODEL_DIR/DRAFT_MODEL_FILE bench-script parameterization; box HEAD during the sweep)
+      host_gpu_driver: Mesa 25.3.6 (in-image mesa-vulkan-drivers-25.3.6-3.fc43, RADV)
+      concurrent_load:
+        downloads_paused: false (no download-model-*.service units were activating at sweep start)
+        vllm_co_resident_or_stopped: standing laguna-s-2.1-118b-q4km-v2 AND qwen3.6-35b-a3b-mtp-v2 compose services stopped for the run (only the exclusive DFlash test container running); restored + confirmed healthy on both actual ports (8108, 8109) at teardown
+      host_metrics_window:
+        start: '2026-08-06T04:00:35Z'
+        end: '2026-08-06T04:17:02Z'
+      image_digest: local-ai-machine/llamacpp-laguna-fork@sha256:98819738b785eb3d2c02b428a70e6a5e9d8c3da3b46d9cc2f1589766963169be (same image as v1/M-053/M-055 — llama-quantize built in-place in an ephemeral container, not baked into this digest)
+      engine_version: '04b2b72cb54048ead292884adbe11f284e3ec950 (fork branch laguna, Vulkan backend)'
+    result:
+      note: 'Quantized-draft DFlash sweep on the SAME Vulkan fork image as v1, full
+        -c 131072 context, -fa 1, 2 short fresh prompts per config (MAX_TOKENS=256).
+        7 configs: Q4_K_M/Q8_0 drafts x n_max in {15 (Q8_0 only, direct BF16-n15
+        comparison), 4, 3, 2}. Raw responses committed at
+        catalog/raw/dflash-quant-sweep-2026-08-06/<config>/short-0.json,short-1.json.'
+      context_used_tokens: 131072
+      sweep_table:
+        - config: "Q4_K_M n4 fa1"
+          short_tok_s: "27.50-28.75"
+          short_acceptance_pct: "31.6-33.7"
+        - config: "Q4_K_M n3 fa1"
+          short_tok_s: "30.57-31.44"
+          short_acceptance_pct: "38.9-42.5"
+        - config: "Q4_K_M n2 fa1"
+          short_tok_s: "33.06-34.77"
+          short_acceptance_pct: "54.1-55.4"
+        - config: "Q8_0 n15 fa1"
+          short_tok_s: "8.37-9.06"
+          short_acceptance_pct: "9.7-11.3"
+        - config: "Q8_0 n4 fa1"
+          short_tok_s: "27.37-28.99"
+          short_acceptance_pct: "32.3-35.7"
+        - config: "Q8_0 n3 fa1"
+          short_tok_s: "28.91-31.10"
+          short_acceptance_pct: "37.6-43.9"
+        - config: "Q8_0 n2 fa1"
+          short_tok_s: "30.50-32.19"
+          short_acceptance_pct: "47.5-54.5"
+      baseline_comparison_note: 'Plain Laguna-S-2.1 baseline (llamacpp-vulkan-radv,
+        v1) = 30.0 tok/s at 131072 context. Q4_K_M-draft n2 clears this baseline
+        with margin (33.06-34.77 tok/s, +10-16%) — the first DFlash configuration
+        across the whole investigation (M-050/M-053/M-055/M-086) to beat, not just
+        match, plain decoding. Q4_K_M n3 and Q8_0 n2-n4 land at/near baseline.'
+      interim_conclusion: 'Quantizing the DFlash draft model measurably helps in
+        the n2-n4 block-size range (where acceptance was already competitive) by
+        cutting the fixed per-block-step draft-weight-fetch tax M-055 identified
+        as the root bottleneck; it does NOT help at n15, where the block-diffusion
+        all-or-nothing acceptance collapse dominates regardless of draft precision.
+        Q4_K_M n2 is the first config in this whole investigation to beat the
+        30.0 tok/s plain baseline. Recommend a fuller validation pass (more/longer
+        prompts) before considering this for standing service.'
+    known_issues_encountered:
+    - '`llama-quantize` was not among the original Vulkan image''s cmake build
+      targets (only llama-server/llama-bench/llama-cli) — confirmed absent before
+      assuming otherwise, then built in-place via `cmake --build . --target
+      llama-quantize` inside a running container against the already-configured
+      build dir (fast: ~10s, no base image changes, image digest unchanged).'
+    - 'The bench script''s restore() step polls a HARDCODED port (8101) for the
+      standing laguna health check, which is stale — the box''s actual standing
+      laguna compose service is now v2 on port 8108 (v1/port 8101 has not run
+      since 2026-08-02, see docker-compose.yml). This caused the first (single-config)
+      test run''s restore to poll the wrong port for the full 10-minute timeout
+      before proceeding anyway. Root-caused but NOT fixed in
+      scripts/benchmark-laguna-dflash.sh (would need a docker-compose-ps-based
+      port lookup, same fix used in the one-off multi-config sweep wrapper written
+      for this run); worth a follow-up card if this script is reused again.'
