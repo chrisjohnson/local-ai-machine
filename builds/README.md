@@ -54,3 +54,14 @@ untainted"). The orchestrator's own run/commit context is the only place the
 true engine is recorded (the tool labels llama.cpp builds "sglang (assumed)"
 because it only understands vllm:/sglang: Prometheus metrics and falls back
 to client-side timing — the numbers are valid, the label is not).
+
+## Queuing runs — the orchestrator API
+
+Runs are enqueued and monitored over the orchestrator's JSON API — never by
+tailing container logs. **`docs/benchmark-api.md` is the reference**: `POST
+/run` to enqueue, then poll `GET /runs/<id>` (a small JSON doc) until
+`status` is `done`/`failed`; consume `GET /runs/<id>/log?stream=1` (SSE) for
+live progress. Enqueueing is also available from the web UI
+(`http://192.168.1.226:8092/`). Remember: a run stops every non-target model
+service, so restore what was serving before the run afterwards
+(`docker compose up -d <svc>` on the box).
