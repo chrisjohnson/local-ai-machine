@@ -78,6 +78,78 @@ Relevant existing surface area (read, don't redesign):
 5. [ ] Provision the bench checkout + git credentials on the box.
 6. [ ] Deploy, smoke-test (dry/real), verify commit+push of a result.
 
+## Design (refined 2026-08-06, after Chris Q&A + tool research)
+
+**Tool**: julien-lebot/llm-inference-bench — single MIT-licensed script
+`llm_decode_bench.py` (deps httpx+rich, no GPU needed). OpenAI-compatible
+streaming `/v1/chat/completions`; auto-detects vLLM/SGLang; falls back to
+client-side timing when server `/metrics` lacks `vllm:`/`sglang:` prefixes
+(always the case for llama.cpp + Ollama → engine label reads "sglang" but
+numbers are client-side; raw JSON kept untainted). Writes structured JSON:
+`metadata` + `prefill` + per-cell `results[]` + `summary_table`. CLI:
+`--host --port --model --concurrency --contexts --duration --max-tokens
+--output [--kv-budget --skip-prefill]`. "Record raw data" = the `--output`
+JSON (per-cell throughput/TTFT/queue/errors) + stdout log.
+
+**Container**: new `llm-inference-bench` compose service (always-up label —
+MUST be, so its own stop-everything logic never stops it).
+- `build: {context: ./llm-inference-bench}` — new dir: Dockerfile (python
+  3.11-slim + docker-cli + git + openssh-client + httpx/rich/fastapi/uvicorn),
+  vendored `llm_decode_bench.py` at a pinned upstream commit, orchestrator app.
+- `network_mode: host` (only way to reach the 127.0.0.1-only model ports;
+  litellm/prometheus precedent). Web UI binds 0.0.0.0:<port>, LAN no auth.
+- `user: "1000:1000"` + `group_add: ["131"]` + `/var/run/docker.sock` mount
+  (identical pattern to omp/pi-web — chris uid 1000, box docker group gid 131).
+- volumes: `/home/chris/local-ai-machine-bench:/bench` (rw — the DEDICATED
+  checkout, hard-reset per run, results pushed from here), box deploy key
+  mounted ro + GIT_SSH_COMMAND + git identity via env.
+- `restart: unless-stopped`.
+
+**Build identity**: build name = directory under `builds/` (and the compose
+service name). `builds/<name>/build.yaml` = (1) the verbatim docker-compose
+service blob + (2) hand-authored derived metadata (params, active params,
+quant, mtp/dflash, etc.) + optional `bench:` overrides. The ORCHESTRATOR never
+writes build.yaml — its only job is raw benchmark data. Launch = named compose
+services (`docker compose up -d <svc>`), ports/served-name parsed from the
+mount's compose file (pattern: `_load_compose_services`).
+
+**Run lifecycle** (queue item = list of builds; run serially, one worker):
+1. `git fetch` + `git reset --hard origin/main` on /bench (before anything —
+   compose defs + build.yaml are current).
+2. Stop all non-always-up (exclusive) compose services EXCEPT this run's
+   targets. Bring up targets via named services. Wait all healthy
+   (curl /health on each parsed port, bounded timeout).
+3. Per build, serially: run the tool with build.yaml `bench:` overrides (or
+   defaults `concurrency 1,2,4,8 / contexts 0,16384,32768,65536 / duration 30
+   / max-tokens 8192`) against `localhost:<port>`, `--model` = served name,
+   `--output builds/<name>/benchmarks/llm-inference-bench/<timestamp>.json`.
+4. Model container crash during a benchmark → `docker compose restart <svc>`,
+   wait healthy, re-run ONCE; second crash → `docker logs` to
+   `builds/<name>/benchmarks/.../crash-<ts>.log`, mark build failed, continue.
+5. On success: `git pull --rebase` + `git add` result file(s) + commit + push
+   to main, from /bench.
+6. End of run: leave targets up (Chris's choice); non-target exclusive
+   services stay stopped.
+
+**Failure modes adopted from existing stack**: hard-fail on empty/no-results
+output (tool exits "No results collected" or all cells num_completed==0) —
+never trust bogus data; health-wait before every bench; bounded-but-generous
+whole-run timeout (tool already has per-request 600s caps); no service cycling
+mid-run (2026-07-29 full-system hang lesson — co-existence is the point);
+serial queue, one run at a time; persist queue + run state to a gitignored
+path in /bench so the orchestrator's own restart resumes pending runs;
+download-pausing explicitly OUT OF SCOPE v1 (container can't sudo systemctl)
+— documented.
+
+**Queue/web server** (FastAPI, LAN no auth, port TBD ~8092):
+- `POST /runs` body `{"runs": [["svc-a"], ["svc-b","svc-c"]]}` → enqueue.
+- `GET /queue` (pending/running/done + per-build status), `GET /runs/{id}`,
+  `GET /builds` (valid names). Simple polling HTML page.
+
+**Provisioning on box**: fresh `git clone` to /home/chris/local-ai-machine-bench
+using the box's existing push-capable deploy key; ssh known_hosts for github;
+git identity (Chris Johnson / chrisjohnson0@gmail.com, matching repo).
+
 ## Signals
 
 ## Decision log
@@ -85,6 +157,16 @@ Relevant existing surface area (read, don't redesign):
 - 2026-08-06 (big-pickle): filed from Chris's verbatim request, claimed.
   Phase 1 is the interactive refinement session — no implementation before
   it completes (his explicit ask).
+- 2026-08-06 (big-pickle): refinement Q&A answered by Chris: tool =
+  julien-lebot/llm-inference-bench; build = compose service name + a
+  hand-authored `builds/<name>/build.yaml` carrying the verbatim compose
+  blob + derived metadata (orchestrator only produces raw data, never writes
+  build.yaml); download-pause out of scope v1 (documented); crash = restart
+  once + re-run, then logs + fail; post-run = leave targets up (no
+  snapshot-restore); Ollama included via standard compose-service path
+  (stack may be adjusted later if needed); web UI = LAN, no auth; checkout =
+  /home/chris/local-ai-machine-bench + box's deploy key; queue state
+  persisted across container restarts.
 
 ## Handoff notes
 
