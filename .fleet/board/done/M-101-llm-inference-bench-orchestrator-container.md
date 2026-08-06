@@ -65,7 +65,7 @@ Relevant existing surface area (read, don't redesign):
 
 ## Plan
 
-1. [ ] **(current)** Refine this ticket with Chris — resolve the open
+1. [x] Refine this ticket with Chris — resolve the open
        questions in Handoff notes; record answers in Decision log. No code
        until this is done.
 2. [x] Finalize design decisions (build identity, llm-inference-bench repo,
@@ -73,12 +73,15 @@ Relevant existing surface area (read, don't redesign):
        scope, checkout+key provisioning, queue persistence) — confirmed
        2026-08-06: build.yaml shape approved (compose blob + derived + bench
        overrides); web UI LAN port 8092 approved; green light to implement.
-3. [ ] Implement the orchestrator image + code (Dockerfile under
+3. [x] Implement the orchestrator image + code (Dockerfile under
        `docker/llm-inference-bench/` per repo convention).
-4. [ ] Add the `llm-inference-bench` service to `docker/docker-compose.yml`
+4. [x] Add the `llm-inference-bench` service to `docker/docker-compose.yml`
        (socket mount, checkout mount, user/perms, network).
-5. [ ] Provision the bench checkout + git credentials on the box.
-6. [ ] Deploy, smoke-test (dry/real), verify commit+push of a result.
+5. [x] Provision the bench checkout + git credentials on the box.
+6. [x] Deploy, smoke-test (dry/real), verify commit+push of a result.
+7. [x] Live log streaming: per-run activity log (worker stages + command
+       echoes + bench output teed), SSE tail endpoint, auto-following UI
+       panel — added at Chris's direction after the first successful run.
 
 ## Design (refined 2026-08-06, after Chris Q&A + tool research)
 
@@ -147,6 +150,11 @@ download-pausing explicitly OUT OF SCOPE v1 (container can't sudo systemctl)
 - `POST /runs` body `{"runs": [["svc-a"], ["svc-b","svc-c"]]}` → enqueue.
 - `GET /queue` (pending/running/done + per-build status), `GET /runs/{id}`,
   `GET /builds` (valid names). Simple polling HTML page.
+- `GET /runs/{id}/log[?stream=1][?build=<name>]` — run activity log (all
+  worker stages + `$` command echoes + teed bench output, stored gitignored
+  at `builds/.orchestrator/runs/<id>.log`); `stream=1` = SSE tail replayed
+  from the top, ends on run completion. UI auto-follows the active run and
+  streams it live.
 
 **Provisioning on box**: fresh `git clone` to /home/chris/local-ai-machine-bench
 using the box's existing push-capable deploy key; ssh known_hosts for github;
@@ -173,6 +181,29 @@ git identity (Chris Johnson / chrisjohnson0@gmail.com, matching repo).
   build.yaml schema (verbatim compose blob + `derived:` metadata + optional
   `bench:` CLI overrides; orchestrator never writes build.yaml); web UI =
   LAN port 8092, no auth; implementation green-lit. Proceeding to build.
+- 2026-08-06 (big-pickle): DEPLOYED + SMOKE-TESTED on the box. Direct-to-main
+  (Chris chose no PR for the initial landing); firewall port 8092 opened via
+  configuration.nix (`allowedTCPPorts` + nixos-rebuild). Real smoke run
+  (run 5) against `qwen3.5-4b--vllm-therock-gfx1151-v1` completed end-to-end:
+  git hard-reset → exclusivity stop of 27 services → health → 8-cell bench →
+  commit+push of raw JSON (`63bb7ac`). Run 6 repeated cleanly (`b1743e0`).
+  Four container bugs caught by real runs, each fixed + redeployed:
+  (1) `dc.run()` rejected `env` kwarg → `app/compose.py` (f5e48a3);
+  (2) Debian trixie `docker.io` ships ONLY dockerd — no client → split
+  packages `docker-cli` + `docker-compose` (4a258dc); (3) ssh/git died with
+  "No user exists for uid 1000" on python:3.11-slim → `useradd --uid 1000
+  --create-home bench` + `HOME` env (202e3e3); (4) per-build stdout log only
+  captured bench output, worker stages invisible → run activity log + tee
+  + SSE streaming + UI panel (2893a8d). Services stopped by exclusivity are
+  restored manually post-run (ornith-q4, laguna-v2, open-webui).
+- 2026-08-06 (big-pickle): DONE. Card moved to done/ after the second
+  successful real smoke run and the live log-streaming follow-up requested
+  by Chris (verified: activity log under builds/.orchestrator/runs/<id>.log
+  captures every stage incl. rich bench frames; SSE endpoint tails it live;
+  UI auto-follows the active run). Deferred (documented, not blocking):
+  run fingerprint capture (image digest/engine version/host kernel per
+  OPERATIONS.md) not yet in result JSON; download-pause out of scope v1;
+  post-run service restore still manual.
 
 ## Handoff notes
 
