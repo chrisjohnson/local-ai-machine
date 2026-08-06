@@ -19,14 +19,10 @@ This is an incredibly detailed and well-documented benchmark log. Your findings 
 ## Plan
 1. [x] Triage the other agent's three suggestions against what's actually already
    been tried (M-055, `.fleet/board/done/`) before assuming any of them are new:
-   - **#2, try ROCm/HIP:** ALREADY DONE, M-055. Not a partial result — the ROCm
-     build of the same fork (`local-ai-machine/llamacpp-laguna-fork:rocm-7.14`,
-     gfx1151, `-DGGML_HIP=ON`) fails to even LOAD on this hardware (hangs
-     indefinitely paging weights, SIGTERM-immune, reproduced for both the DFlash
-     config AND a plain no-draft load). The community's 73-91% ROCm acceptance
-     numbers don't reproduce on this box at all — this isn't "lower acceptance
-     than hoped," the backend doesn't function here. Confirmed dead end, not
-     worth re-attempting.
+   - **#2, try ROCm/HIP:** REVISED 2026-08-06 after fresh web research (Chris's
+     explicit ask: "new info comes out every day, do more research") — this is
+     no longer a confirmed dead end. See the dedicated section below; this is now
+     the HIGHEST-priority candidate, not a skip.
    - **#3, drop context to 8k/16k:** the suggested mechanism (KV-cache memory
      pressure choking the memory controller) is a DIFFERENT bottleneck than the
      one M-055 already diagnosed (a fixed ~2GB draft-model weight fetch per
@@ -47,31 +43,57 @@ This is an incredibly detailed and well-documented benchmark log. Your findings 
      already matching the 30 tok/s baseline in BF16) above it instead of just
      matching it. This is the one idea worth actually running.
 2. [ ] **Blocked on Chris's explicit go-ahead** (per this card's own instruction:
-   "with approval, implement the changes and benchmark") — recommending: quantize
-   the DFlash draft only (skip #2 entirely, skip #3 unless #1 disappoints),
-   re-run M-055's exact sweep methodology (same n_max sweep, same short+long
-   prompts) against the quantized draft, record as a new `benchmark_runs[]` entry
-   in `catalog/builds/laguna-s-2.1-118b-q4km--llamacpp-laguna-fork-vulkan-dflash.yaml`
-   (same file the BF16 runs are already in — same build family, different draft
-   quantization, not a new build).
-3. [ ] Quantize the draft: use the SAME fork's own `llama-quantize` binary (built
-   alongside `llama-server` in the existing
-   `local-ai-machine/llamacpp-laguna-fork:vulkan-radv` image from M-055/M-053) —
-   NOT stock llama.cpp's quantize tool, since this is a custom
-   `DFlashLagunaForCausalLM` architecture GGUF and the fork's own tool is the
-   one guaranteed to understand its tensor layout. Confirm the binary actually
-   exists in that image before assuming it does (the suggestion itself explicitly
-   asked "do you have the tools" — verify, don't guess).
-4. [ ] Re-run the sweep (n15/n8/n6/n4/n3/n2, same prompts, same fa1) against the
-   quantized draft, both Q4_K_M and Q8_0 if step 3 makes both cheap. Record
-   acceptance + tok/s exactly like M-055's table. Compare against BOTH the BF16
-   DFlash numbers (already in the catalog) and the 30.0 tok/s plain baseline —
-   the only outcome that matters is whether any config now BEATS 30 tok/s, not
-   just matches it.
-5. [ ] Update this card + the catalog with the real result either way (a clean
-   win, a smaller-but-still-a-wash result, or no change) — record honestly,
-   matching M-055's own precedent of recording a negative result plainly rather
-   than burying it.
+   "with approval, implement the changes and benchmark") — recommending, in
+   priority order: (a) retry ROCm properly (see below — this is now the strong
+   favorite, it targets the actual acceptance-collapse problem, not just
+   overhead), then (b) quantize the DFlash draft regardless of (a)'s outcome
+   (cheap, additive, helps either backend). Skip #3 (context) unless both
+   disappoint.
+3. [ ] **ROCm retry** — new image, NOT a rebuild of the M-055 one:
+   - Base ROCm on **7.2.2** (specifically validated for gfx1151 by two
+     independent community write-ups) or **6.4.4** (documented as measurably
+     faster than the whole 7.x family — worth trying if 7.2.2 works, to see if
+     the extra throughput matters here) — NOT 7.14 (M-055's version, untested
+     by either "known-good" guide, and 7.x as a family has a documented 2-3x
+     throughput regression vs 6.4.4 on this exact chip).
+   - Add the build flags M-055's Dockerfile was missing entirely (confirmed by
+     reading it directly — it only had `-DGGML_HIP=ON -DGGML_VULKAN=OFF
+     -DAMDGPU_TARGETS=gfx1151`):
+     `-DGGML_HIP_ROCWMMA_FATTN=ON` (needs the `rocwmma-dev` package —
+     M-055 assumed FA was fundamentally broken on gfx1151/ROCm and ran with
+     `-fa 0`; it's actually a missing-package problem, not a hardware limit),
+     `-DGGML_HIP_NO_VMM=ON` (documented "critical stability fix"),
+     `-DGGML_HIP_MMQ_MFMA=ON`.
+   - Add the runtime flags for the actual failure M-055 hit: `-dio` (two
+     independent sources: models over ~6GB hang on load without it — M-055's
+     68GB target + 2GB draft never used it) and `--no-mmap` + a cgroup memory
+     budget (the LucRoot pitfalls doc names M-055's EXACT symptom —
+     "KFD driver thrash," process "pinned at 100% single-core and zero
+     syscalls," `llama-server` ignoring SIGTERM — as a known, fixable
+     swap-thrashing issue, not a backend defect).
+   - Try `HSA_OVERRIDE_GFX_VERSION=11.5.1` if the chosen ROCm version doesn't
+     detect gfx1151 natively (version-dependent per the sources).
+   - First goal: does the server load at all this time? If yes, re-run M-055's
+     exact sweep methodology and see if acceptance actually reproduces the
+     community's 73-91% (that number was NEVER actually measured on this box —
+     M-055's control never got past loading). If it does, this could beat the
+     Vulkan path's fundamental accuracy problem, not just its overhead problem.
+4. [ ] **Quantize the DFlash draft** (Q4_K_M and/or Q8_0) regardless of step 3's
+   outcome — genuinely untested by any prior card, targets the SEPARATE overhead
+   problem M-055 already diagnosed (fixed ~2GB draft-weight-fetch tax per block
+   step). Use the fork's own `llama-quantize` binary (built alongside
+   `llama-server` in the existing Vulkan image) — NOT stock llama.cpp's
+   quantize tool, since this is a custom `DFlashLagunaForCausalLM` architecture
+   GGUF. Confirm the binary actually exists before assuming it does.
+5. [ ] Re-run the sweep (n15/n8/n6/n4/n3/n2, same prompts, same fa1) for
+   whichever of 3/4 actually works, on whichever backend(s) got that far.
+   Record acceptance + tok/s exactly like M-055's table, in the relevant
+   catalog file(s) (new ROCm entry if 3 gets further than M-055 did; the
+   existing Vulkan DFlash file for 4). Compare against the 30.0 tok/s plain
+   baseline — the only outcome that matters is BEATING it, not matching it.
+6. [ ] Update this card + the catalog with the real result either way — record
+   honestly, matching M-055's own precedent of recording a negative result
+   plainly rather than burying it.
 
 ## Signals
 <!-- signal: claude 2026-08-05T23:58Z — triaged the feedback: #2 (ROCm) already
@@ -93,10 +115,60 @@ it. -->
   `local-ai-machine` right now. Quantization itself is CPU-only and wouldn't
   contend for GPU, but avoiding any concurrent box action here rather than
   reasoning through exactly how much overlap is actually safe.
+- 2026-08-06 (claude): Chris explicitly asked for fresh web research on the
+  ROCm angle specifically ("new info comes out every day, maybe someone has a
+  reproducible build or specific benchmarks on strix halo that sound
+  plausible now") before writing off #2. Did that research and it changes the
+  recommendation materially — walking back my own "confirmed dead end" from
+  earlier the same day. Key findings, all from web search (sources below):
+  - Two independent, detailed community write-ups (`ggml-org/llama.cpp`
+    discussion #20856, and `LucRoot/Strix-Halo-Linux-Llama_cpp-ROCm`, a
+    dedicated production build recipe + pitfalls doc for THIS exact chip)
+    both document gfx1151 ROCm working well for other models, with specific
+    required flags neither present in M-055's build.
+  - Cross-checked M-055's actual Dockerfile
+    (`docker/llamacpp-laguna-fork-rocm.dockerfile`) directly rather than
+    trusting my own memory of it: it only sets `-DGGML_HIP=ON
+    -DGGML_VULKAN=OFF -DAMDGPU_TARGETS=gfx1151` — missing
+    `GGML_HIP_ROCWMMA_FATTN` (both guides: needed for working flash attention
+    on gfx1151 at all — M-055 assumed FA was fundamentally broken here and
+    ran `-fa 0`, but that's a missing-package problem per these sources, not
+    a hardware ceiling), `GGML_HIP_NO_VMM` ("critical stability fix" per one
+    guide), and `GGML_HIP_MMQ_MFMA`.
+  - M-055's exact hang symptom (server produces no output for 7+ minutes at
+    low RSS, ignores SIGTERM, even a PLAIN no-draft load stalls) has a NAME
+    in the LucRoot pitfalls doc — "KFD driver thrash," caused by unified
+    memory pressure triggering swap storms without cgroup budgets — with a
+    documented fix (`--no-mmap` + cgroup memory limits). Separately, one
+    guide states models over ~6GB hang on load without the `-dio` runtime
+    flag; M-055's 68GB+2GB load never used it. M-055's control build never
+    even got a chance to fail on real acceptance numbers — it never made it
+    past loading, and now there's a plausible, specific reason why.
+  - ROCm 7.14 (M-055's version) is outside the specifically-validated
+    "known-good" range both guides describe (7.2.0-7.2.3) — and ROCm 7.x as a
+    family has a documented, real throughput regression vs 6.4.4 (one
+    first-hand report: 325 vs 1,132 tok/s on the same small dense model — a
+    ~3.5x difference), separate from the loading-hang issue.
+  - Net read: M-055's ROCm conclusion was real and honestly reported for the
+    EXACT build it tested, but that build was missing enough now-documented,
+    chip-specific fixes that "ROCm is a dead end on this hardware" was too
+    strong a generalization from it. The load-hang in particular looks like
+    a known, fixable issue, not a fundamental incompatibility — worth a
+    proper retry before concluding anything.
+  - Sources: [Known-Good Strix Halo ROCm + llama.cpp Stack (ggml-org/llama.cpp #20856)](https://github.com/ggml-org/llama.cpp/discussions/20856),
+    [LucRoot/Strix-Halo-Linux-Llama_cpp-ROCm](https://github.com/LucRoot/Strix-Halo-Linux-Llama_cpp-ROCm),
+    [ROCm 7+ performance regression on llama.cpp (ROCm/rocm-systems #2865)](https://github.com/ROCm/rocm-systems/issues/2865).
+  - Still NOT touching the box for this — same concurrent M-051/M-089 job is
+    still running.
 
 ## Handoff notes
-Waiting on Chris: go-ahead to quantize the DFlash draft (Q4_K_M and/or Q8_0) and
-re-run M-055's sweep against it. Once approved, this is a self-contained,
-bounded piece of work (no new downloads, no new base model, just requantizing an
-already-local ~2GB file) — should be quick once the box frees up from the
-concurrent M-051/M-089 work.
+Waiting on Chris for a go-ahead on two candidate experiments (revised
+2026-08-06, ROCm is now the priority one, see Decision log for why the
+earlier same-day "dead end" call was wrong):
+1. Retry ROCm properly — different version (7.2.2 or 6.4.4, not 7.14) +
+   the missing build/runtime flags above. This could resolve the actual
+   acceptance-collapse problem, not just the overhead problem.
+2. Quantize the DFlash draft to Q4_K_M/Q8_0 — cheap, additive, worth doing
+   regardless of (1)'s outcome.
+Both are self-contained (no new downloads) — should be quick once the box
+frees up from the concurrent M-051/M-089 work.
