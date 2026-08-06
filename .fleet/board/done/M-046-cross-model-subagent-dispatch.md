@@ -143,6 +143,7 @@ for implementation, not yet started.
 ## Signals
 <!-- signal: claude 2026-07-31T22:30Z — drafted, about to grill Chris on the open questions before any implementation starts -->
 <!-- signal: claude 2026-07-31T22:55Z — design grilled + finalized, ready for implementation pickup, nothing started yet -->
+<!-- signal: claude 2026-08-05T23:55Z — discarded, not implemented — superseded by pi-web-factory per Chris's direct call -->
 
 ## Decision log
 - Grilled with Chris directly (2026-07-31). Two real decisions made
@@ -155,5 +156,16 @@ for implementation, not yet started.
   doesn't reintroduce that scope: the extension's own default behavior
   (LLM picks `model`/`provider` per call, no external gate/framework) is
   the intended final shape, not a placeholder to be refined later.
+- 2026-08-05 (Chris): "46 can be discarded. this was before we did the new
+  factory." Design predates pi-web-factory (M-061 onward), which now covers
+  the actual need this card was reaching for — deterministic Step-bounded
+  agent dispatch with real observability (the trace db + visualizer), not
+  raw `subagent_spawn`/`subagent_wait` tool calls from an interactive
+  orchestrator session. Never implemented (all plan items were still
+  unchecked). Closing as superseded, not completed — the design work
+  itself isn't wasted (worth a glance if pi-web-factory ever needs a
+  Claude-Pro dispatch Role and the `pi-claude-bridge` integration notes
+  above are still directly relevant), but this card's own shape is moot.
 
 ## Handoff notes
+Discarded 2026-08-05 — superseded by pi-web-factory, never implemented.
