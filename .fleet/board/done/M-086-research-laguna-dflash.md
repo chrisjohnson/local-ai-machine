@@ -99,10 +99,42 @@ This is an incredibly detailed and well-documented benchmark log. Your findings 
    design, matching the DS4/M-051 precedent). Flagging to Chris: worth a
    fuller validation pass (longer/more varied prompts) before promoting
    Q4_K_M n2 to a standing service, his call whether that's worth doing.
-5. [ ] **ROCm retry** in progress — see Signals for live status.
-6. [ ] Update this card + the catalog with the real result either way — record
-   honestly, matching M-055's own precedent of recording a negative result
-   plainly rather than burying it.
+5. [x] **ROCm retry** — DONE 2026-08-06. New image
+   `local-ai-machine/llamacpp-laguna-fork:rocm-7.2.2` built from
+   `docker/llamacpp-laguna-fork-rocm-7.2.2.dockerfile` (ROCm 7.2.2 base +
+   GGML_HIP_ROCWMMA_FATTN/GGML_HIP_NO_VMM/GGML_HIP_MMQ_MFMA build flags +
+   `-dio`/`--no-mmap`/`--memory=110g` runtime flags, per this card's plan).
+   gfx1151 detected natively, no HSA_OVERRIDE_GFX_VERSION needed.
+   **RESULT: the DFlash server LOADS AND SERVES SUCCESSFULLY — first time ever
+   on this box** (M-055's rocm-7.14 never got past a load hang). Memory climbed
+   smoothly during load (73GiB->104GiB used) with no thrash/stall, unlike
+   M-055's stuck-at-551MiB-RSS symptom. This confirms the "confirmed dead end"
+   walk-back from this card's own Decision log was correct — M-055's build
+   really was missing fixable, chip-specific issues.
+   **BUT: TESTED_NOT_VIABLE overall.** Once serving, draft acceptance does NOT
+   reproduce the community's claimed 73.5-90.6%: measured 11.0-13.0% at n_max=15
+   (the community's own tested config) — essentially the SAME as Vulkan's
+   10-19% at n15 (M-055), not a step-change improvement. Sweeping n_max in
+   {4,3,2} shows the identical block-size-vs-acceptance curve shape Vulkan
+   showed (31-52% acceptance at smaller blocks), but raw ROCm throughput trails
+   Vulkan at every block size (best ROCm sample 25.57 tok/s at n3, vs the
+   30.0 tok/s plain baseline and Vulkan's own 27-35 tok/s in the same n-range).
+   No ROCm config approaches, let alone beats, baseline. This DEFINITIVELY
+   answers the open question from M-055/this card's research: the block-size
+   acceptance effect is a property of DFlash itself, not a Vulkan-specific
+   precision artifact — it reproduces near-identically on ROCm. The
+   community's high-acceptance numbers remain unexplained (different
+   hardware/patch level/measurement methodology, most likely) but are not
+   reproducible on this box on either backend. Recorded in new catalog files:
+   `catalog/builds/laguna-s-2.1-118b-q4km--llamacpp-laguna-fork-rocm-7.2.2-dflash.yaml`
+   + `catalog/engines/llamacpp-laguna-fork-rocm-7.2.2-v1.yaml`, raw JSON in
+   `catalog/raw/laguna-rocm-7.2.2-2026-08-06/`. NOT added to docker-compose.yml
+   (no config here is worth serving).
+6. [x] Card + catalog updated with the real result for both experiments —
+   recorded honestly: quantization is a genuine, if narrow, win (Q4_K_M n2
+   beats baseline); ROCm resolves the load-hang mystery but not the
+   acceptance/throughput problem, so it remains not viable as a serving
+   backend for this model on this box.
 
 ## Signals
 <!-- signal: claude 2026-08-05T23:58Z — triaged the feedback: #2 (ROCm) already
@@ -118,6 +150,13 @@ CPU-only, no new downloads). -->
 BEATS baseline (33.06-34.77 vs 30.0 tok/s). Catalog updated (v2 in the Vulkan
 DFlash build file), box restored + confirmed healthy. Starting ROCm 7.2.2 retry
 build now (new image, base pull in progress). -->
+<!-- signal: claude 2026-08-06T04:53Z — ROCm 7.2.2 retry done. DFlash server
+LOADS AND SERVES for the first time ever on this box (resolves M-055's hang),
+but acceptance still doesn't reproduce the community's 73-91% claim (11-52%
+depending on block size, same curve shape as Vulkan) and throughput trails
+Vulkan at every point — no ROCm config beats baseline. Both M-086 experiments
+now complete. Catalog updated (2 new files + raw evidence), box restored to
+the exact pre-task docker ps snapshot, confirmed healthy. Card done. -->
 
 ## Decision log
 - 2026-08-05 (claude): read M-055 in full before writing any plan here — it
@@ -206,15 +245,69 @@ build now (new image, base pull in progress). -->
   this script gets reused). Box confirmed restored to the exact pre-task
   `docker ps` snapshot before starting the ROCm build (separate isolated
   activity, no overlap).
+- 2026-08-06 (claude): ROCm 7.2.2 build + test complete. Cleaned up the old
+  M-055 ROCm 7.14 images first (`local-ai-machine/llamacpp-laguna-fork:
+  rocm-7.14`, `rocm/dev-ubuntu-24.04:7.14.0-full`) to free disk headroom
+  (box was at 94%/113G free before, needed room for a fresh ~7.4GB base pull)
+  — safe since M-055 already reached a decisive conclusion with that build
+  and this card's own instruction was to build a genuinely NEW image, not
+  reuse the old one. Build succeeded cleanly on the first attempt (no
+  toolchain workarounds needed, unlike both M-055's ROCm build and the
+  original Vulkan build) — cmake configure accepted all four new HIP flags,
+  rocwmma-dev resolved via apt without issue, compile took ~3 min once the
+  base image was in hand. DFlash server loaded and served successfully at
+  n_max=15/-fa 1/-c 131072 in ~65-70s — a first for this box. Ran the n15
+  community-config comparison first (decisive: 11-13% acceptance, not
+  73-91%), then a 3-point sweep (n4/n3/n2) in one continuous stop/restore
+  cycle to check the block-size trend — same shape as Vulkan's, confirming
+  the effect is architecture-intrinsic, not backend-specific. Box restored:
+  standing laguna-s-2.1-118b-q4km-v2 and qwen3.6-35b-a3b-mtp-v2 confirmed
+  healthy via /health on their actual current ports (8108, 8109) — matches
+  the original 10-container `docker ps` snapshot taken before any of this
+  card's work began. Both approved experiments (quantization, ROCm retry)
+  are now complete and recorded; moving this card to done.
 
 ## Handoff notes
-Waiting on Chris for a go-ahead on two candidate experiments (revised
-2026-08-06, ROCm is now the priority one, see Decision log for why the
-earlier same-day "dead end" call was wrong):
-1. Retry ROCm properly — different version (7.2.2 or 6.4.4, not 7.14) +
-   the missing build/runtime flags above. This could resolve the actual
-   acceptance-collapse problem, not just the overhead problem.
-2. Quantize the DFlash draft to Q4_K_M/Q8_0 — cheap, additive, worth doing
-   regardless of (1)'s outcome.
-Both are self-contained (no new downloads) — should be quick once the box
-frees up from the concurrent M-051/M-089 work.
+Both approved experiments are complete (2026-08-06). Summary for Chris:
+
+1. **DFlash draft quantization (Vulkan) — a real, if narrow, win.**
+   Quantizing the DFlash draft from BF16 to Q4_K_M and re-running at
+   `--spec-draft-n-max 2` gets **33.06-34.77 tok/s**, beating the 30.0 tok/s
+   plain baseline by +10-16%. This is the FIRST config across the entire
+   M-050/M-053/M-055/M-086 DFlash investigation to actually beat plain
+   decoding rather than just tie it. Recorded as v2 in
+   `catalog/builds/laguna-s-2.1-118b-q4km--llamacpp-laguna-fork-vulkan-dflash.yaml`.
+   **Not yet added to docker-compose.yml** — the sample size (2 short prompts
+   x 2 samples) is a smoke-test size, not a serving-decision size, and no
+   prior DFlash experiment on this box has ever gotten a standing compose
+   service (ad-hoc `docker run` only, by design, matching the DS4/M-051
+   precedent). **Open question for Chris**: is this worth (a) a fuller
+   validation pass (longer/varied prompts, more samples) and (b) promoting
+   to a standing compose service if it holds up? A 10-16% throughput gain on
+   your daily-driver-scale model is a real, non-trivial win if it's robust.
+2. **ROCm 7.2.2 retry — resolves the mystery, doesn't change the recommendation.**
+   With the chip-specific fixes this card's research identified, the DFlash
+   server now LOADS AND SERVES on ROCm for the first time ever on this box
+   (M-055's build never got past a load hang). But once serving, acceptance
+   still does not reproduce the community's claimed 73.5-90.6% — it's
+   11-52% depending on block size, essentially the SAME curve Vulkan already
+   showed (M-055). Throughput on ROCm also trails Vulkan at every
+   configuration tested. This definitively answers the open question from
+   M-055: the block-size acceptance effect is intrinsic to DFlash's block-
+   diffusion decoding, not a Vulkan-specific bug, and the community's high
+   numbers aren't reproducible on this hardware on either backend. Recorded
+   in new `catalog/builds/laguna-s-2.1-118b-q4km--llamacpp-laguna-fork-rocm-7.2.2-dflash.yaml`
+   + `catalog/engines/llamacpp-laguna-fork-rocm-7.2.2-v1.yaml`.
+
+**Bottom line recommendation**: serve Laguna-S-2.1 via Vulkan/RADV. Plain
+decoding (30.0 tok/s) remains solid; DFlash with a Q4_K_M-quantized draft at
+`--spec-draft-n-max 2` is a genuine but narrow improvement (+10-16%) worth
+considering for a standing service pending a fuller validation pass — Chris's
+call. ROCm is not competitive as a serving backend for this model on this
+hardware, on any of the three build attempts made across M-055/M-086.
+
+No PR — catalog/config-as-code committed directly to main per this repo's
+established workflow (M-053/M-055 precedent), box repo synced by pull. Box
+restored to its exact pre-task `docker ps` state throughout (confirmed after
+each of the 3 stop/restore cycles: quantization sweep, ROCm n15 test, ROCm
+n4/n3/n2 sweep).
