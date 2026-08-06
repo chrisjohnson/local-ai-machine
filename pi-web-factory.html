@@ -760,13 +760,21 @@
       <div class="id">M-089</div><div class="title">Ornith Q4_K_M — smoke-tested, faster + ~15GB lighter than Q8_0</div><div class="status-refine">role-switch — your call</div>
       <div class="id">M-094</div><div class="title">Cross-model request queue at the litellm layer — see "Concurrency" above</div><div class="status-next">designed, not yet built</div>
     </div>
-    <p>The durable ticket layer is real and in active use — this whole box (not just
-    pi-web-factory) runs on a <code>.fleet</code>-style <code>backlog/</code> → <code>now/</code> →
-    <code>done/</code> board (see <code>AGENTS.md</code> at the repo root), and every card above with an
-    M-number lives there. What's still missing is the automated half: nothing watches <code>now/</code>
-    and invokes <code>cli.ts</code> on an unclaimed pi-web-factory card by itself — a human or agent still
-    has to notice the card and trigger the run. <code>cli.ts</code>'s argument shape was deliberately
-    designed to be that future worker's calling convention, once it exists.</p>
+    <p>There's also a durable ticket layer sketched but not built INTO pi-web-factory itself: a trimmed
+    <code>.fleet</code>-style <code>backlog/</code> → <code>now/</code> → <code>done/</code> queue that
+    would let you author work items and have them picked up automatically, rather than every run being
+    manually triggered. To be precise about what already exists vs. what doesn't: a real
+    <code>.fleet</code>-style board (see <code>AGENTS.md</code> at the repo root) IS in active use on this
+    box today — every card above with an M-number genuinely lives there — but it's a Claude Code
+    coordination skill an agent session uses directly, external to pi-web-factory's own runtime.
+    pi-web-factory itself (the code baked into the container, <code>cli.ts</code>, every Workflow Run)
+    has no awareness of it at all — no code here reads a card, claims one, or triggers a run from one.
+    Every Workflow Run today is still started by hand: a <code>/skill:</code> command inside a live pi-web
+    session, or a direct <code>cli.ts</code> invocation. The plan is to eventually graft that same board
+    skill into this stack directly, so a pi-web-factory Workflow Run could be triggered by an unclaimed
+    ticket rather than always by a human noticing one — <code>cli.ts</code>'s argument shape was
+    deliberately designed to be that future integration's calling convention, but the integration itself
+    doesn't exist yet.</p>
 
     <footer>
       Updated 2026-08-06, in <code>local-ai-machine</code>. This page replaces the old dated
