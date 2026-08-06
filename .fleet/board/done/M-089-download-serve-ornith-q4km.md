@@ -61,6 +61,11 @@ additive: new model definition + triggering its download, so a smoke-test
    explicit "smoke test and benchmark the new models" instruction) once
    download completes: smoke test the service. Role-switch decision to
    Chris is still NOT made here — left open, see Decision log/Handoff.
+9. [x] (2026-08-06, Chris's explicit go-ahead: "89, make it live instead
+   of qwen") Role-switch executed: `medium-moe` now points at
+   `ornith-1.0-35b-mtp-q4--llamacpp-vulkan-radv-v1`. Old qwen backend
+   stopped (nothing else referenced it). Verified end-to-end via a real
+   pi-web-factory Workflow Run. See Decision log for full detail.
 
 ## Signals
 <!-- signal: claude 2026-08-05T00:00Z — claiming, researching Q4_K_M provenance -->
@@ -68,6 +73,7 @@ additive: new model definition + triggering its download, so a smoke-test
 <!-- signal: claude 2026-08-05T19:17Z — handoff ready: smoke test + role-switch decision left for later, per task instructions -->
 <!-- signal: claude 2026-08-05T23:40Z — board sweep: confirmed live, .download-complete now present at /var/lib/ai-models/llamacpp-ornith-1.0-35b-mtp-q4/ — download finished. Service (ornith-1.0-35b-mtp-q4--llamacpp-vulkan-radv-v1) not yet started. Not moving to done/ myself — this card's own handoff notes explicitly scope smoke-test+role-switch as follow-up kept open on purpose, not an oversight. -->
 <!-- signal: claude 2026-08-06T03:45Z — smoke test + comparative benchmark done, catalog recorded. Role-switch decision still explicitly NOT made — staying in now/ pending that. -->
+<!-- signal: claude 2026-08-06T17:36Z — role-switch executed on Chris's explicit go-ahead ("89, make it live instead of qwen"): medium-moe -> ornith-1.0-35b-mtp-q4--llamacpp-vulkan-radv-v1. Old qwen3.6-35b-a3b-mtp container stopped (nothing else referenced port 8109). Verified via x-litellm-model-api-base header + a real pi-web-factory bounded-build-review Workflow Run (SUCCESS, real files written). Moving to done/. -->
 
 ## Decision log
 - 2026-08-05: Confirmed via HF API tree (`/api/models/singulared/Ornith-1.0-35B-MTP-GGUF/tree/main`)
@@ -126,19 +132,69 @@ additive: new model definition + triggering its download, so a smoke-test
   Stopped the Q4 service again afterward (not left running as new default), restarted the original two
   containers by name, confirmed both healthy with real completions, no OOM. Did NOT touch `set-role.sh`
   or any litellm role — that decision explicitly stays with Chris.
+- (claude, 2026-08-06 17:20-17:36 UTC) Chris: "89, make it live instead of qwen" — explicit go-ahead to
+  execute the role-switch. Sequence:
+  1. Snapshotted live state first (restore point): `docker ps` showed `qwen3.6-35b-a3b--llamacpp-vulkan-radv-mtp-v2`
+     (port 8109) and `laguna-s-2.1-118b-q4km--llamacpp-vulkan-radv-v2` (port 8108) running; queried
+     litellm's live `/model/info` (not `config.yaml`) directly and confirmed `medium-moe` ->
+     `openai/qwen3.6-35b-a3b-mtp` @ `http://127.0.0.1:8109/v1` (resolves M-089's own earlier Handoff note
+     that this needed fresh verification, not trusting M-084's snapshot — it had drifted since: M-084 had
+     it on the Q8_0 build at one point, but by role-switch time it was back on qwen).
+  2. Verified the target service (`ornith-1.0-35b-mtp-q4--llamacpp-vulkan-radv-v1`) was still correctly
+     defined in `docker-compose.yml` (port 8113, `-a ornith-1.0-35b-mtp-q4`, same MTP flags as before) and
+     confirmed the model file + `.download-complete` marker still present. Started it by exact service
+     name (`docker compose -f docker-compose.yml up -d ornith-1.0-35b-mtp-q4--llamacpp-vulkan-radv-v1` —
+     never a blanket `up -d`). Confirmed healthy via `/health` -> `{"status":"ok"}` and a direct
+     completion request (real generation, finish_reason=stop).
+  3. Checked real memory headroom with laguna (big-moe) + qwen (still running) + ornith-q4 all loaded
+     simultaneously — the exact scenario Q4_K_M was chosen to fix: `rocm-smi --showmeminfo gtt` showed
+     ~111GB/133GB GTT used (~22GB real headroom), `free -h` showed ~13-14GB "available" — comfortably
+     positive, unlike the old Q8_0 configuration (~2GB headroom, OOM-killed twice per this card's own
+     Context section).
+  4. Ran `scripts/set-role.sh medium-moe ornith-1.0-35b-mtp-q4--llamacpp-vulkan-radv-v1`. Script's own
+     built-in live verification returned `VERIFIED`.
+  5. Independently re-verified (not just trusting the script's own check): a direct
+     `POST /v1/chat/completions` against litellm with `model: medium-moe` returned response headers
+     `x-litellm-model-name: openai/ornith-1.0-35b-mtp-q4` and
+     `x-litellm-model-api-base: http://127.0.0.1:8113/v1` — genuinely resolving to the new backend, not
+     just a successful response. Cross-checked against `ornith-1.0-35b-mtp-q4`'s own container logs,
+     which showed live `print_timing`/`draft acceptance` entries in the same time window.
+  6. Checked whether anything else referenced the old qwen backend (port 8109) before stopping it —
+     queried litellm's live `/model/info` for any role with `api_base` containing `8109`: none found.
+     Stopped `qwen3.6-35b-a3b--llamacpp-vulkan-radv-mtp-v2` by exact container name (not a blanket
+     command). Final `docker ps` confirms only `laguna-s-2.1-118b-q4km--llamacpp-vulkan-radv-v2` (big-moe)
+     and `ornith-1.0-35b-mtp-q4--llamacpp-vulkan-radv-v1` (medium-moe) remain as model-serving containers;
+     `litellm-proxy`/`litellm-db`/`litellm-queue-haproxy`/`pi-web`/`pi-web-factory-visualizer` all
+     untouched throughout, per the standing safety rules.
+  7. Ran one real, substantive end-to-end test: a genuine pi-web-factory `bounded-build-review` Workflow
+     Run (via `docker exec pi-web bun cli.ts --project <scratch> --workflow bounded-build-review "<prompt>"`,
+     same pattern as prior cards) against a fresh scratch git repo (needed adding a minimal
+     `.pi-web-factory.yaml` — the scratch repo had none; `--session-id` needed to be *omitted* on a fresh
+     run, since that flag is for *resuming* an existing pi-web session, not naming a new one — passing an
+     arbitrary new ID hit `PiWebClientError 404: Session not found` twice before this was understood).
+     The `build` Role in `factory.config.yaml` maps to `local-litellm/medium-moe` — exactly the role just
+     switched. Result: `SUCCESS` end to end (build -> review loop exited clean, not round-exhausted); the
+     worktree's real output files were correct and on-task (`hello.txt` contained exactly the requested
+     line, `notes.md` accurately described the action taken) — confirmed by reading the actual worktree
+     contents, not just the CLI's own "SUCCESS" text. Ornith server logs showed matching inference
+     activity (`print_timing`/`draft acceptance` entries) in the same ~1-minute window the run took.
+     Cleaned up the scratch project afterward.
+  Final live litellm state (re-queried after all changes): `medium-moe -> openai/ornith-1.0-35b-mtp-q4 @
+  http://127.0.0.1:8113/v1`, `big-moe -> openai/laguna-s-2.1-118b-q4km @ http://127.0.0.1:8108/v1`
+  unchanged. Memory headroom in the final configuration (laguna + ornith-q4 only, qwen stopped): still
+  ~111GB/133GB GTT used, ~22GB headroom, ~13GB "available" per `free -h` — real, comfortably positive
+  headroom, confirming the whole point of this card.
 
 ## Handoff notes
-Download, smoke test, and comparative benchmark are all done (2026-08-06) — see Decision log above for
-real numbers. **What's still open, deliberately not done here:** the role-switch decision
-(`set-role.sh medium-moe ornith-1.0-35b-mtp-q4 ...` or similar) to actually make Q4_K_M the standing
-`medium-moe` backend — that's explicitly Chris's call per this card's own original text, not something
-to do unilaterally. The comparative numbers above (Q4_K_M faster on every axis, ~15GB less memory) are
-real data for that decision whenever Chris wants to make it. Leaving this card in `now/` for exactly
-that reason — not an oversight.
+Download, smoke test, comparative benchmark, and the role-switch itself are all done (2026-08-06).
+`medium-moe` now genuinely serves from `ornith-1.0-35b-mtp-q4--llamacpp-vulkan-radv-v1` (Q4_K_M) —
+verified via litellm response headers, container logs, and a real pi-web-factory Workflow Run, not just
+a raw completion ping. The old `qwen3.6-35b-a3b-mtp` backend is stopped (nothing else referenced it).
+Operational note carried over from the smoke test: Ornith is a genuine reasoning model — non-trivial
+prompts need generous `max_tokens` (>=1500-2000) or they can hit `finish_reason: length` with all budget
+spent on invisible `reasoning_content` and no visible output; this is known, documented behavior
+(M-078's decision log), not a bug in this deployment.
 
-Also worth noting for whoever picks up the role-switch: M-084 (claimed by a different agent, "opencode",
-still in `now/`) shows `medium-moe` was set to the Q8_0 build at one point (2026-08-05); by the time this
-card's work started, no Ornith container was running at all and `medium-moe`'s actual current backend
-was not independently re-verified here (out of scope — this card never touches `set-role.sh` or reads
-litellm's live role state). Whoever makes the role-switch call should check current live role state
-fresh rather than trust either card's snapshot.
+Still open, not part of this card: M-084 (a different agent's card, still in `now/` as of this update)
+may need its own state re-synced/closed out now that `medium-moe`'s live backend has changed again —
+not touched here, out of this card's scope.
