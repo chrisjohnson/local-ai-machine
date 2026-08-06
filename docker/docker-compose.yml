@@ -1116,6 +1116,66 @@ services:
       retries: 5
       start_period: 20s
 
+  # ---------------------------------------------------------------------------
+  # llm-inference-bench orchestrator (M-101) — port 8092 (LAN)
+  # ---------------------------------------------------------------------------
+  # Containerized benchmark orchestrator, deliberately a NEW stack separate
+  # from catalog/ + scripts/benchmark_orchestrator.py (which stays as-is).
+  # Runs the vendored julien-lebot/llm-inference-bench llm_decode_bench.py
+  # against named model services, pushes raw structured JSON to main, and
+  # serves a LAN web queue (port 8092).
+  #
+  # network_mode: host for the same reason litellm/prometheus use it: every
+  # model port in this stack binds 127.0.0.1 only, and only host networking
+  # lets the bench client (and health checks) reach those ports. The web UI
+  # consequently binds 0.0.0.0:8092 directly — LAN-visible, no auth
+  # (Chris-approved), keep it off the WAN boundary.
+  #
+  # user 1000:1000 + group_add 131 (docker GID) = the exact omp/pi-web
+  # pattern for a container that must run `docker` against the box's daemon
+  # through the mounted socket.
+  #
+  # volumes:
+  #   - /home/chris/local-ai-machine-bench:/bench — the DEDICATED bench-only
+  #     checkout, hard-reset to origin/main before every run; results are
+  #     committed + pushed straight to main from here. NEVER the human box
+  #     checkout at /home/chris/local-ai-machine.
+  #   - the box's existing push-capable deploy key + known_hosts, read-only,
+  #     so git fetch/reset/push need no agent or new credentials.
+  #
+  # must carry the com.local-ai-machine.always-up label — otherwise this
+  # service would be a "model" by this stack's two-tier convention and the
+  # orchestrator's own stop-everything-exclusive logic would stop ITSELF
+  # mid-run (it can't run a benchmark against a stopped orchestrator).
+  # `restart: unless-stopped` so an orchestrator crash self-heals; queue
+  # state persists on a gitignored path under /bench so pending runs survive
+  # the restart.
+  llm-inference-bench:
+    build:
+      context: ./llm-inference-bench
+    image: local-ai-machine/llm-inference-bench:latest
+    container_name: llm-inference-bench
+    restart: unless-stopped
+    labels:
+      com.local-ai-machine.always-up: "true"
+    network_mode: host
+    user: "1000:1000"
+    group_add:
+      - "131"  # docker group GID (matches host's docker group)
+    volumes:
+      - /home/chris/local-ai-machine-bench:/bench
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /home/chris/.ssh/github_deploy_key:/bench-key/github_deploy_key:ro
+      - /home/chris/.ssh/known_hosts:/bench-key/known_hosts:ro
+    environment:
+      - BENCH_REPO_URL=git@github.com:chrisjohnson/local-ai-machine.git
+      - BENCH_CHECKOUT=/bench
+      - BENCH_DOCKER_DIR=/bench/docker
+      - BENCH_PORT=8092
+      # Match the box's existing repo identity for the results commits.
+      - BENCH_GIT_AUTHOR_NAME=local-ai-machine-bench
+      - BENCH_GIT_AUTHOR_EMAIL=local-ai-machine-bench@localhost
+
   # Telemetry & Observability Stack
   # network_mode: host (matching litellm's own reason for the same thing)
   # — every model-serving port in this stack is deliberately bound to

@@ -12,3 +12,8 @@ __pycache__/
 
 # litellm per-request JSONL logs (runtime data)
 docker/litellm/logs/
+
+# llm-inference-bench orchestrator runtime state (M-101) — queue + run state
+# lives on a gitignored path inside the mounted bench checkout so it survives
+# the orchestrator container's own restarts but never gets committed/pushed.
+builds/.orchestrator/
