@@ -93,12 +93,3 @@ def compose(args, docker_dir: Path, check=True, timeout=None):
         check=check,
         timeout=timeout,
     )
-
-
-def container_running(service_name: str) -> bool:
-    out = run(
-        ["docker", "ps", "--filter", f"name=^{service_name}$",
-         "--filter", "status=running", "--format", "{{.Names}}"],
-        check=False,
-    ).stdout.strip()
-    return service_name in out.split()

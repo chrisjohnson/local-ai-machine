@@ -42,6 +42,9 @@ class Config:
 
     build_timeout_s: int = _env_int("BENCH_BUILD_TIMEOUT_S", 7200)
     health_wait_s: int = _env_int("BENCH_HEALTH_WAIT_S", 1200)
+    crash_probe_interval_s: float = _env_float("BENCH_CRASH_PROBE_INTERVAL_S", 10.0)
+    crash_probe_failures: int = _env_int("BENCH_CRASH_PROBE_FAILURES", 3)
+    bench_heartbeat_s: int = _env_int("BENCH_HEARTBEAT_S", 60)
     state_path: Path = field(init=False)
 
     def __post_init__(self):

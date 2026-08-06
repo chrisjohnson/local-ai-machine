@@ -10,8 +10,15 @@ prints to stdout.
 from __future__ import annotations
 
 import sys
+import time
 
 _sink = None
+_last_line_at = None
+
+
+def last_line_at():
+    """Timestamp (time.time()) of the most recent line(), or None."""
+    return _last_line_at
 
 
 def set_sink(f):
@@ -25,6 +32,8 @@ def clear_sink():
 
 
 def line(msg=""):
+    global _last_line_at
+    _last_line_at = time.time()
     text = msg.rstrip("\n")
     if _sink is not None:
         _sink.write(text + "\n")

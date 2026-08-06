@@ -392,22 +392,44 @@ class Orchestrator:
             reader = threading.Thread(target=self._tee_bench, args=(proc, logf), daemon=True)
             reader.start()
             started = time.time()
+            last_heartbeat = started
+            probe_failures = 0
+            tick = self.config.crash_probe_interval_s
             try:
                 while True:
                     try:
-                        proc.wait(timeout=10)
+                        proc.wait(timeout=tick)
                         break
                     except subprocess.TimeoutExpired:
-                        if time.time() - started > self.config.build_timeout_s:
+                        elapsed = time.time() - started
+                        if elapsed > self.config.build_timeout_s:
                             proc.kill()
                             logf.flush()
                             raise RuntimeError(
                                 f"Benchmark exceeded {self.config.build_timeout_s}s timeout for {build}"
                             )
-                        if not dc.container_running(build) and not info["always_up"]:
-                            proc.kill()
-                            logf.flush()
-                            return True
+                        # Crash detection is a quiet health probe, not a
+                        # docker-ps poll: the container can stay "running"
+                        # while the model server dies inside it.
+                        port = info.get("port")
+                        if not info["always_up"] and port is not None:
+                            if self._probe(port):
+                                probe_failures = 0
+                            else:
+                                probe_failures += 1
+                                if probe_failures >= self.config.crash_probe_failures:
+                                    proc.kill()
+                                    logf.flush()
+                                    return True
+                        # Throttled heartbeat so a long, output-buffered bench
+                        # still shows progress. Skip it if activity is recent.
+                        if elapsed - last_heartbeat >= self.config.bench_heartbeat_s:
+                            last_heartbeat = elapsed
+                            last_activity = log.last_line_at() or started
+                            if elapsed - last_activity >= self.config.bench_heartbeat_s / 2:
+                                log.line(
+                                    f"[bench] {build} still running — {int(elapsed)}s elapsed, health OK"
+                                )
                 if proc.returncode != 0:
                     # Nonzero exit with no container crash: the tool exited
                     # on its own (e.g. "No results collected" path exits 0,
