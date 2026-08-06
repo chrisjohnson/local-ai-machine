@@ -68,9 +68,11 @@ Relevant existing surface area (read, don't redesign):
 1. [ ] **(current)** Refine this ticket with Chris — resolve the open
        questions in Handoff notes; record answers in Decision log. No code
        until this is done.
-2. [ ] Finalize design decisions (build identity, llm-inference-bench repo,
+2. [x] Finalize design decisions (build identity, llm-inference-bench repo,
        networking/UI, crash/restore semantics, download-pause scope, Ollama
-       scope, checkout+key provisioning, queue persistence).
+       scope, checkout+key provisioning, queue persistence) — confirmed
+       2026-08-06: build.yaml shape approved (compose blob + derived + bench
+       overrides); web UI LAN port 8092 approved; green light to implement.
 3. [ ] Implement the orchestrator image + code (Dockerfile under
        `docker/llm-inference-bench/` per repo convention).
 4. [ ] Add the `llm-inference-bench` service to `docker/docker-compose.yml`
@@ -167,6 +169,10 @@ git identity (Chris Johnson / chrisjohnson0@gmail.com, matching repo).
   (stack may be adjusted later if needed); web UI = LAN, no auth; checkout =
   /home/chris/local-ai-machine-bench + box's deploy key; queue state
   persisted across container restarts.
+- 2026-08-06 (big-pickle): refinement session COMPLETE. Chris approved:
+  build.yaml schema (verbatim compose blob + `derived:` metadata + optional
+  `bench:` CLI overrides; orchestrator never writes build.yaml); web UI =
+  LAN port 8092, no auth; implementation green-lit. Proceeding to build.
 
 ## Handoff notes
 
