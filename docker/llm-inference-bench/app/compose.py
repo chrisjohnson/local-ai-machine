@@ -25,12 +25,12 @@ PROJECT_NAME = "docker"
 ALWAYS_UP_LABEL = "com.local-ai-machine.always-up"
 
 
-def run(cmd, cwd=None, check=True, timeout=None, text=True):
+def run(cmd, cwd=None, check=True, timeout=None, text=True, env=None):
     """Run a command, log it, return CompletedProcess. Mirrors the old
     orchestrator's run() so behavior stays familiar and debuggable."""
     printable = cmd if isinstance(cmd, str) else " ".join(cmd)
     print(f"$ {printable}", flush=True)
-    kwargs = dict(cwd=cwd, timeout=timeout, text=text)
+    kwargs = dict(cwd=cwd, timeout=timeout, text=text, env=env)
     if text:
         kwargs.update(stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     result = subprocess.run(cmd, shell=isinstance(cmd, str), **kwargs)
