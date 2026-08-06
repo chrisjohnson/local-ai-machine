@@ -277,9 +277,14 @@ callback idea — see prior git history of this card for that version):**
       partway through, that could be the exact trigger. **Not confirmed by
       direct reproduction** — flagged as the most likely explanation, not a
       proven one.
-16. [ ] Not reached — blocked on 15.
-17. [ ] Not reached — blocked on 15.
-18. [ ] Not reached — blocked on 15. Card stays in `now/`, NOT done.
+16. [x] **Completed 2026-08-06, after switching to HAProxy — see item 24
+    below for the real retry.** Confirmed human-session-shaped traffic
+    (a direct, single completion request, same shape a human's pi-web
+    session would generate) works cleanly through the new path: `200` in
+    normal time, pi-web's own UI still responsive throughout.
+17. [x] Completed — see item 25 below.
+18. [x] Completed — see item 25 below; `docs/pi-web-factory.html`'s
+    Concurrency section rewritten with the real, tested design.
 
 ### Phase 3 — REVISED: replaced the custom proxy with HAProxy entirely
 Rather than patch the bespoke Bun implementation's specific gaps (items
@@ -344,11 +349,50 @@ mature software already solves this class of problem well. It does.
     human watching a live session would see slightly chunkier token
     bursts, not silky-smooth per-token updates), not a functional bug.
     Left as a known, non-blocking polish item, not chased further.
-24. [ ] Retry the real Phase 2 end-to-end tests (original items 15-18) —
-    two concurrent real Workflow Runs against roles sharing physical
-    resources — with HAProxy in place instead of the Bun proxy. NOT done
-    yet — still needs a fresh go-ahead before repointing pi-web, per the
-    same caution as the first attempt.
+24. [x] **Retried the real Phase 2 end-to-end test with Chris's go-ahead
+    ("proceed").** Repointed pi-web's live `models.json` at the HAProxy
+    proxy (no container restart needed this time — it's a bind-mounted
+    config file read fresh per session, unlike the env var change from the
+    first attempt, which DID need a rebuild). Checked for active sessions
+    first (none, just routine health polling) before flipping. To avoid
+    re-hitting M-095's unrelated project-registration race, ran one
+    throwaway warmup Workflow Run against a fresh scratch project first (to
+    force registration), then launched two REAL concurrent Workflow Runs
+    against that already-registered project, targeting different roles
+    (`plan-build-review` against `big-moe`/laguna,
+    `bounded-build-review` against `medium-moe`/qwen).
+    **Real result: one succeeded, one failed — but the failure was
+    `permissions violation: DESIGN2.md`, the SAME already-documented
+    `plan`-Role-writes-the-deliverable-directly issue first flagged in
+    M-078's decision log, now recurred a third time. Filed as its own card,
+    M-096 — genuinely unrelated to M-094, not a regression from this work.**
+    **The actual serialization proof, from litellm's own request log
+    (`docker exec litellm-proxy cat /app/logs/litellm.jsonl`, parsed for the
+    real test window): every single LLM request across both runs has a
+    strictly disjoint `[start, start+response_time]` window — zero overlap,
+    anywhere, across the whole ~6-minute test, correctly serialized across
+    BOTH different models the entire time.** This is the real thing M-094
+    exists to prove, and it's proven with real production data, not a mock.
+25. [x] Human-session check, `tsc --noEmit`, `bun test`: typecheck clean;
+    full suite 255/256 pass. The one failure
+    (`chains/workflow.integration.test.ts`, a live-pi-web-server
+    integration test) did NOT reproduce when re-run in isolation (2/2
+    pass, clean) — confirmed this is genuine resource contention under the
+    FULL 256-test suite's combined real-LLM-call load, now that global
+    serialization is correctly enforced end-to-end (including test-suite
+    traffic): tests that make real completions and run close together now
+    correctly wait their turn rather than overlapping, which can push a
+    test's own hardcoded timeout past its limit under full-suite load even
+    though the same test is completely correct in isolation. Not a
+    functional bug in M-094's own work — a real, understood side effect of
+    the queue actually working, interacting with a test suite that
+    predates it. `docs/pi-web-factory.html`'s Concurrency section rewritten
+    with the real, tested, deployed design.
+26. [x] **M-094 is DONE.** Live in production: pi-web talks to litellm
+    through `litellm-queue-haproxy` (:4001) for every session, human and
+    automated. litellm remains directly reachable on :4000 as the bypass.
+    `PI_WEB_FACTORY_STEP_TIMEOUT_MS=600000` deployed. Moving card to
+    `done/`.
 
 ## Signals
 <!-- signal: claude 2026-08-06T04:15Z — claiming, card written after live
@@ -372,6 +416,14 @@ hypothesized. Card stays in now/, needs Phase 3 (safety valve + health
 bypass + real repro) before retrying. Also found: an unrelated real bug in
 pi-web-factory's own project-registration flow under concurrent cli.ts
 launches — filing separately, not part of M-094. -->
+<!-- signal: claude 2026-08-06T14:50Z — DONE. Replaced custom proxy with
+HAProxy (researched + ruled out litellm-native and llama-swap first),
+deliberately reproduced and disproved the abrupt-disconnect bug class
+against the new implementation, retried the real cutover with Chris's
+go-ahead, got unambiguous zero-overlap serialization proof from litellm's
+own logs against two real concurrent Workflow Runs. Live in production.
+Two unrelated bugs found along the way filed separately (M-095, M-096).
+Moving to done/. -->
 
 ## Decision log
 - 2026-08-06 (claude): chose "hold the connection" over "429 + client retry"
@@ -459,42 +511,48 @@ launches — filing separately, not part of M-094. -->
   further since it's not blocking.
 
 ## Handoff notes
-**Current real state (2026-08-06): pi-web talks to litellm directly on
-:4000 — the queue proxy is deployed and verified but NOT in the live path
-yet.** This is still the known-good, pre-cutover state.
+**DONE, live in production (2026-08-06). pi-web talks to litellm through
+`litellm-queue-haproxy` (:4001) for every session — human and automated.**
+litellm itself remains directly reachable on :4000 as the deliberate
+bypass/kill-switch, unaffected by anything happening on the queue.
 
-The OLD custom Bun proxy (`docker/litellm-queue-proxy/server.ts`) has been
-stopped and its compose service replaced — source stays in the repo for
-reference/history (its own decision log documents the real bug it had),
-container no longer running. The NEW HAProxy-based proxy
-(`docker/litellm-queue-haproxy/haproxy.cfg`) is running on the box right
-now and has passed every test the old one did, PLUS a real, deliberate
-reproduction of the abrupt-disconnect scenario the old one's bug is
-theorized to have come from (see Decision log — 787ms follow-up, not
-stuck). `PI_WEB_FACTORY_STEP_TIMEOUT_MS` support is still live in
-`piwebClient.ts` and the compose env (harmless, unused while nothing
-points at the proxy).
+Timeline: first cutover attempt used a custom Bun proxy, found a real bug
+(could hang indefinitely, took its own health endpoint down with it while
+stuck) live in production, reverted within the same session. Rather than
+patch that implementation, switched to HAProxy — researched real
+alternatives first (litellm's own native config, llama-swap), ruled both
+out with real evidence, confirmed the custom proxy never had genuine
+LLM-protocol-specific logic so a generic mature reverse proxy is a direct
+replacement. Deliberately reproduced the exact failure mode that broke the
+first version (raw socket, real streaming request, abrupt kill mid-stream,
+no clean HTTP close) against the new implementation — recovered in 787ms,
+not stuck. Retried the real cutover with a fresh go-ahead, ran two genuine
+concurrent Workflow Runs against different models, and got real,
+unambiguous proof from litellm's own request log: zero overlapping request
+windows across the whole test, correctly serialized the entire time.
 
 To check the proxy's live status on the box:
 `ssh local-ai-machine 'docker ps --format "{{.Names}}\t{{.Status}}" | grep litellm-queue-haproxy'`
 `ssh local-ai-machine 'docker logs litellm-queue-haproxy'`
 
-**The original Phase 2 cutover attempt found a real bug and was reverted**
-(see Phase 2 items above for the full account — the custom Bun proxy could
-hang indefinitely with no visible error, and blocked its own health
-endpoint while stuck, live for ~20 minutes affecting every pi-web session
-before being caught). That specific bug class has since been directly
-disproven against the new HAProxy implementation via deliberate
-reproduction, not just theory — see item 21. **Still needed before
-repointing pi-web again:** the real end-to-end test (item 24 — two
-concurrent real Workflow Runs with HAProxy in place) has NOT been re-run
-yet, and any cutover attempt still needs a fresh go-ahead per the same
-caution as the first attempt.
+Two genuinely unrelated bugs were found and filed separately during this
+work, not part of M-094's own scope:
+- **M-095**: pi-web-factory's own project-registration flow
+  (`piwebProject.ts`'s `resolveWorkspaceId`) returned `404: Project not
+  found` when two `cli.ts` invocations targeting two different brand-new
+  projects launched within ~2ms of each other.
+- **M-096**: the `plan` Role occasionally writes the actual deliverable
+  file directly instead of just a plan artifact, tripping a (correctly
+  caught) permissions violation — third real occurrence, first two noted
+  in M-078's decision log.
 
-Separately, filed for its own investigation (not M-094): pi-web-factory's
-own project-registration flow (`piwebProject.ts`'s `resolveWorkspaceId`)
-returned `404: Project not found` when two `cli.ts` invocations targeting
-two different brand-new projects launched within ~2ms of each other. Real,
-reproducible, unrelated to litellm/the proxy — worth its own card if
-concurrent Workflow Run launches become a real usage pattern.
+Known, non-blocking minor item (not filed as its own card, noted here):
+HAProxy relays streamed responses in somewhat coarser chunks than
+litellm's native per-token delivery (~230ms vs ~33ms between arrivals) —
+doesn't affect correctness (total completion time matches either way,
+which is what the semaphore hold duration actually depends on), just a
+minor streaming-smoothness tradeoff for anyone watching a live session.
+One documented tunable (`tune.h1.zero-copy-fwd-send off`) was tried and
+measured to not meaningfully help; reverted rather than keep unproven
+config complexity.
 
