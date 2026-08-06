@@ -17,9 +17,86 @@ I've been chatting with another agent about tuning laguna s 2.1 for performance.
 This is an incredibly detailed and well-documented benchmark log. Your findings tell a clear story about why DFlash is falling flat on your Strix Halo, and it exposes a crucial hardware-software friction point.Your sweep in M-055 (where shrinking --spec-draft-n-max down to 2 or 3 raised your token acceptance but capped out exactly at your 30 tok/s baseline) proves that you are hitting the absolute execution ceiling of the Strix Halo’s LPDDR5X memory bandwidth.To find a DFlash setup that actually beats the baseline, we have to address the underlying architectural issue causing this bottleneck.The Problem: The "Block-Diffusion" Memory TaxDFlash doesn't generate tokens autoregressively (one-by-one) like a traditional draft model. It uses block diffusion to predict an entire block of tokens simultaneously in a single forward pass.On discrete GPUs (RTX 4090, Apple Silicon M-Max): Compute is massive and memory bandwidth is wide (400–1000+ GB/s). The overhead of reading the 2GB DFlash model from VRAM to guess 15 tokens is incredibly cheap compared to verifying them against the 118B base model.On Strix Halo (120-135 GB/s shared RAM): Memory bandwidth is a strict premium. To do a block step, your APU has to pull the 2GB DFlash model weights and its KV cache from system RAM, then immediately pull the 68GB base model weights.Even when your acceptance rate jumps at lower block sizes (n=2 or n=3), the time spent fetching that 2GB DFlash file from system RAM completely cancels out the tokens you saved. You end up right back at your 30 tok/s baseline.How to Move Past 30 tok/sIf you want to try to break through that 30 tok/s wall on a Strix Halo without changing your hardware, you need to test three specific adjustments.1. Quantize the DFlash Draft Model to Q4_K_M or Q8_0Your log shows you are running laguna-s-2.1-DFlash-BF16.gguf (the draft) in uncompressed BF16.The Penalty: Every single draft step forces your memory controller to pull 2GB of unquantized weights.The Fix: Quantize that DFlash draft model down to Q8_0 or Q4_K_M. This shrinks the draft footprint from 2GB down to ~500MB–1GB. This drastically reduces the memory bandwidth tax per block step and may finally give the APU enough breathing room to yield a net speedup at --spec-draft-n-max 3 or 4.2. Test the ROCm/HIP Stack via Unified MemoryYour logs note that the community achieved 73-90% acceptance rates on the ROCm/HIP backend (albeit with lower baseline speeds). The block-diffusion math in Poolside's fork relies heavily on specific FP16/BF16 matrix multiplication behaviors. Your RADV/Vulkan path is functioning mechanically, but it is clear that the block predictions are slightly misaligning, destroying your acceptance rate at higher block sizes.If you have a separate ROCm toolbox image handy, it's worth trying the quantized draft there. ROCm often handles the specific matrix math required by these custom diffusion layers with better precision than RADV translating it over Vulkan compute.3. Drop Context to Maximize the L3 / Cache LocalityYour benchmark runs a massive -c 131072 context. At 131k context, the KV cache for a 118B model takes up a massive chunk of your remaining system memory. The memory controller is completely overwhelmed tracking the base model KV cache, the base weights, and the draft model.For short context requests (where you want to beat 30 tok/s), try dropping your container context down to -c 8192 or -c 16384 just to test. This frees up significant memory bus channels and allows the Strix Halo's internal caches to better optimize the dual-model execution loop.What to Try NextIf you want to attempt to salvage the DFlash setup, I recommend keeping your Vulkan fork image but quantizing the DFlash draft file.If you'd like, let me know:Do you have the tools in your toolbox to quantize the DFlash GGUF to Q4_K_M or Q8_0?Do you want to try adjusting the container command to a smaller context window to see if the memory controller stops choking?
 
 ## Plan
+1. [x] Triage the other agent's three suggestions against what's actually already
+   been tried (M-055, `.fleet/board/done/`) before assuming any of them are new:
+   - **#2, try ROCm/HIP:** ALREADY DONE, M-055. Not a partial result — the ROCm
+     build of the same fork (`local-ai-machine/llamacpp-laguna-fork:rocm-7.14`,
+     gfx1151, `-DGGML_HIP=ON`) fails to even LOAD on this hardware (hangs
+     indefinitely paging weights, SIGTERM-immune, reproduced for both the DFlash
+     config AND a plain no-draft load). The community's 73-91% ROCm acceptance
+     numbers don't reproduce on this box at all — this isn't "lower acceptance
+     than hoped," the backend doesn't function here. Confirmed dead end, not
+     worth re-attempting.
+   - **#3, drop context to 8k/16k:** the suggested mechanism (KV-cache memory
+     pressure choking the memory controller) is a DIFFERENT bottleneck than the
+     one M-055 already diagnosed (a fixed ~2GB draft-model weight fetch per
+     block step, independent of context length). M-055's own sweep ran BOTH a
+     short-prompt and an 11,243-token long-context case at every block size and
+     found the same ceiling in both — the plain-baseline-matching cap held
+     regardless of context, which is evidence against context length being the
+     dominant lever. Low expected value; cheap enough (~10 min) to spot-check
+     only if #1 doesn't pan out, not worth prioritizing.
+   - **#1, quantize the DFlash draft to Q4_K_M/Q8_0:** genuinely untested. Every
+     M-055/M-053 run used the same unquantized BF16 draft
+     (`/var/lib/ai-models/laguna-s-2.1-dflash-draft/laguna-s-2.1-DFlash-BF16.gguf`,
+     ~2GB) — only `--spec-draft-n-max`/`-fa` were varied, never the draft's own
+     quantization. This directly targets the root cause M-055 already isolated
+     (fixed per-block-step weight-fetch tax on a bandwidth-constrained APU):
+     shrinking the draft to ~500MB-1GB (Q4_K_M) or ~1GB (Q8_0) cuts that fixed
+     cost by ~2-4x, which could plausibly tip the best block-size configs (n2/n3,
+     already matching the 30 tok/s baseline in BF16) above it instead of just
+     matching it. This is the one idea worth actually running.
+2. [ ] **Blocked on Chris's explicit go-ahead** (per this card's own instruction:
+   "with approval, implement the changes and benchmark") — recommending: quantize
+   the DFlash draft only (skip #2 entirely, skip #3 unless #1 disappoints),
+   re-run M-055's exact sweep methodology (same n_max sweep, same short+long
+   prompts) against the quantized draft, record as a new `benchmark_runs[]` entry
+   in `catalog/builds/laguna-s-2.1-118b-q4km--llamacpp-laguna-fork-vulkan-dflash.yaml`
+   (same file the BF16 runs are already in — same build family, different draft
+   quantization, not a new build).
+3. [ ] Quantize the draft: use the SAME fork's own `llama-quantize` binary (built
+   alongside `llama-server` in the existing
+   `local-ai-machine/llamacpp-laguna-fork:vulkan-radv` image from M-055/M-053) —
+   NOT stock llama.cpp's quantize tool, since this is a custom
+   `DFlashLagunaForCausalLM` architecture GGUF and the fork's own tool is the
+   one guaranteed to understand its tensor layout. Confirm the binary actually
+   exists in that image before assuming it does (the suggestion itself explicitly
+   asked "do you have the tools" — verify, don't guess).
+4. [ ] Re-run the sweep (n15/n8/n6/n4/n3/n2, same prompts, same fa1) against the
+   quantized draft, both Q4_K_M and Q8_0 if step 3 makes both cheap. Record
+   acceptance + tok/s exactly like M-055's table. Compare against BOTH the BF16
+   DFlash numbers (already in the catalog) and the 30.0 tok/s plain baseline —
+   the only outcome that matters is whether any config now BEATS 30 tok/s, not
+   just matches it.
+5. [ ] Update this card + the catalog with the real result either way (a clean
+   win, a smaller-but-still-a-wash result, or no change) — record honestly,
+   matching M-055's own precedent of recording a negative result plainly rather
+   than burying it.
 
 ## Signals
+<!-- signal: claude 2026-08-05T23:58Z — triaged the feedback: #2 (ROCm) already
+tried and dead (M-055), #3 (context) targets a bottleneck M-055's own data argues
+against, #1 (quantize draft) is genuinely new and worth trying. Holding on actual
+execution: (a) needs Chris's go-ahead per this card's own instruction, (b) the box
+is currently busy with a concurrent M-051/M-089 benchmark run, won't contend for
+it. -->
 
 ## Decision log
+- 2026-08-05 (claude): read M-055 in full before writing any plan here — it
+  already answers 2 of the 3 suggested experiments definitively, and citing
+  "we tried some things" without actually checking what was tried would have
+  risked re-running a dead-end ROCm build for no reason. Only #1 (quantize the
+  draft) survives triage as worth Chris's approval to actually run.
+- 2026-08-05 (claude): deliberately did not touch the box for this — a
+  different background task (M-051 DS4 imatrix benchmark + M-089 Ornith
+  smoke test) is actively stopping/starting model containers on
+  `local-ai-machine` right now. Quantization itself is CPU-only and wouldn't
+  contend for GPU, but avoiding any concurrent box action here rather than
+  reasoning through exactly how much overlap is actually safe.
 
 ## Handoff notes
+Waiting on Chris: go-ahead to quantize the DFlash draft (Q4_K_M and/or Q8_0) and
+re-run M-055's sweep against it. Once approved, this is a self-contained,
+bounded piece of work (no new downloads, no new base model, just requantizing an
+already-local ~2GB file) — should be quick once the box frees up from the
+concurrent M-051/M-089 work.
