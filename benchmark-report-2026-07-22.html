@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>local-ai-machine — Inference Benchmark Report — 2026-07-22</title>
+<style>
+  :root {
+    --bg: #0f1216;
+    --bg-card: #171b21;
+    --bg-card-2: #1d2229;
+    --border: #2a2f38;
+    --text: #e6e9ef;
+    --text-dim: #9aa4b2;
+    --accent: #5b9dff;
+    --good: #4ade80;
+    --warn: #fbbf24;
+    --bad: #f87171;
+    --bar-primary: #5b9dff;
+    --bar-gptq: #c084fc;
+    --bar-judge: #4ade80;
+    --bar-122b: #fb923c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.55;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 40px 24px 80px; }
+  header.page {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 28px;
+    margin-bottom: 36px;
+  }
+  header.page h1 {
+    font-size: 28px;
+    margin: 0 0 6px;
+    letter-spacing: -0.02em;
+  }
+  header.page .sub {
+    color: var(--text-dim);
+    font-size: 14.5px;
+  }
+  header.page .meta {
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+    margin-top: 16px;
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+  header.page .meta code {
+    background: var(--bg-card);
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: var(--accent);
+  }
+  h2 {
+    font-size: 20px;
+    margin: 48px 0 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    letter-spacing: -0.01em;
+  }
+  h3 { font-size: 15.5px; margin: 28px 0 10px; color: var(--text); }
+  p { color: var(--text-dim); font-size: 14.5px; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.92em;
+    background: var(--bg-card);
+    padding: 1px 5px;
+    border-radius: 4px;
+    color: var(--accent);
+  }
+
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 14px;
+    margin: 20px 0;
+  }
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+  }
+  .card .label { font-size: 12px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
+  .card .value { font-size: 24px; font-weight: 600; margin-top: 4px; }
+  .card .value.good { color: var(--good); }
+  .card .value.warn { color: var(--warn); }
+  .card .sub { font-size: 12.5px; color: var(--text-dim); margin-top: 2px; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13.5px;
+    margin: 14px 0 8px;
+  }
+  th, td {
+    text-align: left;
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  th {
+    color: var(--text-dim);
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  td.num { font-variant-numeric: tabular-nums; }
+  tr:last-child td { border-bottom: none; }
+  .model-primary { color: var(--bar-primary); font-weight: 600; }
+  .model-gptq { color: var(--bar-gptq); font-weight: 600; }
+  .model-judge { color: var(--bar-judge); font-weight: 600; }
+  .model-122b { color: var(--bar-122b); font-weight: 600; }
+
+  .bars { margin: 18px 0; }
+  .bar-row { display: grid; grid-template-columns: 190px 1fr 90px; align-items: center; gap: 12px; margin: 9px 0; font-size: 13px; }
+  .bar-row .name { color: var(--text-dim); }
+  .bar-track { background: var(--bg-card-2); border-radius: 5px; height: 20px; overflow: hidden; border: 1px solid var(--border); }
+  .bar-fill { height: 100%; border-radius: 5px 0 0 5px; }
+  .bar-row .val { text-align: right; font-variant-numeric: tabular-nums; color: var(--text); }
+
+  .pill {
+    display: inline-block;
+    font-size: 11.5px;
+    font-weight: 600;
+    padding: 2px 9px;
+    border-radius: 999px;
+    margin-left: 8px;
+  }
+  .pill.good { background: rgba(74,222,128,0.15); color: var(--good); }
+  .pill.warn { background: rgba(251,191,36,0.15); color: var(--warn); }
+  .pill.bad { background: rgba(248,113,113,0.15); color: var(--bad); }
+
+  ul.findings { padding-left: 0; list-style: none; margin: 12px 0; }
+  ul.findings li {
+    padding: 9px 0 9px 26px;
+    position: relative;
+    font-size: 14px;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--border);
+  }
+  ul.findings li:last-child { border-bottom: none; }
+  ul.findings li::before {
+    position: absolute; left: 0; top: 9px; font-size: 13px;
+  }
+  ul.findings li.good::before { content: "✓"; color: var(--good); }
+  ul.findings li.warn::before { content: "!"; color: var(--warn); font-weight: 800; }
+  ul.findings li.bad::before { content: "✕"; color: var(--bad); }
+  ul.findings li strong { color: var(--text); }
+
+  .callout {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin: 16px 0;
+    font-size: 13.5px;
+    color: var(--text-dim);
+  }
+  .callout.warn { border-left-color: var(--warn); }
+  .callout strong { color: var(--text); }
+
+  footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--text-dim); font-size: 12.5px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="page">
+  <h1>local-ai-machine — Inference Benchmark Report</h1>
+  <div class="sub">First real end-to-end benchmark pass across the model tiers, plus a hardware/system health audit. Updated same day with a 100B+ tier and deployment-pipeline/networking findings.</div>
+  <div class="meta">
+    <span>Generated <code>2026-07-22</code>, updated later same day</span>
+    <span>AMD Ryzen AI Max+ 395 (Strix Halo / gfx1151)</span>
+    <span>128GB unified memory</span>
+    <span>vLLM 0.22.1rc1.dev499 (ROCm)</span>
+  </div>
+</header>
+
+<section>
+  <h2>TL;DR</h2>
+  <div class="cards">
+    <div class="card">
+      <div class="label">Winner: interactive use</div>
+      <div class="value good">80B GPTQ</div>
+      <div class="sub">14.3 tok/s @ c1, more consistent TTFT</div>
+    </div>
+    <div class="card">
+      <div class="label">Winner: batched/concurrent use</div>
+      <div class="value good">35B bf16</div>
+      <div class="sub">33.2 tok/s @ c8, better latency scaling</div>
+    </div>
+    <div class="card">
+      <div class="label">Free memory, full stack loaded</div>
+      <div class="value warn">1.6 GB</div>
+      <div class="sub">of 124GB — no room for a 3rd concurrent model</div>
+    </div>
+    <div class="card">
+      <div class="label">CPU governor found</div>
+      <div class="value warn">powersave</div>
+      <div class="sub">fixed → performance, ~1.7x base clock</div>
+    </div>
+  </div>
+  <p>No clean winner on speed — it depends on whether the box is serving one interactive session or several concurrent requests. The 122B tier (added later this session) was slowest across the board and degrades badly under concurrency, likely due to <code>--enforce-eager</code> being required for its AWQ kernel path. Coding-<em>quality</em> comparison between any of these is still untested; this report covers throughput/latency and memory headroom only. See <a href="#next-steps" style="color:var(--accent)">Next Steps</a> for what's still open.</p>
+</section>
+
+<section>
+  <h2>Models Tested</h2>
+  <table>
+    <tr>
+      <th>Model</th><th>Role</th><th>Format</th><th>Weights</th><th>GPU util.</th>
+      <th>KV cache</th><th>KV tokens</th><th>Concurrency</th>
+    </tr>
+    <tr>
+      <td class="model-primary">Qwen3.6-35B-A3B</td><td>Primary</td><td>bf16</td>
+      <td class="num">66.97 GiB</td><td class="num">0.70</td>
+      <td class="num">18.49 GiB</td><td class="num">918,504</td><td class="num">7.01× @131K</td>
+    </tr>
+    <tr>
+      <td class="model-gptq">Qwen3-Coder-Next-GPTQ-4bit</td><td>Comparison (80B/3B-active)</td><td>GPTQ 4-bit</td>
+      <td class="num">46.49 GiB</td><td class="num">0.70</td>
+      <td class="num">40.42 GiB</td><td class="num">1,721,978</td><td class="num">13.14× @131K</td>
+    </tr>
+    <tr>
+      <td class="model-judge">Qwen3.5-4B</td><td>Judge / quick-tasks</td><td>bf16</td>
+      <td class="num">8.68 GiB</td><td class="num">0.20</td>
+      <td class="num">13.6 GiB</td><td class="num">433,308</td><td class="num">3.31× @131K</td>
+    </tr>
+    <tr>
+      <td class="model-122b">Qwen3.5-122B-A10B-AWQ-4bit</td><td>Comparison (122B/10B-active)</td><td>AWQ 4-bit, enforce-eager</td>
+      <td class="num">74.52 GiB</td><td class="num">0.85</td>
+      <td class="num">29.0 GiB</td><td class="num">899,630</td><td class="num">27.45× @32K</td>
+    </tr>
+  </table>
+  <div class="callout">
+    <strong>Unexpected finding:</strong> the 80B GPTQ-4bit model is <em>smaller on disk and leaves more KV cache headroom</em> than the 35B bf16 model (46.49 GiB vs 66.97 GiB weights; 40.42 GiB vs 18.49 GiB KV cache) — 4-bit compression on 2.3× the parameters still nets smaller than bf16 on the smaller model. Model size alone is a poor proxy for memory footprint once quantization enters the picture.
+  </div>
+  <div class="callout warn">
+    <strong>122B methodology note:</strong> run alone (no judge model loaded, full GPU budget available) and capped at <code>--max-model-len 32768</code>, not the 131K used for the other three — its real KV cache headroom at 131K context would be meaningfully worse than the 27.45× figure above suggests. Also required <code>--enforce-eager</code> (disables CUDA graph/torch.compile), which appears to explain its poor concurrency scaling below.
+  </div>
+</section>
+
+<section>
+  <h2>Throughput &amp; Latency</h2>
+
+  <h3>Output throughput — concurrency 1 vs 8 (tok/s)</h3>
+  <div class="bars">
+    <div class="bar-row"><span class="name">35B · c1</span><div class="bar-track"><div class="bar-fill" style="width:11.1%;background:var(--bar-primary)"></div></div><span class="val">11.91</span></div>
+    <div class="bar-row"><span class="name">35B · c8</span><div class="bar-track"><div class="bar-fill" style="width:31.0%;background:var(--bar-primary)"></div></div><span class="val">33.19</span></div>
+    <div class="bar-row"><span class="name">80B GPTQ · c1</span><div class="bar-track"><div class="bar-fill" style="width:13.4%;background:var(--bar-gptq)"></div></div><span class="val">14.34</span></div>
+    <div class="bar-row"><span class="name">80B GPTQ · c8</span><div class="bar-track"><div class="bar-fill" style="width:24.4%;background:var(--bar-gptq)"></div></div><span class="val">26.13</span></div>
+    <div class="bar-row"><span class="name">4B judge · c1</span><div class="bar-track"><div class="bar-fill" style="width:21.9%;background:var(--bar-judge)"></div></div><span class="val">23.50</span></div>
+    <div class="bar-row"><span class="name">4B judge · c8</span><div class="bar-track"><div class="bar-fill" style="width:100%;background:var(--bar-judge)"></div></div><span class="val">107.17</span></div>
+    <div class="bar-row"><span class="name">122B AWQ · c1</span><div class="bar-track"><div class="bar-fill" style="width:7.3%;background:var(--bar-122b)"></div></div><span class="val">7.87</span></div>
+    <div class="bar-row"><span class="name">122B AWQ · c8</span><div class="bar-track"><div class="bar-fill" style="width:15.0%;background:var(--bar-122b)"></div></div><span class="val">16.05</span></div>
+  </div>
+
+  <h3>Full results</h3>
+  <table>
+    <tr>
+      <th>Model</th><th>Conc.</th><th>Profile (in/out)</th>
+      <th>Out tok/s</th><th>Total tok/s</th>
+      <th>TTFT mean/median/p99 (ms)</th><th>TPOT mean/median/p99 (ms)</th>
+    </tr>
+    <tr>
+      <td class="model-primary">Qwen3.6-35B-A3B</td><td class="num">1</td><td class="num">2048/512</td>
+      <td class="num">11.91</td><td class="num">59.78</td>
+      <td class="num">3812 / 1680 / 36528</td><td class="num">76.69 / 71.37 / 143.24</td>
+    </tr>
+    <tr>
+      <td class="model-primary">Qwen3.6-35B-A3B</td><td class="num">8</td><td class="num">2048/256</td>
+      <td class="num">33.19</td><td class="num">300.04</td>
+      <td class="num">6213 / 5705 / 11069</td><td class="num">217.53 / 212.01 / 238.60</td>
+    </tr>
+    <tr>
+      <td class="model-gptq">Qwen3-Coder-Next-GPTQ</td><td class="num">1</td><td class="num">2048/512</td>
+      <td class="num">14.34</td><td class="num">71.95</td>
+      <td class="num">2154 / 2214 / 2240</td><td class="num">65.63 / 65.63 / 65.76</td>
+    </tr>
+    <tr>
+      <td class="model-gptq">Qwen3-Coder-Next-GPTQ</td><td class="num">8</td><td class="num">2048/256</td>
+      <td class="num">26.13</td><td class="num">236.00</td>
+      <td class="num">7291 / 3774 / 15468</td><td class="num">278.63 / 276.84 / 309.65</td>
+    </tr>
+    <tr>
+      <td class="model-judge">Qwen3.5-4B (judge)</td><td class="num">1</td><td class="num">1024/256</td>
+      <td class="num">23.50</td><td class="num">118.44</td>
+      <td class="num">514 / 402 / 2210</td><td class="num">40.71 / 40.71 / 40.79</td>
+    </tr>
+    <tr>
+      <td class="model-judge">Qwen3.5-4B (judge)</td><td class="num">8</td><td class="num">1024/256</td>
+      <td class="num">107.17</td><td class="num">540.23</td>
+      <td class="num">2060 / 2133 / 3496</td><td class="num">66.82 / 66.29 / 73.33</td>
+    </tr>
+    <tr>
+      <td class="model-122b">Qwen3.5-122B-AWQ</td><td class="num">1</td><td class="num">2048/512</td>
+      <td class="num">7.87</td><td class="num">39.50</td>
+      <td class="num">3808 / 3799 / 4012</td><td class="num">119.88 / 119.88 / 120.02</td>
+    </tr>
+    <tr>
+      <td class="model-122b">Qwen3.5-122B-AWQ</td><td class="num">8</td><td class="num">2048/256</td>
+      <td class="num">16.05</td><td class="num">145.14</td>
+      <td class="num">20383 / 24833 / 28927</td><td class="num">420.08 / 405.88 / 488.59</td>
+    </tr>
+  </table>
+  <p>All runs: <code>vllm bench serve</code>, random dataset, <code>--ignore-eos</code> (fixed output length for clean throughput comparison), 20-32 prompts per run. Zero failed requests across all eight runs (the benchmark <em>client</em> segfaulted on exit immediately after the 122B c8 run completed — a crash in its own cleanup path, not the server; results had already been written to disk and the server kept serving normally throughout, confirmed by its own request logs).</p>
+
+  <div class="callout">
+    <strong>Reading the 35B/GPTQ tradeoff:</strong> at concurrency 1, GPTQ's 4-bit weights need less memory bandwidth per token than the 35B model's bf16 weights, so it's faster single-stream (14.34 vs 11.91 tok/s) and dramatically more consistent (p99 TTFT 2.2s vs a 36.5s outlier on the 35B run). Under concurrency 8, that flips — the 35B model's aggregate throughput pulls ahead (33.19 vs 26.13 tok/s) and its per-token latency degrades less (TPOT +183% vs GPTQ's +325% going from c1→c8), suggesting GPTQ's dequantization overhead scales worse with batch size on this ROCm backend than native bf16 does.
+  </div>
+  <div class="callout warn">
+    <strong>122B is the slowest tier at both concurrency levels</strong> — 7.87 tok/s at c1 (vs 11.91 and 14.34 for the other two) and only 16.05 tok/s at c8. The standout problem is absolute latency under load, not just the throughput gap: TPOT more than triples (119.88ms → 420.08ms) and mean TTFT balloons past 20 seconds — a request could sit for half a minute at p99 before its first token arrives with 8 concurrent requests in flight. <code>--enforce-eager</code> (required for this model's AWQ kernel path — disables CUDA graph capture and torch.compile) is the most likely explanation: eager-mode per-step overhead compounds badly once multiple requests are batched together. Whether a non-eager AWQ path becomes viable on this hardware is unverified — worth revisiting if this model's capability turns out to justify the speed cost.
+  </div>
+</section>
+
+<section>
+  <h2>Hardware &amp; System Audit</h2>
+  <ul class="findings">
+    <li class="good"><strong>GPU detection &amp; memory allocation correct.</strong> gfx1151 initialized cleanly (all IP blocks loaded), GTT pool reports exactly <code>126976M</code> ready — matches the intended ~124GB allocation. VRAM correctly shows only 1024M (deliberate minimal BIOS carve-out).</li>
+    <li class="good"><strong>GPU compute confirmed active under load</strong> — 100% GPU utilization observed via <code>rocm-smi</code> during a live benchmark run, not a silent CPU fallback.</li>
+    <li class="warn"><strong>CPU governor was <code>powersave</code> on all 32 threads</strong> (running ~1.6-1.8GHz vs a 5GHz-capable CPU). Fixed declaratively to <code>performance</code> — confirmed base clock rose to ~2-2.9GHz even near-idle afterward.</li>
+    <li class="warn"><strong><code>rocm-smi</code>'s VRAM metric is misleading on this hardware</strong> — it only reports the 1GB static carve-out, not actual GTT/unified-memory usage (showed 208MB used while tens of GB were genuinely allocated). Added <code>amdgpu_top</code> and <code>nvtop</code> (AMD build) as correctly GTT-aware alternatives.</li>
+    <li class="warn"><strong>Router DNS resolver intermittently timing out</strong> — root cause of a cascade of downloads that appeared to fail from "network flakiness." Fixed with fallback resolvers (1.1.1.1, 8.8.8.8) behind the router, plus <code>networking.networkmanager.dns = "none"</code> (NetworkManager was silently ignoring the nameserver config otherwise — took two attempts to actually land).</li>
+    <li class="warn"><strong>Deprecated kernel param</strong> — <code>amdgpu.gttsize</code> is deprecated in favor of <code>ttm.pages_limit</code> (both currently set; redundant but harmless). Minor cleanup opportunity, not urgent.</li>
+    <li class="good">Storage: 1.9TB NVMe, ext4, non-rotational, 10% used at time of writing. No I/O concerns.</li>
+    <li class="good">Network correctly prefers wired (eno1) with WiFi as live fallback, as designed.</li>
+    <li class="good">No real kernel errors — only benign split-lock/RAS-collector/USB-enumeration noise in the kernel log.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Memory Headroom Under Full Load</h2>
+  <p>With Qwen3.6-35B-A3B + Qwen3.5-4B judge + the full docker stack (LiteLLM, Turnstone, two Postgres instances, Prometheus, Grafana) all running simultaneously:</p>
+  <div class="cards">
+    <div class="card"><div class="label">Total</div><div class="value">124 GiB</div></div>
+    <div class="card"><div class="label">Used</div><div class="value">92 GiB</div></div>
+    <div class="card"><div class="label">Free</div><div class="value warn">1.6 GiB</div></div>
+    <div class="card"><div class="label">Available (reclaimable)</div><div class="value warn">1.7 GiB</div></div>
+  </div>
+  <p>This tracks almost exactly with the configured <code>0.70 + 0.20 = 0.90</code> GPU-memory-utilization split (87GB target vs. 85.46GB actually used by the two vLLM engines). <strong>There is no room to run a third model concurrently</strong> at these settings — the 80B GPTQ comparison above required temporarily stopping the primary model rather than running alongside it. Any future third permanent tier needs either a smaller judge allocation or a full re-budget of the 0.70/0.20 split.</p>
+</section>
+
+<section>
+  <h2>Resolved Since First Publish</h2>
+  <ul class="findings">
+    <li class="good"><strong>Monitoring fully wired.</strong> Prometheus now scrapes all 5 targets successfully (added missing vLLM scrape configs, a real <code>node-exporter</code> container, and LiteLLM's <code>prometheus</code> callback — its <code>/metrics</code> route didn't exist at all without it). Grafana has a provisioned datasource and a real 10-panel dashboard, and its admin password was changed from the confirmed-still-active default.</li>
+    <li class="good"><strong>Deployment pipeline redesigned and verified under real conditions</strong>, not just synthetically: <code>nixos-rebuild switch</code> was blocking 15-40 minutes on any push that touched a long-running download unit. Fixed with <code>restartIfChanged = false</code> plus converting downloads and <code>docker-compose-app</code> to timer-triggered units. Verified for real — not just a synthetic test — when the 122B download was killed mid-transfer to test resume behavior: a config push during its retry cycle completed in ~3.4s without disturbing it, and it resumed rather than restarting from scratch.</li>
+    <li class="warn"><strong>Real firewall bug found and fixed</strong>, in two stages: Docker's own FORWARD-chain rules were found to bypass NixOS's firewall entirely for published container ports (port 8000, raw vLLM/zero auth, was externally reachable despite never being allowlisted); the first fix (<code>filterForward</code> + <code>trustedInterfaces</code>) turned out to be incomplete — <code>trustedInterfaces</code> only exempts the <code>input</code> chain, not <code>forward</code> (matches a known upstream nixpkgs issue, #437920), which silently broke legitimate container-to-container traffic, including to already-allowlisted ports. Fixed with an explicit <code>extraForwardRules</code> rule plus a fixed docker bridge interface name (Docker's default auto-generated name changes every time the network is created, which would've silently broken this again on a fresh install).</li>
+  </ul>
+</section>
+
+<section id="next-steps">
+  <h2>Known Gaps &amp; Next Steps</h2>
+  <ul class="findings">
+    <li class="warn"><strong>Turnstone has an empty model registry</strong> — judge/reranker role assignment (wiring the 4B model in as Turnstone's safety judge) has no env-var shortcut, needs TOML config or console UI work.</li>
+    <li class="good">MTP (multi-token-prediction speculative decoding) deliberately <strong>not attempted</strong> — Qwen3-Next architecture supports it in vLLM (<code>qwen3_next_mtp</code>), but ROCm support is unconfirmed and tracked by an open upstream issue. Worth a dedicated feasibility check before investing engineering time, given the FP8 precedent on this same architecture family.</li>
+    <li class="good">AITER fused MoE kernels untested — all three larger models here are MoE; this is a plausible low-risk throughput win worth an A/B test against this report's baseline.</li>
+    <li class="good">Coding-<em>capability</em> comparison across all four models still needed — this report is speed/memory only. Given the 122B tier's poor speed, capability would need to be a decisive win to justify it.</li>
+    <li class="good">Whether a non-<code>enforce-eager</code> AWQ path exists for the 122B model on this hardware is unverified — its bad concurrency scaling looks explainable by that flag, worth a follow-up if this model stays in consideration.</li>
+    <li class="good">Four more models downloading (not yet benchmarked): <code>Qwen/Qwen3.6-27B</code> (55.6GB), <code>google/gemma-4-31B-it</code> (62.6GB), <code>google/gemma-4-26B-A4B-it</code> (51.6GB), <code>Qwen/Qwen2.5-VL-7B-Instruct</code> (16.6GB, vision/OCR).</li>
+  </ul>
+</section>
+
+<footer>
+  Generated from live benchmark runs and direct system inspection on <code>local-ai-machine</code>, 2026-07-22. Raw <code>vllm bench serve</code> JSON output for the judge-model and 122B runs preserved; primary/GPTQ run JSON was lost to container recreation between runs (aggregate stats above transcribed directly from benchmark tool output at run time).
+</footer>
+
+</div>
+</body>
+</html>
