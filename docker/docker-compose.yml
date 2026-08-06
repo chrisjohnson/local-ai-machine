@@ -1172,6 +1172,8 @@ services:
       - BENCH_CHECKOUT=/bench
       - BENCH_DOCKER_DIR=/bench/docker
       - BENCH_PORT=8092
+      # ssh/git need a resolvable HOME; the image creates uid-1000 user "bench"
+      - HOME=/home/bench
       # Match the box's existing repo identity for the results commits.
       - BENCH_GIT_AUTHOR_NAME=local-ai-machine-bench
       - BENCH_GIT_AUTHOR_EMAIL=local-ai-machine-bench@localhost

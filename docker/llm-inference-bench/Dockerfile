@@ -16,6 +16,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY llm_decode_bench.py /app/llm_decode_bench.py
 COPY app/ /app/app/
 
+RUN useradd --uid 1000 --create-home bench
+
 RUN mkdir -p /bench-key
 
 EXPOSE 8092
