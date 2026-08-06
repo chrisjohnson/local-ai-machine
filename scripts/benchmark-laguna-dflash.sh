@@ -6,6 +6,10 @@
 # M-055: parameterized sweep/control — override SPEC_N_MAX / FA_FLAG /
 #        RESULT_DIR / MAX_TOKENS / N_SHORT env vars; defaults preserve the
 #        M-053 invocation exactly.
+# M-086: added DRAFT_MODEL_DIR / DRAFT_MODEL_FILE overrides so the same sweep
+#        can run against quantized DFlash drafts (Q4_K_M / Q8_0), not just the
+#        original BF16 draft. Defaults preserve the M-053/M-055 invocation
+#        exactly.
 #
 # Follows catalog/OPERATIONS.md's safety procedure: pauses the download queue,
 # stops exclusive (non-always-up) model services for GPU exclusivity, restores
@@ -27,6 +31,8 @@ FA_FLAG=${FA_FLAG:--fa 1}
 MAX_TOKENS=${MAX_TOKENS:-512}
 N_SHORT=${N_SHORT:-3}
 RESULT_DIR=${RESULT_DIR:-/tmp/laguna-dflash-results}
+DRAFT_MODEL_DIR=${DRAFT_MODEL_DIR:-/var/lib/ai-models/laguna-s-2.1-dflash-draft}
+DRAFT_MODEL_FILE=${DRAFT_MODEL_FILE:-laguna-s-2.1-DFlash-BF16.gguf}
 mkdir -p "$RESULT_DIR"
 
 log() { echo "[$(date -u +%FT%TZ)] $*"; }
@@ -94,12 +100,12 @@ for ctx in 131072 16384 8192; do
   docker run -d --name laguna-dflash-test \
     --device /dev/kfd --device /dev/dri --group-add 26 --group-add 303 \
     -v /var/lib/ai-models/laguna-s-2.1-118b-q4km:/models:ro \
-    -v /var/lib/ai-models/laguna-s-2.1-dflash-draft:/models-draft:ro \
+    -v "$DRAFT_MODEL_DIR":/models-draft:ro \
     -p "127.0.0.1:$PORT:$PORT" \
     "$IMAGE" \
     /build/build/bin/llama-server \
     -m /models/UD-Q4_K_M/Laguna-S-2.1-UD-Q4_K_M-00001-of-00003.gguf \
-    -md /models-draft/laguna-s-2.1-DFlash-BF16.gguf \
+    -md "/models-draft/$DRAFT_MODEL_FILE" \
     --spec-type draft-dflash --spec-draft-n-max "$SPEC_N_MAX" \
     -ngl 999 $FA_FLAG --swa-full --reasoning-format deepseek -n 8192 \
     -c "$ctx" --host 0.0.0.0 --port "$PORT" -a laguna-s-2.1-dflash \
