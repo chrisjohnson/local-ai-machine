@@ -1031,6 +1031,52 @@ services:
     depends_on:
       - litellm-db
 
+  # litellm-queue-proxy (M-094 Phase 1): standalone HTTP reverse proxy in
+  # front of litellm, NOT a litellm callback — a small self-contained
+  # Bun.serve() script (docker/litellm-queue-proxy/server.ts), bind-mounted
+  # into the stock oven/bun image rather than a custom Dockerfile (matches
+  # this repo's existing convention for small custom Bun services, e.g.
+  # pi-web-factory-visualizer, but this one is simple enough not to need
+  # even that image's build step). Enforces a semaphore (count 1) so only
+  # one request is actively forwarded/streamed to litellm at a time,
+  # protecting against cross-model memory-bandwidth contention and OOM
+  # between concurrently-resident models (see M-094's card for the full
+  # OOM/bandwidth reasoning — same failure class as M-037/M-078, this time
+  # triggered by concurrent requests rather than concurrent container
+  # starts).
+  #
+  # `network_mode: host` (not a published port): litellm binds directly to
+  # the HOST's own port 4000 via its own `network_mode: host` (see that
+  # service's comment above) specifically so it doesn't need bridge
+  # networking — a bridge-networked container's "127.0.0.1" refers to
+  # itself, not the host, so this proxy needs the exact same host
+  # networking to actually reach `127.0.0.1:4000` (the identical gotcha
+  # already solved for prometheus/node-exporter above). Port 4001
+  # (LITELLM_QUEUE_PROXY_PORT default) is confirmed free against every
+  # other bound port in this file as of 2026-08-06.
+  #
+  # Nothing points at :4001 by default yet (M-094 Phase 1 only) — pi-web
+  # and every other caller still talk to litellm directly on :4000,
+  # completely unaffected by this service's presence. Phase 2 (repointing
+  # pi-web/pi at :4001) is explicitly gated on a fresh go-ahead; see the
+  # card.
+  litellm-queue-proxy:
+    image: oven/bun:latest
+    container_name: litellm-queue-proxy
+    restart: unless-stopped
+    labels:
+      com.local-ai-machine.always-up: "true"
+    network_mode: host
+    working_dir: /app
+    volumes:
+      - ./litellm-queue-proxy:/app:ro
+    command: ["bun", "/app/server.ts"]
+    environment:
+      - LITELLM_QUEUE_PROXY_PORT=4001
+      - LITELLM_QUEUE_PROXY_UPSTREAM=http://127.0.0.1:4000
+    depends_on:
+      - litellm
+
   # web_search backend (per M-038, pi-web; originally deployed alongside the
   # now-decommissioned Turnstone service too). `search.formats: [html, json]`
   # in ./searxng/settings.yml is the one setting that actually matters: a
