@@ -223,8 +223,8 @@ needs your eyes.
 - 2026-08-04 (claude): filed per Chris's explicit instruction, placed directly in
   `now/` (his own instruction, not the usual human-request-promotes-to-now/ default —
   same effect either way here).
+- 2026-08-05 (Chris): reviewed, "78 can close." Closing per his own explicit call,
+  as this card's own handoff notes required.
 
 ## Handoff notes
-Read the Log section above first. This card should stay open (not moved to `done/`)
-until Chris has actually reviewed it — closing it is his call, not something to do
-automatically when the session's work is finished.
+Read the Log section above first. Reviewed and closed by Chris 2026-08-05.
