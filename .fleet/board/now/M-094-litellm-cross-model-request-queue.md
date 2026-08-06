@@ -188,22 +188,117 @@ callback idea — see prior git history of this card for that version):**
     `tsc --noEmit` clean, real end-to-end smoke test done on the box.
     Explicit pause for a fresh go-ahead before Phase 2 — see Handoff notes.
 
-### Phase 2 — gated on explicit go-ahead, NOT part of this pass
-12. [ ] Point `pi`/pi-web at `:4001` instead of `:4000`.
-13. [ ] Add `PI_WEB_FACTORY_STEP_TIMEOUT_MS` env var support to
-    `waitForCompletion()`'s default resolution and set a real, higher value.
-14. [ ] Empirically test the open question: does `pi`'s own outbound timeout
-    to the proxy cut off a genuinely queued request before pi-web-factory's
-    own (now-longer) timeout would? Test from inside a real pi-web session,
-    not just curl.
-15. [ ] Real end-to-end test: two concurrent Workflow Runs against roles that
-    share physical resources, confirmed genuinely serialized (no overlapping
-    in-flight windows) via litellm's own logs, no regression, no OOM.
-16. [ ] Confirm human pi-web sessions behave correctly under the same
-    conditions.
-17. [ ] `tsc --noEmit` clean, full `bun test` green.
-18. [ ] Update `docs/pi-web-factory.html`'s "Concurrency" section with the
-    real, tested design, replacing the "planned, not yet built" framing.
+### Phase 2 — attempted 2026-08-06, REVERTED after finding a real bug — see below
+12. [x] Pointed `pi`/pi-web at `:4001` instead of `:4000` — edited the LIVE
+    `~/.pi-web/models.json` on the box directly (the seed template only
+    applies on a project's first-ever container start, and pi-web has been
+    running a long time — confirmed the live file already had the old URL
+    baked in before touching it), plus `models.seed.json.tmpl` for future
+    fresh deploys. Confirmed pi-web's own container could reach
+    `host.docker.internal:4001` (200) before flipping the switch.
+13. [x] Added `PI_WEB_FACTORY_STEP_TIMEOUT_MS` support to
+    `waitForCompletion()`'s default resolution (`modules/piwebClient.ts`),
+    set to `600000` in `jmfederico-pi-web`'s compose environment.
+    **Real lesson learned mid-pass:** `docker compose up -d
+    jmfederico-pi-web` alone does NOT rebuild the image — this service has
+    both a `build:` context AND a pinned `image:` tag, so compose reuses the
+    already-built image unless you explicitly `build`/`--build` first. My
+    first deploy attempt recreated the CONTAINER with the new env var
+    correctly set, but the OLD CODE (pre-dating the timeout override) was
+    still running inside — the env var was present but nothing read it. Two
+    real Workflow Runs both failed at ~120s (the old hardcoded default) on
+    the first attempt, which is what surfaced this. Fixed with an explicit
+    `docker compose build jmfederico-pi-web` before the recreate; verified
+    the new code was actually present (`grep -c
+    DEFAULT_WAIT_FOR_COMPLETION_TIMEOUT_MS` inside the running container)
+    before retrying, not just the env var.
+14. [x] Empirically tested the open question (pi's own outbound timeout) —
+    **answer: not actually the blocker.** Real failures observed were never
+    caused by `pi`'s own timeout; see the real bug found in item 15 instead.
+15. [~] Real concurrent-run test — **found a genuine bug, not a clean pass.**
+    Two real concurrent Workflow Runs (`plan-build-review` / DESIGN.md,
+    `bounded-build-review` / validators.py) launched within 2ms of each
+    other:
+    - Run A failed almost immediately with `PiWebClientError: pi-web
+      request failed (404): Project not found` at the PROJECT REGISTRATION
+      step (`piwebProject.ts`'s `resolveWorkspaceId`) — before any
+      litellm/model call at all. This is unrelated to the queue proxy (it
+      fails before the proxy is ever involved) — looks like a genuine,
+      separate race condition in pi-web-factory's own project-registration
+      flow when two `cli.ts` invocations targeting two DIFFERENT new
+      projects launch at the exact same moment. **Filing this as its own
+      card (see Handoff notes) — do not conflate with M-094.**
+    - Run B (validators.py) ran for several minutes and failed with
+      `unparseable after 3 attempts — last response:` (empty). Direct
+      investigation of the model container's own logs
+      (`docker logs qwen3.6-35b-a3b--llamacpp-vulkan-radv-mtp-v2`) showed
+      the model actually finished generating quickly and cleanly — this
+      matches the SAME "thinking-budget-exhaustion" behavior already
+      documented for Ornith (M-078's decision log): `qwen3.6-35b-a3b-mtp`
+      is ALSO a reasoning model, and at a small `max_tokens` it can burn its
+      entire budget on invisible `reasoning_content` before ever emitting
+      visible `content`, hitting `finish_reason: length` with `content:
+      ""`. Confirmed directly (raw curl through the proxy): this is a real,
+      reproducible MODEL behavior, not a proxy bug — pi-web-factory's own
+      retry-then-fail-as-unparseable handling of it is working as designed,
+      just not a flattering test prompt choice on my part. **Not an M-094
+      bug.**
+    - **A real M-094 bug, found while investigating Run B further:** a
+      direct, isolated, non-concurrent request through the proxy to the
+      exact same model HUNG INDEFINITELY (killed after 3+ minutes) even
+      though `docker logs` on the model container showed it had finished
+      generating in ~1 second and cleanly released its slot. The response
+      never reached the client through the proxy. Worse: while that request
+      was stuck, the proxy's OWN `/health/liveliness` endpoint also stopped
+      responding — `handleRequest` gates every path through the same
+      semaphore with no exemption, so one stuck request blocks everything
+      on :4001, including health checks that could otherwise reveal the
+      problem. **Given the cutover was live at this point, this bug was
+      exposed to every pi-web session on the box, human and automated —
+      immediately reverted `pi`/pi-web back to :4000 directly** (both the
+      live `models.json` and the git-tracked template), verified pi-web
+      could reach litellm directly again, committed the revert (`eefad7b`).
+    - Follow-up reproduction attempts (5 sequential + 4 truly concurrent
+      real requests through the proxy, same model, after the revert) all
+      completed cleanly and fast — the 4 concurrent requests showed a
+      clean, correct staircase pattern (~1.0s/2.0s/3.0s/4.0s), confirming
+      the core semaphore/serialization logic itself IS correct under real
+      concurrent load. The hang did not reproduce deterministically.
+    - **Leading root-cause hypothesis, NOT yet confirmed:** the proxy's
+      `releaseOnDrain` wrapper only releases the semaphore on `done`,
+      explicit stream `error`, or an explicit `cancel()` call — but has no
+      timeout-based fallback. If a client disconnects ABRUPTLY (TCP
+      connection dropped, not a clean Web Streams `.cancel()`) while a
+      response is mid-stream, `pull()` may simply hang forever waiting on
+      `reader.read()` with no signal ever arriving, holding the semaphore
+      permanently. This is plausible given the actual sequence: Run B made
+      3 internal retry attempts before failing — if pi-web-factory's own
+      retry logic abandoned an earlier attempt's connection non-gracefully
+      partway through, that could be the exact trigger. **Not confirmed by
+      direct reproduction** — flagged as the most likely explanation, not a
+      proven one.
+16. [ ] Not reached — blocked on 15.
+17. [ ] Not reached — blocked on 15.
+18. [ ] Not reached — blocked on 15. Card stays in `now/`, NOT done.
+
+### Phase 3 — new, required before any further cutover attempt
+19. [ ] Add a maximum-hold-time safety valve to the proxy's semaphore: if a
+    slot has been held longer than some generous ceiling (e.g. 5-10 minutes
+    — long enough never to fire on legitimate real generation, short enough
+    to bound the blast radius of a stuck request), forcibly release it with
+    a loud warning log. This doesn't fix the root cause but bounds the
+    damage — currently a single stuck request can wedge the proxy
+    permanently until someone notices and manually restarts the container.
+20. [ ] Add a health-check bypass (or a separate, ungated health endpoint)
+    so the proxy's own liveness can be checked even while the main
+    semaphore is held — the current design made this incident harder to
+    detect/diagnose than it needed to be, since :4001's health check was
+    ALSO stuck behind the same jam.
+21. [ ] Try to actually reproduce the abrupt-disconnect hypothesis directly
+    (e.g., a test that opens a connection to the mock backend and kills the
+    TCP connection mid-stream without a clean cancel) rather than relying
+    on production evidence + a plausible theory alone.
+22. [ ] Once 19-21 are done and tested, retry Phase 2 items 15-18 for real.
 
 ## Signals
 <!-- signal: claude 2026-08-06T04:15Z — claiming, card written after live
@@ -218,6 +313,15 @@ still-running M-086 background agent (isolated worktree, no shared files). -->
 tested (mock backend, 6/6 pass), tsc clean, real-litellm smoke test done
 on the box, litellm-proxy/litellm-db confirmed untouched. Explicit pause
 before Phase 2 — awaiting Chris's go-ahead. -->
+<!-- signal: claude 2026-08-06T08:22Z — Phase 2 attempted, REVERTED. Found a
+real proxy bug (a request can hang indefinitely, and it takes the health
+endpoint down with it) while cutover was live — reverted pi-web back to
+:4000 immediately. Core semaphore logic re-confirmed correct under real
+concurrent load post-revert. Root cause not yet confirmed, only
+hypothesized. Card stays in now/, needs Phase 3 (safety valve + health
+bypass + real repro) before retrying. Also found: an unrelated real bug in
+pi-web-factory's own project-registration flow under concurrent cli.ts
+launches — filing separately, not part of M-094. -->
 
 ## Decision log
 - 2026-08-06 (claude): chose "hold the connection" over "429 + client retry"
@@ -278,24 +382,35 @@ before Phase 2 — awaiting Chris's go-ahead. -->
   run` directly against the single service under test instead.
 
 ## Handoff notes
-**Phase 1 complete.** `docker/litellm-queue-proxy/server.ts` (the proxy),
-`mock-backend.ts` + `server.test.ts` (standalone test harness),
-`tsconfig.json`/`package.json`/`bun.lock` (typecheck deps, matching
-pi-web-factory's own convention), and the new `litellm-queue-proxy` compose
-service in `docker/docker-compose.yml` are all committed to `main`
-(`41c961b`) and deployed on the box. The proxy is UP right now on the box,
-listening on :4001, forwarding to real litellm on :4000 — but **nothing
-points a real caller at it yet**: pi-web, pi, and every existing integration
-still talk to litellm directly on :4000, completely unaffected. Kill switch:
-already inherent — if this proxy is ever stopped/removed/misbehaving,
-nothing changes for any existing caller since nothing depends on it yet;
-once Phase 2 happens, the kill switch becomes "repoint back at :4000."
+**Current real state (2026-08-06, post-revert): pi-web talks to litellm
+directly on :4000 again — the queue proxy is NOT in the live path.** This
+is the known-good, pre-M-094 state. `docker/litellm-queue-proxy/server.ts`
+(the proxy), its test harness, and the compose service are all still
+committed to `main` and the proxy container is still running on the box
+(`litellm-queue-proxy`, port 4001) — it just has zero callers pointed at
+it right now, same as right after Phase 1. `PI_WEB_FACTORY_STEP_TIMEOUT_MS`
+support is still live in `piwebClient.ts` and the compose env (harmless,
+unused while nothing points at the proxy).
 
 To check the proxy's live status on the box:
 `ssh local-ai-machine 'docker ps --format "{{.Names}}\t{{.Status}}" | grep litellm-queue-proxy'`
 `ssh local-ai-machine 'docker logs litellm-queue-proxy'`
 
-**Phase 2 is explicitly gated — do not proceed to it without Chris
-confirming Phase 1's results first.** That means: do not repoint
-`pi`/pi-web at :4001, do not touch `modules/piwebClient.ts` or
-`waitForCompletion`'s timeout, do not run any real concurrent-model test.
+**A real bug was found and reverted during Phase 2** — see the Phase 2
+items above for the full account. Short version: a real request through
+the proxy can hang indefinitely with no visible error, and while stuck it
+blocks the proxy's own health endpoint too (no bypass). This was live and
+affecting every pi-web session (human and automated) for roughly 20
+minutes before being caught and reverted. **Do not repoint pi-web at the
+proxy again until Phase 3 (items 19-22) is done** — a timeout safety
+valve, a health-check bypass, and an actual reproduction of the suspected
+root cause (abrupt client disconnect not triggering the stream's
+`cancel()` path), not just the theory.
+
+Separately, filed for its own investigation (not M-094): pi-web-factory's
+own project-registration flow (`piwebProject.ts`'s `resolveWorkspaceId`)
+returned `404: Project not found` when two `cli.ts` invocations targeting
+two different brand-new projects launched within ~2ms of each other. Real,
+reproducible, unrelated to litellm/the proxy — worth its own card if
+concurrent Workflow Run launches become a real usage pattern.
+
