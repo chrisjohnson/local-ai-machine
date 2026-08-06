@@ -1145,7 +1145,9 @@ in
   # prometheus above, so genuinely subject to this list (not Docker-DNAT'd),
   # and LAN/phone-reachable by design (same as 3000/3001, not loopback-only
   # like turnstone-console's 8090).
-  networking.firewall.allowedTCPPorts = [ 22 4000 8080 3000 3001 9090 11434 30141 ];
+  # 8092: llm-inference-bench orchestrator web UI (M-101) - network_mode: host,
+  # so subject to this list; LAN, no auth (Chris-approved), by design.
+  networking.firewall.allowedTCPPorts = [ 22 4000 8080 3000 3001 9090 11434 30141 8092 ];
 
   # This box is multi-homed on the same LAN subnet (eno1: 192.168.1.21,
   # wlp195s0: 192.168.1.221 — both 192.168.1.0/24). NixOS's default strict
