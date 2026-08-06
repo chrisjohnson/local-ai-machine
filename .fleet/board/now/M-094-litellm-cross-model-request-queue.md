@@ -113,51 +113,80 @@ callback idea — see prior git history of this card for that version):**
 
 ## Plan
 ### Phase 1 — build + standalone test (do now, no model/GPU interaction)
-1. [ ] Implement the proxy — proposed location `docker/litellm-queue-proxy/
-   server.ts`, a small `Bun.serve()` script (matches this repo's existing
-   convention for small custom Bun services, e.g. the visualizer). Module-level
-   semaphore (start at count 1 — simplest correct baseline; leave a documented,
-   easy path to raise it or scope it per-model later, don't build that
-   flexibility preemptively). Acquire before forwarding, release only after
-   the (possibly streaming) response is fully relayed to the client — success
-   AND failure paths both release (no deadlock on a proxied error).
-2. [ ] Transparent forwarding: same method, path, query, headers (Authorization
-   untouched), body; stream the response back (do not buffer-then-return —
-   verify this explicitly, see test below).
-3. [ ] New compose service `litellm-queue-proxy`: `network_mode: host` (see
-   Context — required to reach litellm at `127.0.0.1:4000`), depends_on
-   litellm, restart: unless-stopped, same `com.local-ai-machine.always-up`
-   labeling convention as other always-on infra. Port 4001 confirmed free.
-4. [ ] **Test: forwarding correctness.** A plain non-streaming request through
-   :4001 returns byte-identical results to the same request against :4000
-   directly (modulo latency).
-5. [ ] **Test: auth passthrough.** A request with a valid key succeeds through
-   the proxy; an invalid/missing key gets the SAME error litellm itself would
-   give directly — confirms the proxy adds no auth logic of its own.
-6. [ ] **Test: streaming actually streams.** A `stream: true` chat completion
-   through the proxy arrives as incremental chunks over time (verify via
-   real timestamps on received chunks, not just that the final concatenated
-   result is correct) — this is the detail most likely to be silently broken
-   by a naive proxy implementation.
-7. [ ] **Test: semaphore correctness, using MOCK slow endpoints (not real
-   models)** — fire two overlapping slow requests through the proxy against a
-   synthetic slow backend standing in for litellm, assert the second's
-   processing genuinely starts only after the first's response is fully
-   drained, not just after its headers arrive. Also test that a proxied
-   request which itself errors still releases the semaphore (no deadlock).
-8. [ ] **Test: bypass property.** Confirm hitting litellm directly on :4000
-   still works completely normally and is entirely unaffected by whatever
-   the proxy on :4001 is doing — the whole point of this design.
-9. [ ] One lightweight, non-concurrent real smoke test against litellm through
-   the proxy (a single quick request, not a concurrency test) to confirm
-   real end-to-end wiring works, without generating any real GPU contention
-   risk for the concurrent M-086 benchmark work also running on this box.
-10. [ ] Document the kill switch (already inherent to the design, but write it
-    down): nothing points at :4001 by default in Phase 1, so there's nothing
-    to "switch off" yet — once Phase 2 happens, the kill switch is simply
-    repointing back at :4000.
-11. [ ] Report back: Phase 1 complete, all standalone tests passing, explicit
-    pause for a fresh go-ahead before Phase 2.
+1. [x] Implement the proxy — `docker/litellm-queue-proxy/server.ts`, a small
+   `Bun.serve()` script. Module-level `Semaphore` class, count 1 (simplest
+   correct baseline; scoping/raising the count is left as a documented
+   future option, not built preemptively). Acquired before forwarding,
+   released only after the (possibly streaming) response is fully relayed
+   to the client — every exit path (success, upstream fetch error, empty
+   body, stream error/cancel) releases exactly once via a single
+   `releaseOnce()` guard. No deadlock on any proxied error.
+2. [x] Transparent forwarding: same method, path+query, headers
+   (Authorization forwarded byte-for-byte, only true hop-by-hop headers
+   like `connection`/`transfer-encoding` stripped per RFC 7230 §6.1), body
+   (request body streamed via Bun's `duplex: "half"`, response body
+   streamed via a `ReadableStream` wrapper that releases the semaphore
+   exactly on `done`/error/cancel — never buffered).
+3. [x] New compose service `litellm-queue-proxy` added to
+   `docker/docker-compose.yml`: `network_mode: host`, `depends_on:
+   [litellm]`, `restart: unless-stopped`, `com.local-ai-machine.always-up:
+   "true"` label matching every other always-on infra service. Image
+   `oven/bun:latest` (stock, no custom Dockerfile needed — small
+   self-contained script bind-mounted read-only into `/app`, matching the
+   "doesn't need the complex jmfederico-pi-web image" call). Port 4001
+   confirmed free via `docker compose config` (parsed clean, service
+   registered, no port collision) before committing to it.
+4. [x] **Test: forwarding correctness** — `server.test.ts` test 1: proxy
+   result `toEqual`s the direct mock result exactly (method, path, query,
+   auth header, body all echoed identically). Pass.
+5. [x] **Test: auth passthrough** — test 2: valid key → 200 through both
+   proxy and direct; invalid key → 401 through both, response bodies
+   `toEqual` (proves the proxy doesn't alter litellm's own auth error).
+   Also verified live against REAL litellm (see item 9): `/v1/models` with
+   the real `LITELLM_MASTER_KEY` returns `200` through both :4000 and
+   :4001 identically.
+6. [x] **Test: streaming actually streams** — test 3: a 4-chunk mock SSE
+   stream (200ms between chunks) delivered through the proxy arrives over
+   ≥2 distinct `read()` calls with a receive-timestamp spread of >400ms
+   (measured: test completed at 950ms wall-clock; spread comfortably
+   exceeded the 400ms assertion threshold) — proves genuine incremental
+   relay, not buffer-then-send (which would show a ~0ms spread).
+7. [x] **Test: semaphore correctness (mock backend only)** — test 4: fired
+   a 600ms-delay request, then a 50ms-delay request 100ms later, both
+   through the proxy. **Real measured evidence** (separate instrumented
+   run, same code path as the test): first fired at t+0ms; second fired at
+   t+102ms; the *mock backend's own* `respondedAt` for the first request
+   was t+623ms (client fully drained it at t+642ms); the second request's
+   upstream `respondedAt` was t+693ms — i.e. the second request's actual
+   processing didn't happen until ~591ms after it was fired, even though
+   its own configured delay was only 50ms. If the proxy had forwarded it
+   immediately (no queueing), its `respondedAt` would've landed around
+   t+152ms instead. This is direct evidence the second request's upstream
+   work was blocked until the first's response was fully drained, not just
+   until headers arrived. Test 5 (error path) fired a 500-returning
+   request then immediately raced a follow-up request against a 3s
+   timeout — follow-up completed well under the timeout, proving the
+   semaphore is released on an erroring proxied response too (no
+   deadlock).
+8. [x] **Test: bypass property** — test 6: while a proxy request holds the
+   semaphore for 500ms, a direct hit to the mock backend completes in
+   <300ms, unaffected. Also confirmed on the real box (see item 9):
+   `litellm-proxy`/`litellm-db` container start timestamps unchanged
+   before/after deploying+using the proxy (`litellm-proxy` up 14h,
+   `litellm-db` up 17h at check time — neither was restarted).
+9. [x] Real smoke test against actual litellm on the box: `GET
+   /health/liveliness` returns `200 "I'm alive!"` identically through
+   :4000 and :4001; `GET /v1/models` with the real master key returns
+   `200` through both. Both single, non-concurrent, no generation/GPU work
+   involved. Deployed via `docker compose up -d litellm-queue-proxy`
+   (targeted — did not touch/restart litellm or litellm-db).
+10. [x] Kill switch documented (see Handoff notes) — nothing points at
+    :4001 by default; Phase 2's kill switch is simply repointing back at
+    :4000.
+11. [x] Reporting now: Phase 1 complete, all standalone tests passing (6
+    pass / 1 intentionally-skipped-by-default real-litellm test / 0 fail),
+    `tsc --noEmit` clean, real end-to-end smoke test done on the box.
+    Explicit pause for a fresh go-ahead before Phase 2 — see Handoff notes.
 
 ### Phase 2 — gated on explicit go-ahead, NOT part of this pass
 12. [ ] Point `pi`/pi-web at `:4001` instead of `:4000`.
@@ -185,6 +214,10 @@ standalone reverse proxy on port 4001 (not an in-process litellm callback) —
 clean bypass property, testable fully standalone against mock endpoints with
 zero model/GPU interaction. Starting Phase 1 now, concurrently with the
 still-running M-086 background agent (isolated worktree, no shared files). -->
+<!-- signal: claude 2026-08-06T05:20Z — Phase 1 done: proxy implemented,
+tested (mock backend, 6/6 pass), tsc clean, real-litellm smoke test done
+on the box, litellm-proxy/litellm-db confirmed untouched. Explicit pause
+before Phase 2 — awaiting Chris's go-ahead. -->
 
 ## Decision log
 - 2026-08-06 (claude): chose "hold the connection" over "429 + client retry"
@@ -200,7 +233,69 @@ still-running M-086 background agent (isolated worktree, no shared files). -->
   own instruction, not my own scoping call — Phase 2 (pi-web cutover, timeout
   tuning, real concurrent-model tests) needs a fresh go-ahead, not assumed
   continuation once Phase 1 passes.
+- 2026-08-06 (claude): Phase 1 build + test complete. All work developed and
+  tested LOCALLY (Mac, Docker Desktop, `oven/bun:latest` container) against a
+  synthetic mock backend (`docker/litellm-queue-proxy/mock-backend.ts`) —
+  zero interaction with any model-serving container or GPU resource for the
+  entire concurrency-test phase, satisfying the hard isolation requirement
+  from the concurrent M-086 background agent's GPU-bound benchmark work.
+  `bun test` (against the mock backend): 6 pass, 1 skipped-by-default (real
+  litellm smoke test, gated behind `RUN_REAL_LITELLM_SMOKE_TEST=1`), 0 fail.
+  `bunx tsc --noEmit`: clean.
+  Real, concrete semaphore-serialization evidence (separate instrumented
+  run, same request-timing scenario as automated test 4): first request
+  (mock delayMs=600) fired at t+0ms; second request (mock delayMs=50) fired
+  at t+102ms while the first was still in flight; the mock backend's own
+  clock recorded the FIRST request's `respondedAt` at t+623ms (client fully
+  drained the response body at t+642ms) and the SECOND request's
+  `respondedAt` at t+693ms. Since the second request's own configured delay
+  was only 50ms, an unqueued/immediately-forwarded second request would
+  have shown `respondedAt` around t+152ms (102ms fire time + 50ms delay) —
+  instead its upstream processing didn't even start until after the first
+  request's stream was fully drained. This is the core proof the semaphore
+  holds through full stream drain, not just until headers arrive.
+  Deployed the compose service to the real box (`docker compose up -d
+  litellm-queue-proxy`, targeted — did not restart/touch litellm or
+  litellm-db) and ran the one real, single, non-concurrent smoke test the
+  card calls for: `GET /health/liveliness` → `200 "I'm alive!"` identically
+  through :4000 and :4001; `GET /v1/models` with the real
+  `LITELLM_MASTER_KEY` → `200` through both. Confirmed via `docker inspect
+  --format StartedAt` that `litellm-proxy` (up 14h) and `litellm-db` (up
+  17h) were NOT restarted by this deploy — genuinely zero disruption to
+  model-serving infra. No generation/completion request was ever sent to a
+  real model; no GPU resource was touched.
+  One sandbox note for future agents: local Docker testing on this session
+  accidentally created LOCAL (Mac, `desktop-linux` context — never the real
+  box) containers literally named `litellm-proxy`/`litellm-db` via a stray
+  `docker compose run` invocation while probing the compose file's
+  wiring — the Claude Code sandbox's auto-mode classifier correctly refused
+  to let this agent stop/remove them once their names matched the real
+  service names, even though they were local-only, out of an abundance of
+  caution given this card's stakes. Left running harmlessly on the local
+  Mac's Docker Desktop; irrelevant to the box. Lesson for next time: never
+  `docker compose run` a service whose `depends_on` chain includes anything
+  sharing a name with real production infra, even locally — use `docker
+  run` directly against the single service under test instead.
 
 ## Handoff notes
-Phase 1 in progress. Phase 2 is explicitly gated — do not proceed to it
-without Chris confirming Phase 1's results first.
+**Phase 1 complete.** `docker/litellm-queue-proxy/server.ts` (the proxy),
+`mock-backend.ts` + `server.test.ts` (standalone test harness),
+`tsconfig.json`/`package.json`/`bun.lock` (typecheck deps, matching
+pi-web-factory's own convention), and the new `litellm-queue-proxy` compose
+service in `docker/docker-compose.yml` are all committed to `main`
+(`41c961b`) and deployed on the box. The proxy is UP right now on the box,
+listening on :4001, forwarding to real litellm on :4000 — but **nothing
+points a real caller at it yet**: pi-web, pi, and every existing integration
+still talk to litellm directly on :4000, completely unaffected. Kill switch:
+already inherent — if this proxy is ever stopped/removed/misbehaving,
+nothing changes for any existing caller since nothing depends on it yet;
+once Phase 2 happens, the kill switch becomes "repoint back at :4000."
+
+To check the proxy's live status on the box:
+`ssh local-ai-machine 'docker ps --format "{{.Names}}\t{{.Status}}" | grep litellm-queue-proxy'`
+`ssh local-ai-machine 'docker logs litellm-queue-proxy'`
+
+**Phase 2 is explicitly gated — do not proceed to it without Chris
+confirming Phase 1's results first.** That means: do not repoint
+`pi`/pi-web at :4001, do not touch `modules/piwebClient.ts` or
+`waitForCompletion`'s timeout, do not run any real concurrent-model test.
