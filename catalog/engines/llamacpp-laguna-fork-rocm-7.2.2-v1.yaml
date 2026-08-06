@@ -1,0 +1,83 @@
+id: llamacpp-laguna-fork-rocm-7.2.2-v1
+family: llamacpp
+description: >
+  poolsideai/llama.cpp fork, branch `laguna`, built with ROCm/HIP targeting
+  gfx1151 (Strix Halo) — M-086's ROCm retry, a NEW image (not a rebuild of
+  M-055's rocm-7.14, which never got DFlash serving on this box). Uses ROCm
+  7.2.2 (community-validated "known-good" range for gfx1151 is 7.2.0-7.2.3;
+  M-055's 7.14 was outside that range) and adds the chip-specific build flags
+  M-055's Dockerfile was missing: GGML_HIP_ROCWMMA_FATTN (+ rocwmma-dev
+  package, enables working flash attention on gfx1151), GGML_HIP_NO_VMM
+  ("critical stability fix" per community docs), GGML_HIP_MMQ_MFMA. Runtime
+  flags added for M-055's actual failure mode: `-dio` (models >6GB can hang on
+  load without it) and `--no-mmap` + a `--memory` cgroup budget (targets the
+  "KFD driver thrash" symptom M-055 hit — unified-memory pressure without a
+  budget causing swap-storm-like stalls). Result: THIS TIME THE SERVER LOADS
+  AND SERVES — see catalog/builds/laguna-s-2.1-118b-q4km--llamacpp-laguna-fork-rocm-7.2.2-dflash.yaml
+  for the full benchmark result (a real, decisive negative: acceptance
+  11-52% depending on block size, roughly matching Vulkan's numbers at the
+  same n_max, NOT the community's claimed 73-91%; raw throughput trails the
+  Vulkan Q4_K_M-draft build and the 30.0 tok/s plain baseline at every
+  block size tested).
+image: local-ai-machine/llamacpp-laguna-fork:rocm-7.2.2
+runtime:
+  devices: ["/dev/kfd:/dev/kfd", "/dev/dri:/dev/dri"]
+  group_add: ["26", "303"]   # numeric GIDs for video/render
+  memory_limit: "110g"       # cgroup budget — the pitfall doc names an unbudgeted
+                              # unified-memory load as M-055's specific hang cause
+  volumes:
+    - "/var/lib/ai-models/laguna-s-2.1-118b-q4km:/models:ro"
+    - "/var/lib/ai-models/laguna-s-2.1-dflash-draft:/models-draft:ro"
+common_env: {}
+common_flags:
+  - -ngl 999      # offload all layers
+  - -fa 1         # flash attention ON — unlike M-055's -fa 0 (assumed FA fundamentally
+                   # broken on gfx1151/ROCm), GGML_HIP_ROCWMMA_FATTN=ON makes -fa 1 work here
+  - --no-mmap     # LucRoot pitfalls doc: mitigates KFD-driver-thrash-style stalls under memory pressure
+  - -dio          # direct I/O — avoids the >6GB-model load hang some community reports describe
+  - --swa-full
+  - --reasoning-format deepseek
+invocation_template: |
+  docker run --rm --device /dev/kfd --device /dev/dri --group-add 26 --group-add 303 \
+    --memory=110g \
+    -v /var/lib/ai-models/laguna-s-2.1-118b-q4km:/models:ro \
+    -v /var/lib/ai-models/laguna-s-2.1-dflash-draft:/models-draft:ro \
+    local-ai-machine/llamacpp-laguna-fork:rocm-7.2.2 \
+    /build/build/bin/llama-server \
+    -m /models/UD-Q4_K_M/Laguna-S-2.1-UD-Q4_K_M-00001-of-00003.gguf \
+    -md /models-draft/laguna-s-2.1-DFlash-BF16.gguf \
+    --spec-type draft-dflash --spec-draft-n-max 15 \
+    -ngl 999 -fa 1 --swa-full --reasoning-format deepseek -n 8192 -c 131072 \
+    --no-mmap -dio --host 0.0.0.0 --port 8120
+known_gotchas:
+  - "Base: rocm/dev-ubuntu-24.04:7.2.2-complete (the '-complete' tag is the closest
+    analog in this newer versioned line to the old '-full' tag M-055 used for 7.14;
+    both carry the version-matched HIP SDK: hipcc, hipblas-devel, rocblas-devel,
+    plus rocwmma-dev via apt for the FATTN build flag)."
+  - "gfx1151 detected NATIVELY on ROCm 7.2.2 (`llama-cli --list-devices` reports
+    'ROCm0: Radeon 8060S Graphics' with no HSA_OVERRIDE_GFX_VERSION needed) — unlike
+    some community reports for other ROCm versions on this chip."
+  - "Fork head as built/tested: 04b2b72cb54048ead292884adbe11f284e3ec950 (same commit
+    as the Vulkan build and M-055's rocm-7.14, for a clean A/B; recorded in image at
+    /build/fork-commit.txt)."
+  - "llama-quantize was added to the cmake build targets for this image (unlike
+    M-055's rocm-7.14 and the original vulkan-radv image, which only targeted
+    llama-server/llama-bench/llama-cli) — not used for the DFlash benchmark itself
+    (quantization was done via the Vulkan image, CPU-only, in M-086's other
+    experiment) but available if needed."
+  - "MEASURED SUCCESS (2026-08-06): unlike M-055's rocm-7.14 (server never got past
+    loading — hung at ~551MiB RSS with no output for 7+ min), this build's DFlash
+    server LOADS AND SERVES at the full -c 131072 context. Load took ~65-70s cold,
+    ~55s warm (page cache). Memory usage during load climbed smoothly (73GiB -> 104GiB
+    used) with no thrash/stall pattern — the --no-mmap + -dio + --memory=110g
+    combination appears to have resolved M-055's hang."
+  - "MEASURED ACCEPTANCE (2026-08-06): does NOT reproduce the community's 73.5-90.6%
+    claim. n15 (community's own tested config): 11.0-13.0% acceptance, 13.9-15.8
+    tok/s. Acceptance rises at smaller block sizes just like Vulkan (n4: 31-32%,
+    n3: 40-50%, n2: 49-52%) but raw throughput (20.9-25.6 tok/s at best) never
+    approaches, let alone beats, the 30.0 tok/s plain baseline — ROCm's base
+    decode speed on this chip trails Vulkan/RADV's. See the build record for the
+    full sweep table and comparison to the Vulkan quantized-draft result (M-086's
+    other experiment), which DOES beat baseline (Q4_K_M draft, n2, 33-35 tok/s)."
+status: active
+first_used: "2026-08-06"

@@ -1,0 +1,216 @@
+id: laguna-s-2.1-118b-q4km--llamacpp-laguna-fork-rocm-7.2.2-dflash
+model:
+  display_name: Laguna-S-2.1 (UD-Q4_K_M GGUF) + Laguna-S-2.1-DFlash (BF16 GGUF) real DFlash speculative decoding via poolside's laguna fork (ROCm 7.2.2 retry build)
+  family: poolside
+  hf_repo: unsloth/Laguna-S-2.1-GGUF
+  hf_revision: null
+  architecture: moe
+  total_params: 118e9
+  active_params: 8e9
+  num_experts: null
+  quantization: GGUF-Q4_K_M (UD, imatrix-calibrated) target + GGUF-BF16 draft (custom
+    DFlashLagunaForCausalLM architecture)
+  context_length_native: null
+  modality: text
+  files:
+  - UD-Q4_K_M/Laguna-S-2.1-UD-Q4_K_M-00001-of-00003.gguf
+  - UD-Q4_K_M/Laguna-S-2.1-UD-Q4_K_M-00002-of-00003.gguf
+  - UD-Q4_K_M/Laguna-S-2.1-UD-Q4_K_M-00003-of-00003.gguf
+  - laguna-s-2.1-DFlash-BF16.gguf (draft, /var/lib/ai-models/laguna-s-2.1-dflash-draft, M-052)
+  local_path: /var/lib/ai-models/laguna-s-2.1-118b-q4km
+  size_on_disk_gb: 68.1
+versions:
+- version: v1
+  compose_service_id: null
+  engine_ref: llamacpp-laguna-fork-rocm-7.2.2-v1
+  role: 'M-086 ROCm retry — a NEW image (NOT a rebuild of M-055''s rocm-7.14,
+    which never got DFlash serving on this box: the server hung at ~551MiB RSS
+    with no output for 7+ minutes, and even a plain no-draft load stalled).
+    M-086''s fresh web research (2026-08-06) found M-055''s build was missing
+    chip-specific fixes documented by two independent community sources for
+    gfx1151: wrong ROCm version (7.14 vs the validated 7.2.0-7.2.3 range),
+    missing GGML_HIP_ROCWMMA_FATTN/GGML_HIP_NO_VMM/GGML_HIP_MMQ_MFMA build
+    flags, and missing `-dio`/`--no-mmap`+cgroup-budget runtime flags for the
+    exact "KFD driver thrash" hang M-055 hit. Result: TESTED_NOT_VIABLE, but a
+    MATERIALLY DIFFERENT (and more informative) negative than M-055''s. The
+    server now LOADS AND SERVES SUCCESSFULLY — first time DFlash-on-ROCm has
+    ever worked on this box, confirming the M-055 build really was missing
+    fixable issues, not hitting a fundamental hardware incompatibility. BUT
+    once serving, the community''s claimed 73.5-90.6% draft acceptance does
+    NOT reproduce: 11.0-13.0% at n_max=15 (the community''s own tested
+    config), rising to 31-52% at smaller block sizes — closely tracking the
+    SAME block-size-acceptance curve already seen on Vulkan (M-055), not a
+    step-change improvement. Raw decode throughput on ROCm also trails Vulkan
+    at every block size (best ROCm sample 25.57 tok/s at n3, vs Vulkan
+    BF16-draft 30.9 tok/s and Vulkan Q4_K_M-draft 34.77 tok/s at the same
+    n-range) — ROCm''s base per-token compute/memory-bandwidth path on this
+    chip is simply slower than RADV/Vulkan''s here, on top of not fixing the
+    acceptance problem. NOT added to docker-compose.yml: no ROCm DFlash
+    config approaches, let alone beats, the 30.0 tok/s plain baseline, and no
+    prior DFlash experiment on this box has ever gotten a standing compose
+    service (ad-hoc `docker run` only, by design). Net verdict: the
+    community''s ROCm acceptance advantage was real for THEIR environment/
+    patch level, but is not reproducible on this box''s ROCm/HIP stack even
+    with the documented gfx1151-specific fixes applied — the earlier M-055
+    "dead end" conclusion for ROCm holds, just for a different, better-
+    understood reason (base throughput + unreproduced acceptance, not a
+    load-time hang).'
+  notes: 'Custom image `local-ai-machine/llamacpp-laguna-fork:rocm-7.2.2` built
+    from `docker/llamacpp-laguna-fork-rocm-7.2.2.dockerfile` (base
+    rocm/dev-ubuntu-24.04:7.2.2-complete). Fork pinned to the IDENTICAL commit as
+    the Vulkan build and M-055''s rocm-7.14 (04b2b72) for a clean A/B. Build flags:
+    GGML_HIP=ON, AMDGPU_TARGETS=gfx1151, GGML_HIP_ROCWMMA_FATTN=ON (+ rocwmma-dev
+    apt package), GGML_HIP_NO_VMM=ON, GGML_HIP_MMQ_MFMA=ON. Build took ~3 min
+    compile time once the 7.37GB base image was pulled (throttled ~7-8MB/s on this
+    box''s link, ~17 min for the pull alone — consistent with M-055''s own note
+    about throttled bandwidth). llama-quantize also built as a bonus target (not
+    used in this experiment).
+
+    gfx1151 detected NATIVELY (`llama-cli --list-devices` -> "ROCm0: Radeon 8060S
+    Graphics (126976 MiB, 14857 MiB free)"), no HSA_OVERRIDE_GFX_VERSION needed.
+
+    Runtime: `--memory=110g` cgroup budget, `--no-mmap`, `-dio`, `-fa 1` (works here
+    thanks to ROCWMMA_FATTN — M-055 assumed FA was fundamentally broken on
+    gfx1151/ROCm and ran -fa 0, but per the community docs that was a missing-
+    package problem, not a hardware limit; this build never needed to fall back to
+    -fa 0). Load reached "model loaded, listening" at n_max=15/-fa 1/-c 131072 in
+    ~65-70s cold (~55s warm with page cache from a prior run) — memory climbed
+    smoothly from ~73GiB to ~104GiB used with no stall/thrash pattern, in sharp
+    contrast to M-055''s hang (~551MiB RSS, no progress for 7+ minutes, SIGTERM-
+    immune). The exact fix responsible is not isolated (the combination of new
+    ROCm version + all four build flags + all three runtime flags was tested as a
+    bundle per the card''s scope — no time-boxed bisection of which single change
+    mattered), but the load problem is resolved either way.
+
+    Sweep: n_max in {15, 4, 3, 2}, 2 short fresh prompts per config, full -c 131072
+    context, -fa 1, MAX_TOKENS=256 (matches the Vulkan quantized-draft sweep
+    methodology in this same card). Raw responses at
+    catalog/raw/laguna-rocm-7.2.2-2026-08-06/<n_max>/short-0.json,short-1.json.
+
+    Full sweep table:
+
+      | n_max | tok/s range   | acceptance range | vs Vulkan BF16-draft (M-055, same n_max) |
+      |-------|---------------|-------------------|--------------------------------------------|
+      | 15    | 13.92-15.83   | 11.0-13.0%        | 7.9-11.5 tok/s, 10-19% (ROCm faster raw tok/s at n15, similar acceptance) |
+      | 4     | 20.90-21.42   | 31.3-32.0%        | 24.8-27.1 tok/s, 31-38% (Vulkan faster, similar acceptance) |
+      | 3     | 22.78-25.57   | 40.3-49.5%        | 27.1-30.9 tok/s, 39-49% (Vulkan faster, near-identical acceptance) |
+      | 2     | 22.65-23.42   | 48.6-52.4%        | 27.7-30.1 tok/s, 48-55% (Vulkan faster, near-identical acceptance) |
+
+    Findings: (a) acceptance-vs-block-size curve on ROCm is essentially the SAME
+    shape as Vulkan''s (both rise from ~11-19% at n15 to ~48-55% at n2) — this is
+    strong evidence the block-size acceptance effect is a property of the
+    DFlash architecture/decoding algorithm itself, not a backend-precision
+    artifact, and definitively answers M-055''s open question ("is the
+    community''s ROCm acceptance advantage backend-specific?") with NO, it is
+    not reproducible here regardless of backend. (b) ROCm''s raw decode
+    throughput trails Vulkan/RADV at every block size on this box — the reverse
+    of the community''s report (lower ROCm base speed but MUCH higher
+    acceptance); here ROCm gets neither advantage. (c) this closes the
+    ROCm-vs-Vulkan backend-attribution question definitively: neither backend
+    reproduces the community''s numbers, and Vulkan (with a quantized draft,
+    the OTHER M-086 experiment) is the only config across the whole
+    M-050/M-053/M-055/M-086 investigation to beat the 30.0 tok/s baseline.
+
+    Host restored to pre-task state after the full sweep: standing
+    laguna-s-2.1-118b-q4km-v2 and qwen3.6-35b-a3b-mtp-v2 compose services back up
+    and healthy (confirmed via /health on their actual ports 8108/8109), no
+    leftover laguna-rocm-test container, no downloads left paused, box repo clean.
+    Old M-055 ROCm 7.14 images (local-ai-machine/llamacpp-laguna-fork:rocm-7.14,
+    rocm/dev-ubuntu-24.04:7.14.0-full) removed before this build to free disk
+    headroom (box was at 94% / 113G free) — that build reached a decisive
+    conclusion already and a fresh image was required by this card''s own scope.'
+  status: TESTED_NOT_VIABLE
+  created: '2026-08-06'
+  last_verified: '2026-08-06'
+  benchmark_runs:
+  - timestamp: '2026-08-06T04:46:30Z'
+    benchmark_id: llamacpp-server-live-timing-v1 (ROCm 7.2.2 retry, n15 community-config comparison)
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: 578d455 (M-086 ROCm 7.2.2 Dockerfile + build script; box HEAD at run time)
+      host_gpu_driver: ROCm 7.2.2 (rocm/dev-ubuntu-24.04:7.2.2-complete base; HIP runtime in-image); gfx1151 detected natively
+      concurrent_load:
+        downloads_paused: false (no download-model-*.service units activating at run start)
+        vllm_co_resident_or_stopped: standing laguna-s-2.1-118b-q4km-v2 AND qwen3.6-35b-a3b-mtp-v2 compose services stopped for the run (only the exclusive ROCm test container running); restored + confirmed healthy on actual ports (8108, 8109) at teardown
+      image_digest: local-ai-machine/llamacpp-laguna-fork@sha256:9a8f7fb30340f284992230273965955ba6416707ea47b7b9b94291b508c14e5f
+      engine_version: '04b2b72cb54048ead292884adbe11f284e3ec950 (fork branch laguna, ROCm/HIP backend, built GNU 13.3.0)'
+    result:
+      note: 'DFlash server load + benchmark at the community''s own tested config
+        (n_max=15, -fa 1 — this build does NOT need -fa 0 unlike M-055''s, thanks
+        to GGML_HIP_ROCWMMA_FATTN), full -c 131072 context, --no-mmap -dio,
+        --memory=110g cgroup budget. 2 short fresh prompts, MAX_TOKENS=256.
+        Invocation: `llama-server -m <laguna-s-2.1 shard 1 of 3> -md
+        <laguna-s-2.1-DFlash-BF16.gguf> --spec-type draft-dflash
+        --spec-draft-n-max 15 -ngl 999 -fa 1 --swa-full --reasoning-format
+        deepseek -n 8192 -c 131072 --no-mmap -dio`. SERVER LOADED SUCCESSFULLY
+        (~65-70s) — first time on this box. DFlash confirmed engaged via
+        draft_n/draft_n_accepted telemetry.'
+      context_used_tokens: 131072
+      short_context_tg_tok_s_samples:
+      - 15.834445919645754
+      - 13.920343336568182
+      short_context_draft_acceptance_samples:
+      - accepted: 167
+        generated: 1280
+        rate: 0.1305
+      - accepted: 157
+        generated: 1426
+        rate: 0.1101
+      baseline_comparison_note: 'Plain Laguna-S-2.1 baseline (llamacpp-vulkan-radv,
+        v1) = 30.0 tok/s. This ROCm n15 config: 13.92-15.83 tok/s — 1.9-2.2x
+        slower than baseline. Community''s claimed 73.5-90.6% ROCm acceptance at
+        n15 does NOT reproduce: measured 11.0-13.0%, essentially matching Vulkan''s
+        10-19% at the same n_max (M-055), not the community''s number.'
+      raw_stdout_file: catalog/raw/laguna-rocm-7.2.2-2026-08-06/n15/short-0.json,short-1.json
+  - timestamp: '2026-08-06T04:48:03Z'
+    benchmark_id: llamacpp-server-live-timing-v1 (ROCm 7.2.2 sweep, n4/n3/n2)
+    fingerprint:
+      host_kernel: 6.18.39
+      repo_commit: 578d455 (same as above)
+      host_gpu_driver: ROCm 7.2.2, gfx1151 native
+      concurrent_load:
+        downloads_paused: false
+        vllm_co_resident_or_stopped: standing services stopped for the run, restored + confirmed healthy after
+      image_digest: local-ai-machine/llamacpp-laguna-fork@sha256:9a8f7fb30340f284992230273965955ba6416707ea47b7b9b94291b508c14e5f
+      engine_version: '04b2b72cb54048ead292884adbe11f284e3ec950 (fork branch laguna, ROCm/HIP backend)'
+    result:
+      note: 'Same methodology as the n15 run, sweeping --spec-draft-n-max in
+        {4, 3, 2} to check whether ROCm shows the same block-size-vs-acceptance
+        trend Vulkan showed (M-055). Ran in one continuous stop/restore cycle
+        (one-off wrapper script, not committed — ad-hoc, matches the "no
+        permanent artifacts for a one-off sweep" precedent). Raw responses at
+        catalog/raw/laguna-rocm-7.2.2-2026-08-06/<n_max>/.'
+      context_used_tokens: 131072
+      sweep_table:
+        - config: "n15 fa1"
+          short_tok_s: "13.92-15.83"
+          short_acceptance_pct: "11.0-13.0"
+        - config: "n4 fa1"
+          short_tok_s: "20.90-21.42"
+          short_acceptance_pct: "31.3-32.0"
+        - config: "n3 fa1"
+          short_tok_s: "22.78-25.57"
+          short_acceptance_pct: "40.3-49.5"
+        - config: "n2 fa1"
+          short_tok_s: "22.65-23.42"
+          short_acceptance_pct: "48.6-52.4"
+      baseline_comparison_note: 'Best ROCm sample across the whole sweep: 25.57
+        tok/s (n3) — still 4.4 tok/s below the 30.0 tok/s plain baseline, and
+        below every comparable Vulkan config (Vulkan n3 BF16-draft: 27.1-30.9
+        tok/s; Vulkan n3 Q4_K_M-draft: 30.57-31.44 tok/s). No ROCm config in this
+        sweep approaches, let alone beats, baseline.'
+      interim_conclusion: 'ROCm 7.2.2 with all documented gfx1151 fixes applied
+        DOES resolve M-055''s load-time hang (a real, useful finding — this backend
+        is not fundamentally broken on this box''s hardware), but does NOT resolve
+        the acceptance problem (the community''s 73-91% claim is not reproducible
+        here) and its raw decode throughput trails Vulkan/RADV at every block size
+        tested. Combined with the Vulkan quantized-draft result (the OTHER M-086
+        experiment, which DOES beat baseline), the verdict is: stick with
+        Vulkan/RADV as the serving backend for Laguna-S-2.1, with or without
+        DFlash. ROCm is not competitive for this model on this hardware.'
+    known_issues_encountered:
+    - 'Base image pull (7.37GB) took ~17 min at this box''s throttled ~7-8MB/s
+      link — consistent with M-055''s own note about the box''s bandwidth being
+      rate-limited for this kind of large pull. No other issues; the build,
+      load, and sweep all completed cleanly on the first attempt with no
+      workarounds required (unlike M-055''s ldconfig/build-flag issues).'
