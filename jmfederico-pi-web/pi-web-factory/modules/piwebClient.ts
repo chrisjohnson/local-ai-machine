@@ -301,8 +301,27 @@ export function lastAssistantText(messages: SessionMessage[]): string | undefine
 
 // ── Completion wait-loop ────────────────────────────────────────────────
 
+/**
+ * Default `waitForCompletion` timeout, overridable via
+ * `PI_WEB_FACTORY_STEP_TIMEOUT_MS` (M-094) — matches this module's own
+ * `PI_WEB_FACTORY_BASE_URL` convention. Needed once a Step's completion
+ * request can genuinely queue behind another model's full generation (the
+ * cross-model request-serialization proxy, M-094) — 120s was sized for
+ * "pi-web is just slow sometimes," not "this request may sit behind someone
+ * else's multi-minute generation before it even starts." Only affects
+ * pi-web-factory's own automated wait-loop; a human's own pi-web browser
+ * session never runs this code (see this function's own doc comment) — the
+ * override cannot, by construction, change how a human waits.
+ */
+const DEFAULT_WAIT_FOR_COMPLETION_TIMEOUT_MS = (() => {
+  const raw = process.env["PI_WEB_FACTORY_STEP_TIMEOUT_MS"];
+  if (!raw) return 120_000;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 120_000;
+})();
+
 export interface WaitForCompletionOptions {
-  /** Overall timeout in ms before giving up and returning an "error" result. Default 120_000. */
+  /** Overall timeout in ms before giving up and returning an "error" result. Default 120_000, or `PI_WEB_FACTORY_STEP_TIMEOUT_MS` if set. */
   timeoutMs?: number;
   /** Poll interval in ms for the `/status` fallback. Default 1500. */
   pollIntervalMs?: number;
@@ -336,7 +355,7 @@ export async function waitForCompletion(
   sessionId: string,
   opts: WaitForCompletionOptions = {},
 ): Promise<WaitForCompletionResult> {
-  const timeoutMs = opts.timeoutMs ?? 120_000;
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_WAIT_FOR_COMPLETION_TIMEOUT_MS;
   const pollIntervalMs = opts.pollIntervalMs ?? 1500;
   const deadline = Date.now() + timeoutMs;
 

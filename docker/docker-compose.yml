@@ -1266,6 +1266,16 @@ services:
       # Absolute path for pi-web config directory
       - PI_CODING_AGENT_DIR=/home/piweb/.pi-web
       - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
+      # M-094: pi-web-factory's own Workflow-Step wait-loop timeout
+      # (modules/piwebClient.ts's waitForCompletion). 120s default was sized
+      # for "pi-web is just slow sometimes" — now that a Step's completion
+      # request can genuinely queue behind another model's full generation
+      # (the litellm-queue-proxy, port 4001, models.json now points here
+      # instead of litellm's own :4000), a queued Step needs headroom for
+      # BOTH the wait AND its own generation time on top. 10 minutes is a
+      # deliberately generous starting point pending Phase 2's real
+      # concurrent-Workflow-Run test — tune down once real data exists.
+      - PI_WEB_FACTORY_STEP_TIMEOUT_MS=600000
       # @juicesharp/rpiv-web-tools (see settings.seed.json's packages
       # array): reuses the SearxNG instance already running for the other
       # pi-web variant (M-038) rather than a second search stack. That
