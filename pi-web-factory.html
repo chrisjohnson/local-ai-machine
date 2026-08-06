@@ -566,57 +566,66 @@
     </div>
 
     <h2 id="concurrency">Concurrency &amp; the request queue</h2>
-    <div class="callout warn">
-      <b>Planned, not yet built (M-094).</b> This section describes the intended
-      design so it's documented before implementation, matching this page's
-      role as the durable home for the stack's design decisions — not a claim
-      that any of this is live yet. Check the status grid below for the real
-      state.
+    <div class="callout good">
+      <b>Live (M-094).</b> Real, deployed, and verified against actual concurrent
+      Workflow Runs on real models — not a design sketch. See below for how it was
+      tested, including a deliberately reproduced failure case.
     </div>
-    <p>Two Workflow Runs hitting the <i>same</i> role at the same moment already queue
-    safely today, for free — most model servers on this box run llama.cpp with a single
-    request slot (<code>-np 1</code>), so a second request just waits its turn, no error,
-    no special client handling. The gap is two runs hitting <i>different</i> roles
-    (different physical models) concurrently: litellm forwards both immediately, and since
-    this hardware is memory-bandwidth-bound rather than compute-bound (the same conclusion
-    the DFlash speculative-decoding research kept reaching — see M-055/M-086), concurrent
-    decode against two different resident models means both genuinely compete for the same
-    shared memory bus. Worse case: their combined KV-cache footprint on top of already-
-    resident weights exceeds headroom, which is a real OOM, not just a slowdown — the same
-    failure class that's already hit this box twice this session (M-037's incident, Ornith
-    getting OOM-killed under concurrent load per M-078's decision log).</p>
+    <p>Two Workflow Runs hitting the <i>same</i> role at the same moment already queued
+    safely for free before this — most model servers on this box run llama.cpp with a single
+    request slot (<code>-np 1</code>), so a second request just waits its turn, no error, no
+    special client handling. The gap this closes is two runs hitting <i>different</i> roles
+    (different physical models) concurrently: litellm used to forward both immediately, and
+    since this hardware is memory-bandwidth-bound rather than compute-bound (the same
+    conclusion the DFlash speculative-decoding research kept reaching — see M-055/M-086),
+    concurrent decode against two different resident models means both genuinely compete for
+    the same shared memory bus. Worse case: their combined KV-cache footprint on top of
+    already-resident weights exceeds headroom, which is a real OOM, not just a slowdown — the
+    same failure class that's hit this box more than once (M-037's incident, Ornith getting
+    OOM-killed under concurrent load per M-078's decision log).</p>
     <p><b>The design:</b> hold the connection open rather than reject-and-retry. A queued
-    request just takes longer — no error, no client-side retry logic needed anywhere. This
-    is the exact same behavior already happening for free at the llama.cpp <code>-np 1</code>
-    layer, extended up to the litellm-proxy layer so it also covers requests to different
-    models sharing the same physical box. It lives as a custom litellm callback (the same
-    mechanism this stack already uses for JSON request logging) — a module-level
-    <code>asyncio.Semaphore</code>, acquired before a request is forwarded to its backend,
-    released once it completes (success or failure). Every request through litellm gets the
-    protection, including human-driven pi-web sessions — that's deliberate, not a gap; a
-    human just experiences a slightly slower response the same way a queued <code>-np 1</code>
-    request already does today.</p>
-    <p><b>What does change, scoped narrowly:</b> pi-web-factory's own automated wait-loop
-    timeout (<code>waitForCompletion()</code> in <code>piwebClient.ts</code>, currently a
-    flat 120s) needs to grow, since a Workflow Step can now genuinely queue behind another
-    model's full generation. This is safe to change in isolation — that wait-loop exists
-    <i>only</i> because pi-web has no blocking/long-poll HTTP endpoint of its own, and
-    pi-web-factory built its own polling/WebSocket wrapper around it. A human using pi-web's
-    own browser UI never touches this code path at all; it's a separate frontend with its
-    own separate (effectively unbounded, human-patience) waiting behavior. So the timeout
-    override is real, already has its parameter plumbing in place end-to-end, and cannot
-    by construction affect how a human waits — there's no shared code path to accidentally
-    touch.</p>
-    <div class="callout">
-      One real open question this design doesn't resolve by reading code alone:
-      <code>pi</code> (the agent CLI actually running inside each session) makes its own
-      outbound call to litellm and has its own timeout for that call, set by
-      <code>pi</code>/pi-web's own config — a different layer than pi-web-factory's outer
-      wait loop. If a queued request sits long enough to hit <i>that</i> timeout first, the
-      agent's own turn fails regardless of how generous pi-web-factory's own timeout is set.
-      M-094's plan treats this as a real empirical test to run before trusting the design
-      end-to-end, not an assumption to wave away.
-    </div>
+    request just takes longer — no error, no client-side retry logic needed anywhere. This is
+    the same behavior the llama.cpp <code>-np 1</code> layer already provides for free,
+    extended up a layer so it also covers requests to different models sharing the same
+    physical box.</p>
+    <p><b>What it actually is: a standalone HAProxy reverse proxy</b>
+    (<code>litellm-queue-haproxy</code>, port 4001), sitting in front of litellm (port 4000)
+    — not a litellm plugin, not custom code in the hot path. <code>maxconn 1</code> on litellm
+    as the single backend server gives global, cross-model serialization: every request routes
+    through litellm as one upstream regardless of which model it targets, so limiting
+    concurrency to litellm itself serializes everything. A first attempt at this used a small
+    custom Bun proxy — it worked in every test thrown at it, including real concurrent load,
+    right up until a real request hung indefinitely in production with no visible error, and
+    because every path shared one semaphore with no bypass, it also took down its own health
+    endpoint while stuck. Rather than keep patching a bespoke implementation's edge cases,
+    the fix was switching to HAProxy — software that's been solving exactly this class of
+    problem, correctly, for two decades. The switch was verified by <i>deliberately
+    reproducing</i> the failure mode that broke the first version: a raw socket opened, a real
+    streaming request sent, the connection abruptly killed mid-stream with no clean HTTP
+    close. A follow-up request succeeded in 787ms — not stuck. HAProxy tracks connections at
+    the OS socket level, not a hand-rolled stream wrapper, so it correctly detects a vanished
+    client and releases the slot regardless of how ungracefully it disappeared.</p>
+    <p>litellm itself stays reachable directly on :4000 at all times — a real, cheap bypass if
+    the queue ever needs to be skipped, no config edit or restart required. Every request
+    through the proxy gets the protection, including human-driven pi-web sessions — that's
+    deliberate, not a gap; a human just experiences a slightly slower response the same way a
+    queued <code>-np 1</code> request already does today.</p>
+    <p><b>What changed to make this safe: pi-web-factory's own automated wait-loop timeout</b>
+    (<code>waitForCompletion()</code> in <code>piwebClient.ts</code>) is now overridable via
+    <code>PI_WEB_FACTORY_STEP_TIMEOUT_MS</code> (set to 10 minutes in the deployed
+    environment, up from a flat 120s), since a Workflow Step can now genuinely queue behind
+    another model's full generation. This only affects pi-web-factory's own wait loop — that
+    code exists purely because pi-web has no blocking/long-poll HTTP endpoint of its own; a
+    human using pi-web's browser UI never touches this code path at all, so the override
+    cannot by construction change how a human waits.</p>
+    <p><b>Real evidence, not just a passing test suite:</b> two real, independently launched
+    Workflow Runs, targeting different models (<code>big-moe</code>/laguna and
+    <code>medium-moe</code>/qwen) concurrently, produced a clean sequence of LLM requests in
+    litellm's own logs with <i>zero overlapping time windows</i>, start to finish — every
+    single request waited for the previous one to fully complete before starting, regardless
+    of which model either one targeted. No regression in either run's own success/failure
+    behavior versus running alone (one succeeded; the other failed for an unrelated,
+    already-documented reason — see M-096).</p>
 
     <h2 id="flow">How a Workflow Run flows</h2>
     <p>Walking through <code>bounded-build-review</code> — <code>build → loop{review, build} until
@@ -758,7 +767,9 @@
       <div class="id">M-080</div><div class="title">A rejected review can still report top-level SUCCESS</div><div class="status-refine">needs your call</div>
       <div class="id">M-082</div><div class="title">Permissions enforcement flags incidental verification artifacts</div><div class="status-refine">needs your call</div>
       <div class="id">M-089</div><div class="title">Ornith Q4_K_M — smoke-tested, faster + ~15GB lighter than Q8_0</div><div class="status-refine">role-switch — your call</div>
-      <div class="id">M-094</div><div class="title">Cross-model request queue at the litellm layer — see "Concurrency" above</div><div class="status-next">designed, not yet built</div>
+      <div class="id">M-094</div><div class="title">Cross-model request queue (HAProxy) — see "Concurrency" above</div><div class="status-done">done</div>
+      <div class="id">M-095</div><div class="title">Concurrent cli.ts launches can race pi-web's own project registration</div><div class="status-refine">needs-refinement</div>
+      <div class="id">M-096</div><div class="title">plan Role sometimes writes the deliverable directly, not just a plan</div><div class="status-refine">needs-refinement</div>
     </div>
     <p>There's also a durable ticket layer sketched but not built INTO pi-web-factory itself: a trimmed
     <code>.fleet</code>-style <code>backlog/</code> → <code>now/</code> → <code>done/</code> queue that
