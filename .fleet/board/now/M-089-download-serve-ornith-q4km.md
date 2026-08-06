@@ -57,14 +57,17 @@ additive: new model definition + triggering its download, so a smoke-test
 7. [x] Commit + push to main; deploy on box (`git pull --ff-only` +
    `nixos-rebuild switch`); confirm download triggered and actually
    progressing (growing file size / hf cache, not just command exit 0).
-8. [ ] (follow-up, NOT this card) once download completes: smoke test the
-   service, then a later card can carry a role-switch decision to Chris.
+8. [x] (follow-up, NOT this card originally — done here anyway per Chris's
+   explicit "smoke test and benchmark the new models" instruction) once
+   download completes: smoke test the service. Role-switch decision to
+   Chris is still NOT made here — left open, see Decision log/Handoff.
 
 ## Signals
 <!-- signal: claude 2026-08-05T00:00Z — claiming, researching Q4_K_M provenance -->
 <!-- signal: claude 2026-08-05T19:17Z — deployed via nixos-rebuild switch (clean eval, no syntax issues); download-model-llamacpp-ornith-1.0-35b-mtp-q4 service active and growing (148K -> 11M within first minute, .incomplete marker present as expected mid-transfer); laguna-s-2.1-118b-q4km and qwen3.6-35b-a3b-mtp confirmed still running untouched -->
 <!-- signal: claude 2026-08-05T19:17Z — handoff ready: smoke test + role-switch decision left for later, per task instructions -->
 <!-- signal: claude 2026-08-05T23:40Z — board sweep: confirmed live, .download-complete now present at /var/lib/ai-models/llamacpp-ornith-1.0-35b-mtp-q4/ — download finished. Service (ornith-1.0-35b-mtp-q4--llamacpp-vulkan-radv-v1) not yet started. Not moving to done/ myself — this card's own handoff notes explicitly scope smoke-test+role-switch as follow-up kept open on purpose, not an oversight. -->
+<!-- signal: claude 2026-08-06T03:45Z — smoke test + comparative benchmark done, catalog recorded. Role-switch decision still explicitly NOT made — staying in now/ pending that. -->
 
 ## Decision log
 - 2026-08-05: Confirmed via HF API tree (`/api/models/singulared/Ornith-1.0-35B-MTP-GGUF/tree/main`)
@@ -99,16 +102,43 @@ additive: new model definition + triggering its download, so a smoke-test
   or `set-role.sh` — purely additive per the task constraints. Did not
   touch the currently-running `laguna-s-2.1-118b-q4km` or
   `qwen3.6-35b-a3b-mtp` containers.
+- (claude, 2026-08-06) Smoke test + comparative benchmark, per Chris's explicit "smoke test and
+  benchmark the new models" instruction. Snapshotted running state first (qwen3.6-35b-a3b-mtp-v2 +
+  laguna-s-2.1-v2, the only two model containers running), stopped both by name, started ONLY
+  `ornith-1.0-35b-mtp-q4--llamacpp-vulkan-radv-v1` (port 8113) by name. Confirmed healthy
+  (`/health` -> ok) and MTP draft context created (server log). **Real generated completions
+  confirmed**: a short coding request with a generous budget (max_tokens=1000, "keep thinking brief")
+  returned real code, finish_reason=stop, 97.98 tok/s, 87.2% MTP draft acceptance. A harder/broader
+  request at max_tokens=1200 hit finish_reason=length with empty visible content — confirmed via
+  `reasoning_content` this was the known thinking-budget-exhaustion behavior (per M-078's decision log),
+  not a broken deployment; re-run at max_tokens=2500 on the same prompt produced real substantive
+  content (1695 chars, on-topic). Conclusion: genuinely serving, but needs generous max_tokens
+  (>=1500-2000) for non-trivial prompts, same operational lesson as the Q8_0 build.
+
+  Comparative benchmark vs the existing Q8_0 catalog entry, same methodology (llama-bench pp512/tg128
+  plain baseline, then live-server MTP timing with `--spec-draft-n-max 3` matching the Q8_0 entry's own
+  benchmark run): Q4_K_M plain tg128 76.76 tok/s (Q8_0: 55.26, +39%); MTP live avg 110.39 tok/s across 3
+  runs (Q8_0: 64.73, +71%); draft acceptance 0.849 (Q8_0: 0.583). Q4_K_M is faster on every axis measured
+  here, not just smaller — no speed tradeoff found, contrary to the naive expectation. GPU memory: ~20.5GiB
+  resident (Q8_0 catalogued at 35.86GiB GTT peak) — ~15GB headroom recovered, the whole point of this card.
+  New catalog entry: `catalog/builds/ornith-1.0-35b-mtp-q4--llamacpp-vulkan-radv.yaml`. Raw results saved
+  to `catalog/raw/ornith-1.0-35b-mtp-q4--llamacpp-vulkan-radv-v1--llamacpp-mtp-v1--20260806T034300Z-run{1,2,3}.json`.
+  Stopped the Q4 service again afterward (not left running as new default), restarted the original two
+  containers by name, confirmed both healthy with real completions, no OOM. Did NOT touch `set-role.sh`
+  or any litellm role — that decision explicitly stays with Chris.
 
 ## Handoff notes
-Download triggered on the box via the standard NixOS model-fetch
-mechanism (declarative `models` entry → auto-generated timer-triggered
-oneshot service), same as every other model on this box — not a manual
-wget. Once `/var/lib/ai-models/llamacpp-ornith-1.0-35b-mtp-q4/.download-complete`
-exists, the compose service `ornith-1.0-35b-mtp-q4--llamacpp-vulkan-radv-v1`
-(port 8113) can be started explicitly: `docker compose -f docker/docker-compose.yml
-up -d ornith-1.0-35b-mtp-q4--llamacpp-vulkan-radv-v1`. Smoke-testing it and
-any role-switch decision (`set-role.sh medium-moe ...`) is explicitly
-follow-up work, not part of this card — leaving this card in `now/` rather
-than `done/` for exactly that reason (same pattern M-079 used for its own
-still-open step 5).
+Download, smoke test, and comparative benchmark are all done (2026-08-06) — see Decision log above for
+real numbers. **What's still open, deliberately not done here:** the role-switch decision
+(`set-role.sh medium-moe ornith-1.0-35b-mtp-q4 ...` or similar) to actually make Q4_K_M the standing
+`medium-moe` backend — that's explicitly Chris's call per this card's own original text, not something
+to do unilaterally. The comparative numbers above (Q4_K_M faster on every axis, ~15GB less memory) are
+real data for that decision whenever Chris wants to make it. Leaving this card in `now/` for exactly
+that reason — not an oversight.
+
+Also worth noting for whoever picks up the role-switch: M-084 (claimed by a different agent, "opencode",
+still in `now/`) shows `medium-moe` was set to the Q8_0 build at one point (2026-08-05); by the time this
+card's work started, no Ornith container was running at all and `medium-moe`'s actual current backend
+was not independently re-verified here (out of scope — this card never touches `set-role.sh` or reads
+litellm's live role state). Whoever makes the role-switch call should check current live role state
+fresh rather than trust either card's snapshot.
