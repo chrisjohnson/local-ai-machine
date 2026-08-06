@@ -3,7 +3,8 @@ FROM python:3.11-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         curl \
-        docker.io \
+        docker-cli \
+        docker-compose \
         git \
         openssh-client \
     && rm -rf /var/lib/apt/lists/*
