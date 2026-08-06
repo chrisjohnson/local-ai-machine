@@ -41,6 +41,20 @@ explicit decision, not a judgment call — confirmed directly.
 <!-- signal: claude 2026-07-31T06:15Z — claiming, working the 6-ticket overnight batch per Chris's direction -->
 <!-- signal: claude 2026-07-31T06:22Z — real incident during deploy: caused brief coder-model downtime as collateral damage, see decision log. Restarted, but pausing further shared-model-stack actions tonight pending Chris's review. -->
 <!-- signal: claude 2026-07-31T22:00Z — the pending handoff item (verify coder serves real completions) is resolved: a separate session extensively exercised the coder role for hours afterward (multiple model swaps: qwen3-coder-next, glm-4.7-flash, laguna-s-2.1, now an orchestrator role) with real chat completions succeeding throughout. Not closing this card myself (not my work to sign off on) but flagging the blocking concern as answered. Also: M-035/M-036/M-038 (this card's own related_cards) and a since-created M-037 (a different, unrelated design-work card that collided with this card's real id, renumbered to M-037.1) have all been closed as moot per Chris's direction, since this decommission made their whole premise obsolete. -->
+<!-- signal: claude 2026-08-05T23:35Z — done, board sweep re-verification: pi-agent-supervisor container/port/dir confirmed gone live, closing per Chris's "review what's actually TBD and move anything done" instruction -->
+
+## Decision log
+- (claude, 2026-08-05T23:35Z) Board sweep re-verification (Chris asked to review `now/`
+  for anything actually done): confirmed live, not from stale notes — no
+  `pi-agent`-named container exists (`docker ps -a`), port 3002 is not listening,
+  `pi-web` responds 200, litellm's own health endpoint responds 200. The original
+  handoff item ("confirm `coder` serves real completions") is now moot rather than
+  unresolved: litellm's roles were restructured to a capability-tier scheme
+  (`big-moe`/`medium-moe`/`small-moe`/`small-dense`, `scripts/litellm-bootstrap.sh`)
+  sometime after this card's last update — `coder` no longer exists as a role name
+  by deliberate later design (M-079-era work), not because anything broke. All 5
+  plan items were already checked; this was a genuinely finished card sitting in
+  `now/` past its actual completion. Moving to `done/`.
 
 ## Decision log
 - (claude, 2026-07-31T22:00Z) Pending handoff item resolved: confirmed
