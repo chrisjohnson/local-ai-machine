@@ -1,0 +1,100 @@
+{
+  "type": "json_schema",
+  "json_schema": {
+    "name": "pi_continue_artifacts_v4",
+    "strict": true,
+    "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "brief", "agentGuideUpdate"],
+      "properties": {
+        "version": { "enum": ["pi-continue-artifacts/v4"] },
+        "brief": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["task", "done_when", "forbid", "established", "learned", "open", "next"],
+          "properties": {
+            "task": { "type": "string" },
+            "done_when": { "type": "string" },
+            "forbid": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["rule", "source"],
+                "properties": {
+                  "rule": { "type": "string" },
+                  "source": { "type": "string" }
+                }
+              }
+            },
+            "established": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["claim", "evidence", "basis", "reopen"],
+                "properties": {
+                  "claim": { "type": "string" },
+                  "evidence": { "type": "string" },
+                  "basis": { "enum": ["observed", "test", "output", "user", "doc"] },
+                  "reopen": { "type": "string" }
+                }
+              }
+            },
+            "learned": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["lesson", "source"],
+                "properties": {
+                  "lesson": { "type": "string" },
+                  "source": { "type": "string" }
+                }
+              }
+            },
+            "open": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["question", "verifies"],
+                "properties": {
+                  "question": { "type": "string" },
+                  "verifies": { "type": "string" }
+                }
+              }
+            },
+            "next": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["action", "outcome"],
+                "properties": {
+                  "action": { "type": "string" },
+                  "outcome": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "agentGuideUpdate": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["content", "reason"],
+          "properties": {
+            "content": {
+              "anyOf": [
+                { "type": "string" },
+                { "type": "null" }
+              ]
+            },
+            "reason": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

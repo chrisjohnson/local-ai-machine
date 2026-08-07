@@ -1,10 +1,17 @@
 #!/usr/bin/env bash
-# Updates a LiteLLM role (big-moe, medium-moe, small-moe, etc.) to point at
-# a different model service. Reads the port from docker-compose.yml — no
+# Updates a LiteLLM role (big-moe, medium-moe, small-moe,
+# big-moe-continue-json, medium-moe-continue-json, etc.) to point at a
+# different model service. Reads the port from docker-compose.yml — no
 # manual port lookup needed. Changes the role via litellm's Model
 # Management API (POST /model/update) — does NOT edit
 # docker/litellm/config.yaml, and does NOT restart litellm (DB-backed
 # model changes apply live).
+#
+# The *-continue-json roles carry a response_format JSON schema (pi-continue
+# handoff synthesis needs it for strict JSON.parse()); this script preserves
+# existing non-model litellm_params on update, since litellm's /model/update
+# replaces litellm_params wholesale rather than merging (verified empirically
+# 2026-08-07). The roles themselves are seeded by litellm-bootstrap.sh.
 #
 # Why the API instead of editing a file (2026-07-31 redesign): dynamic
 # roles are deliberately NOT tracked in config.yaml at all anymore - see
@@ -23,6 +30,7 @@
 # Examples:
 #   set-role.sh medium-moe gemma-4-26b-a4b-it--vllm-therock-gfx1151-v1
 #   set-role.sh small-moe qwen3.5-4b--vllm-therock-gfx1151-v1
+#   set-role.sh big-moe-continue-json laguna-s-2.1-118b-q4km--llamacpp-vulkan-radv-v2
 #
 # The service name must match a service defined in docker-compose.yml.
 # The role must already exist in litellm's DB (run
@@ -105,16 +113,41 @@ fi
 echo "Setting ${ROLE} -> ${MODEL_NAME} on port ${PORT}"
 
 # --- Look up the role's existing DB entry (bootstrap or a prior set-role.sh call) ---
-EXISTING_ID=$(curl_litellm "$LITELLM_URL/model/info" | python3 -c "
+# Fetch the role's current entry INCLUDING its litellm_params so we can
+# preserve extra params (e.g. response_format on the *-continue-json roles)
+# on update - litellm's /model/update REPLACES litellm_params wholesale
+# rather than merging (verified empirically 2026-08-07), so a naive
+# {model, api_base, api_key} update would silently drop the JSON-schema
+# forcing pi-continue depends on. We keep any non-standard keys; model/
+# api_base/api_key are overwritten below.
+EXISTING_INFO=$(curl_litellm "$LITELLM_URL/model/info" | python3 -c "
 import json, sys
 d = json.load(sys.stdin)
 for m in d.get('data', []):
-    if m.get('model_name') == '${ROLE}':
-        print(m.get('model_info', {}).get('id') or '')
+    # Prefer the DB-backed entry (db_model true). A config-file entry for the
+    # same name can only appear if it's still a static model_list route (the
+    # old *-continue-json design) and is not updatable via /model/update.
+    if m.get('model_name') == '${ROLE}' and m.get('model_info', {}).get('db_model'):
+        out = {
+            'id': m.get('model_info', {}).get('id') or '',
+            'extra_params': {k: v for k, v in m.get('litellm_params', {}).items()
+                             if k not in ('model', 'api_base', 'api_key')}
+        }
+        print(json.dumps(out))
         break
-" 2>/dev/null || true)
+" 2>/dev/null || echo "{}")
 
-NEW_PARAMS="{\"model\": \"openai/${MODEL_NAME}\", \"api_base\": \"http://127.0.0.1:${PORT}/v1\", \"api_key\": \"none\"}"
+EXISTING_ID=$(echo "$EXISTING_INFO" | python3 -c "import json,sys; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || true)
+EXTRA_PARAMS=$(echo "$EXISTING_INFO" | python3 -c "import json,sys; print(json.dumps(json.load(sys.stdin).get('extra_params',{})))" 2>/dev/null || echo "{}")
+
+NEW_PARAMS=$(python3 -c "
+import json
+params = {'model': 'openai/${MODEL_NAME}', 'api_base': 'http://127.0.0.1:${PORT}/v1', 'api_key': 'none'}
+extra = json.loads('${EXTRA_PARAMS}')
+if extra:
+    params = {**extra, **params}
+print(json.dumps(params))
+")
 
 if [[ -n "$EXISTING_ID" ]]; then
   RESULT=$(curl_litellm -X POST "$LITELLM_URL/model/update" --data-binary "{
