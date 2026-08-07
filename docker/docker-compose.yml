@@ -1437,9 +1437,9 @@ services:
   ollama:
     image: ollama/ollama:0.17.7
     container_name: ollama
-    restart: unless-stopped
-    labels:
-      com.local-ai-machine.always-up: "true"
+    #restart: unless-stopped
+    #labels:
+      #com.local-ai-machine.always-up: "true"
     environment:
       - OLLAMA_VULKAN=1
       - HIP_VISIBLE_DEVICES=-1
@@ -1886,7 +1886,7 @@ services:
     ports:
       - "8080:3000" # Expose the Next.js UI port
     volumes:
-      - /home/chris/turnstone-workspace/printer-dashboard:/work
+      - /home/chris/turnstone-workspace:/work
       - ~/.pi-web:/home/piweb/.pi-web
       - /home/chris/.ssh:/home/piweb/.ssh
       - /var/run/docker.sock:/var/run/docker.sock

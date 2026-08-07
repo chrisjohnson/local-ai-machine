@@ -92,8 +92,8 @@ model_list:
   # repointing — same discipline as the qwen route's original verification.
   - model_name: medium-moe-continue-json
     litellm_params:
-      model: openai/ornith-1.0-35b-mtp-q8
-      api_base: http://127.0.0.1:8110/v1
+      model: openai/ornith-1.0-35b-mtp-q4
+      api_base: http://127.0.0.1:8113/v1
       api_key: "none"
       response_format:
         type: json_schema
@@ -185,7 +185,7 @@ model_list:
   - model_name: big-moe-continue-json
     litellm_params:
       model: openai/laguna-s-2.1-118b-q4km
-      api_base: http://127.0.0.1:8108/v1
+      api_base: http://127.0.0.1:8125/v1
       api_key: "none"
       response_format:
         type: json_schema
