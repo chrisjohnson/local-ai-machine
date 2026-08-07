@@ -7,7 +7,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { ensureProjectRegistered, listProjects, resolveWorkspaceId } from "./piwebProject.ts";
+import { ensureProjectRegistered, listProjects, resolveWorkspaceId, ProjectRegistrationRaceError } from "./piwebProject.ts";
 import { PiWebClientError } from "./piwebClient.ts";
 
 const BASE_URL = "http://fake-pi-web.test/api";
@@ -49,12 +49,21 @@ describe("ensureProjectRegistered", () => {
     expect(postCalled).toBe(false);
   });
 
-  test("POSTs a new project when no existing entry matches the path, and returns its id", async () => {
+  test("POSTs a new project when no existing entry matches the path, verifies via a fresh GET, and returns its id", async () => {
     let postBody: unknown;
+    let getCallCount = 0;
     globalThis.fetch = (async (input: string | URL, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input.toString();
       if (url.endsWith("/projects") && (init?.method ?? "GET") === "GET") {
-        return new Response(JSON.stringify([]), { status: 200 });
+        getCallCount += 1;
+        // First GET (pre-check): empty. Second GET (M-095 verify-after-write,
+        // post-POST): the new project now shows up, confirming the write
+        // actually persisted.
+        if (getCallCount === 1) return new Response(JSON.stringify([]), { status: 200 });
+        return new Response(
+          JSON.stringify([{ id: "proj_new", name: "new", path: "/tmp/my-new-project", createdAt: "2026-01-01T00:00:00Z" }]),
+          { status: 200 },
+        );
       }
       if (url.endsWith("/projects") && init?.method === "POST") {
         postBody = JSON.parse(String(init.body));
@@ -72,11 +81,22 @@ describe("ensureProjectRegistered", () => {
   });
 
   test("matches by EXACT path — a project at a different path is not treated as already-registered", async () => {
+    let getCallCount = 0;
     globalThis.fetch = (async (input: string | URL, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input.toString();
       if (url.endsWith("/projects") && (init?.method ?? "GET") === "GET") {
+        getCallCount += 1;
+        if (getCallCount === 1) {
+          return new Response(
+            JSON.stringify([{ id: "proj_other", name: "other", path: "/tmp/other-project", createdAt: "2026-01-01T00:00:00Z" }]),
+            { status: 200 },
+          );
+        }
         return new Response(
-          JSON.stringify([{ id: "proj_other", name: "other", path: "/tmp/other-project", createdAt: "2026-01-01T00:00:00Z" }]),
+          JSON.stringify([
+            { id: "proj_other", name: "other", path: "/tmp/other-project", createdAt: "2026-01-01T00:00:00Z" },
+            { id: "proj_new", name: "new", path: "/tmp/my-project", createdAt: "2026-01-01T00:00:00Z" },
+          ]),
           { status: 200 },
         );
       }
@@ -97,6 +117,101 @@ describe("ensureProjectRegistered", () => {
     globalThis.fetch = (async (_input: string | URL, _init?: RequestInit) =>
       new Response(JSON.stringify({ error: "boom" }), { status: 500 })) as typeof fetch;
     await expect(ensureProjectRegistered(BASE_URL, "/tmp/x")).rejects.toThrow(PiWebClientError);
+  });
+
+  // ── M-095: verify-after-write retry against pi-web's confirmed lost-write race ──
+
+  test("M-095: POST claims 2xx success but a fresh GET still doesn't show the path (lost write) -> retries and succeeds once a later GET does show it", async () => {
+    let postCount = 0;
+    let getCallCount = 0;
+    globalThis.fetch = (async (input: string | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.endsWith("/projects") && (init?.method ?? "GET") === "GET") {
+        getCallCount += 1;
+        // GET #1: pre-check, empty. GET #2 (after 1st POST, verify): still
+        // empty — the exact lost-write failure mode confirmed live (a 2xx
+        // POST response whose write never actually persisted). GET #3
+        // (after 2nd POST, verify): now shows the path — the retry's second
+        // attempt won the race.
+        if (getCallCount <= 2) return new Response(JSON.stringify([]), { status: 200 });
+        return new Response(
+          JSON.stringify([{ id: "proj_retry_2", name: "x", path: "/tmp/racy-project", createdAt: "2026-01-01T00:00:00Z" }]),
+          { status: 200 },
+        );
+      }
+      if (url.endsWith("/projects") && init?.method === "POST") {
+        postCount += 1;
+        // Every POST gets a 2xx with a valid-looking, unique id — exactly
+        // what was observed live: the server claims success to EVERY
+        // caller even though the underlying write is lossy.
+        return new Response(
+          JSON.stringify({ id: `proj_retry_${String(postCount)}`, name: "x", path: "/tmp/racy-project", createdAt: "2026-01-01T00:00:00Z" }),
+          { status: 200 },
+        );
+      }
+      throw new Error(`unexpected fetch to ${url}`);
+    }) as typeof fetch;
+
+    const result = await ensureProjectRegistered(BASE_URL, "/tmp/racy-project");
+    // Uses the id from the GET that actually verified the path exists —
+    // NOT necessarily the first POST's own (possibly-lost) id.
+    expect(result.projectId).toBe("proj_retry_2");
+    expect(postCount).toBe(2);
+  });
+
+  test("M-095: a concurrent OTHER caller's write wins the SAME path under a DIFFERENT id -> verification accepts it, no infinite retry", async () => {
+    let getCallCount = 0;
+    globalThis.fetch = (async (input: string | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.endsWith("/projects") && (init?.method ?? "GET") === "GET") {
+        getCallCount += 1;
+        if (getCallCount === 1) return new Response(JSON.stringify([]), { status: 200 });
+        // A DIFFERENT id than what this call's own POST will claim — a
+        // concurrent other caller's write won for the same path. Still a
+        // correctly-registered project for this path; using its id is
+        // correct.
+        return new Response(
+          JSON.stringify([{ id: "proj_from_other_caller", name: "x", path: "/tmp/shared-path", createdAt: "2026-01-01T00:00:00Z" }]),
+          { status: 200 },
+        );
+      }
+      if (url.endsWith("/projects") && init?.method === "POST") {
+        return new Response(
+          JSON.stringify({ id: "proj_this_callers_own_id", name: "x", path: "/tmp/shared-path", createdAt: "2026-01-01T00:00:00Z" }),
+          { status: 200 },
+        );
+      }
+      throw new Error(`unexpected fetch to ${url}`);
+    }) as typeof fetch;
+
+    const result = await ensureProjectRegistered(BASE_URL, "/tmp/shared-path");
+    expect(result.projectId).toBe("proj_from_other_caller");
+  });
+
+  test("M-095: exhausting all retries throws ProjectRegistrationRaceError naming the path, not a generic/swallowed failure", async () => {
+    let postCount = 0;
+    globalThis.fetch = (async (input: string | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.endsWith("/projects") && (init?.method ?? "GET") === "GET") {
+        // Never shows the path, no matter how many times it's checked —
+        // every write for this path is lost, every attempt.
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (url.endsWith("/projects") && init?.method === "POST") {
+        postCount += 1;
+        return new Response(
+          JSON.stringify({ id: `proj_lost_${String(postCount)}`, name: "x", path: "/tmp/always-lost", createdAt: "2026-01-01T00:00:00Z" }),
+          { status: 200 },
+        );
+      }
+      throw new Error(`unexpected fetch to ${url}`);
+    }) as typeof fetch;
+
+    await expect(ensureProjectRegistered(BASE_URL, "/tmp/always-lost")).rejects.toThrow(ProjectRegistrationRaceError);
+    await expect(ensureProjectRegistered(BASE_URL, "/tmp/always-lost")).rejects.toThrow(/always-lost/);
+    // Exactly REGISTRATION_MAX_ATTEMPTS (3) POST attempts per call, not
+    // unbounded retrying.
+    expect(postCount).toBe(6); // two full ensureProjectRegistered calls above, 3 POSTs each
   });
 });
 
