@@ -23,6 +23,7 @@ Chris made this ticket, pardon errors
 6. Likewise, a human-friendly description of what the step is *generally* supposed to accomplish, also in the workflow definition. Call this field the "summary" on the details page, and what you currently have as "summary" should actually be "result"
 7. attempt 0 == we should be indexing from 1, at least in the UI
 8. On page load for details page, if there's and active step, activate/highlight that step as though we moused over it already
+9. This app is no longer a visualizer, it's the orchestrator. Rename it as such
 
 ## Signals
 
