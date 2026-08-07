@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { enforceWrites, isWritePermitted, snapshotRepoState } from "./permissions.ts";
+import { DEFAULT_EXEMPT_ARTIFACTS, enforceWrites, isWritePermitted, snapshotRepoState } from "./permissions.ts";
 
 let dir: string;
 
@@ -63,6 +63,43 @@ describe("isWritePermitted", () => {
   test("trailing-slash pattern is a directory prefix match", () => {
     expect(isWritePermitted("context_handoff/plan.json", ["context_handoff/"], [])).toBe(true);
     expect(isWritePermitted("other/context_handoff/plan.json", ["context_handoff/"], [])).toBe(false);
+  });
+});
+
+// ── DEFAULT_EXEMPT_ARTIFACTS (M-082) ────────────────────────────────────
+
+describe("isWritePermitted — default-exempt incidental artifacts (M-082)", () => {
+  test("repo-root __pycache__/*.pyc is exempt even when fully read-only", () => {
+    expect(isWritePermitted("__pycache__/stack.cpython-311.pyc", [], [])).toBe(true);
+  });
+
+  test("NESTED __pycache__/*.pyc (inside a subdirectory) is also exempt", () => {
+    expect(isWritePermitted("sub/dir/__pycache__/stack.cpython-311.pyc", [], [])).toBe(true);
+  });
+
+  test(".pytest_cache/ (repo-root and nested) is exempt", () => {
+    expect(isWritePermitted(".pytest_cache/README.md", [], [])).toBe(true);
+    expect(isWritePermitted("sub/.pytest_cache/README.md", [], [])).toBe(true);
+  });
+
+  test("a root-level *.pyc NOT inside a __pycache__ dir is still exempt (pattern is by extension, not just directory)", () => {
+    expect(isWritePermitted("stray.pyc", [], [])).toBe(true);
+    expect(isWritePermitted("sub/stray.pyc", [], [])).toBe(true);
+  });
+
+  test("exemption applies regardless of allowedWrites/protectedFiles — even an explicit protectedFiles entry can't override it", () => {
+    expect(isWritePermitted("__pycache__/x.pyc", [], ["__pycache__/"])).toBe(true);
+    expect(isWritePermitted("__pycache__/x.pyc", null, [])).toBe(true);
+  });
+
+  test("a path that merely CONTAINS 'pycache'-like text but doesn't match any exempt pattern is NOT exempted (exemption is precise, not a loose substring match)", () => {
+    expect(isWritePermitted("notes_about_pycache.md", [], [])).toBe(false);
+  });
+
+  test("every DEFAULT_EXEMPT_ARTIFACTS pattern actually matches its own intended shape (regression guard against the naive '**/__pycache__/'-style no-op bug caught during this card's own research)", () => {
+    expect(DEFAULT_EXEMPT_ARTIFACTS).not.toContain("**/__pycache__/");
+    expect(isWritePermitted("__pycache__/x.pyc", [], [])).toBe(true);
+    expect(isWritePermitted("a/b/__pycache__/x.pyc", [], [])).toBe(true);
   });
 });
 
@@ -245,6 +282,31 @@ describe("enforceWrites", () => {
     // history on cleanup).
     const content = await Bun.file(join(dir, "operator-dirty.ts")).text();
     expect(content).toBe("operator's edit, then agent edited more\nand added another line\n");
+  });
+
+  test("M-082 regression: a review Step (fully read-only) that incidentally leaves a __pycache__/*.pyc behind is NOT flagged as a violation and the file is left in place", () => {
+    initRepo(dir);
+    git(["commit", "--allow-empty", "-q", "-m", "initial"], dir);
+
+    const before = snapshotRepoState(dir);
+
+    // Simulated incidental side effect of a read-only "review" Role actually
+    // running `python3`/importing a module to verify the build's code works
+    // — mirrors the real incident exactly (__pycache__/stack.cpython-
+    // 311.pyc), not content the agent authored.
+    spawnSync("mkdir", ["-p", join(dir, "__pycache__")]);
+    writeFileSync(join(dir, "__pycache__", "stack.cpython-311.pyc"), "fake bytecode\n");
+
+    // allowedWrites: [] matches the actual review Role config (writes:
+    // none, fully read-only).
+    const result = enforceWrites(dir, before, [], []);
+
+    expect(result.violations).toEqual([]);
+    expect(result.allowed).toEqual(["__pycache__/stack.cpython-311.pyc"]);
+    expect(result.rollbacks).toEqual([]);
+    expect(result.clean).toBe(true);
+    // Left in place — not rolled back, since it was never a real violation.
+    expect(existsSync(join(dir, "__pycache__", "stack.cpython-311.pyc"))).toBe(true);
   });
 
   test("agent reverts operator's pre-existing uncommitted work -> reported, not silently accepted", () => {

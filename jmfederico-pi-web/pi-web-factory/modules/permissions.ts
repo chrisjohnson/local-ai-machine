@@ -24,6 +24,22 @@
  * This is cwd-scoped by design (per the M-064 card and design doc §3.1): the
  * caller passes the target PROJECT's working tree, not pi-web-factory's own
  * directory, since one factory instance drives phases across many projects.
+ *
+ * ── Default-exempt incidental artifacts (M-082) ───────────────────────────
+ * `isWritePermitted` also checks a small, hardcoded `DEFAULT_EXEMPT_ARTIFACTS`
+ * list (see that constant's own doc comment) ahead of `writes:`/
+ * `protectedFiles` entirely: well-known, tool-generated paths (`__pycache__/`,
+ * `*.pyc`, `.pytest_cache/`, etc.) that a read-only or write-restricted
+ * Role's own legitimate tool use (e.g. running `python3` to verify code
+ * actually works) leaves behind as a side effect, never as a content
+ * decision. Found live: a `review` Step (writes: none) tripped
+ * PERMISSIONS-VIOLATION on `__pycache__/stack.cpython-311.pyc` from
+ * verifying, not authoring, code. Deliberately NOT reliance on the target
+ * repo's own `.gitignore` alone (a fresh/minimal/non-Python-aware repo's
+ * `.gitignore` won't cover this — confirmed this is exactly what the
+ * incident repo hit) and deliberately NOT a per-project config option
+ * (`config.ts`'s `ProjectConfigFileSchema` is scoped to test/typecheck/lint
+ * commands, wrong fit for a factory-internal enforcement exemption).
  */
 
 import { spawnSync } from "node:child_process";
@@ -134,7 +150,62 @@ function matchesPattern(path: string, pattern: string): boolean {
 // ── permission decision ─────────────────────────────────────────────────
 
 /**
- * Precedence, matching upstream `permitted()` exactly:
+ * Default-exempt patterns: incidental verification/build artifacts a
+ * read-only or write-restricted Role's own tool use (running a test,
+ * importing a module to check it works) commonly leaves behind, that are
+ * never meaningful CONTENT changes an agent authored. Checked ahead of
+ * protectedFiles/writes — same "naming a path is what unlocks it" spirit
+ * as the writes: allowlist, just an always-on list instead of a per-Role
+ * one. Uses the same globToRegex/matchesPattern machinery as writes:/
+ * protectedFiles (directory-prefix trailing "/" semantics included).
+ *
+ * M-082: found live when a `review` Step (writes: none, deliberately
+ * read-only) tripped PERMISSIONS-VIOLATION on `__pycache__/stack.cpython-
+ * 311.pyc` — the incidental side effect of legitimately running `python3`
+ * to verify the build's code works, not content the agent authored.
+ * `snapshotRepoState`'s `git ls-files --others --exclude-standard` already
+ * respects a target repo's own .gitignore (confirmed by direct execution)
+ * — the gap is a fresh/minimal/non-Python-aware target repo whose
+ * .gitignore doesn't cover this, exactly the scenario the incident hit.
+ * Scoped conservatively to well-known, tool-generated, never-hand-authored
+ * paths (same bar as .gitignore's own community-standard templates) — do
+ * not add broader patterns (e.g. generic dist/build/) without a real
+ * second incident motivating them.
+ *
+ * Each artifact type gets a bare (repo-root) form AND a double-star-
+ * prefixed nested form (no bare trailing slash on the nested form) — NOT a
+ * double-star-prefixed pattern that ALSO ends in a bare trailing slash,
+ * which is a no-op: verified by direct execution that `matchesPattern`'s
+ * directory-prefix branch (pattern ends with a slash implies a plain
+ * path.startsWith(pattern) check) treats a double-star-slash-name-slash
+ * pattern as a literal string, never glob-expanding the leading double-star
+ * at all, so that form can never match anything. The bare form only
+ * matches at repo root (changedPaths returns repo-root-relative paths);
+ * the double-star-prefixed form with NO trailing bare slash (so it takes
+ * globToRegex's regex branch instead) is what covers a NESTED occurrence
+ * in a subdirectory.
+ */
+export const DEFAULT_EXEMPT_ARTIFACTS: string[] = [
+  "__pycache__/", "**/__pycache__/**",
+  "*.pyc", "**/*.pyc",
+  "*.pyo", "**/*.pyo",
+  ".pytest_cache/", "**/.pytest_cache/**",
+  ".mypy_cache/", "**/.mypy_cache/**",
+  ".ruff_cache/", "**/.ruff_cache/**",
+  "node_modules/.cache/", "**/node_modules/.cache/**",
+  ".next/cache/", "**/.next/cache/**",
+  "*.class", "**/*.class",
+  ".DS_Store", "**/.DS_Store",
+];
+
+/**
+ * Precedence, matching upstream `permitted()` exactly, plus one new tier
+ * ahead of it (M-082):
+ *   0. `DEFAULT_EXEMPT_ARTIFACTS` — an incidental verification/build
+ *      artifact never even counts as "touched" in spirit, regardless of
+ *      what a Role's own `writes:`/`protectedFiles` say (opposite
+ *      precedence from writes: vs protectedFiles below — an exempt
+ *      artifact was never a content decision the agent made).
  *   1. `writes:` allowlist — naming a path here is what unlocks it, even if
  *      it also matches `protectedFiles`. This is upstream's own precedence
  *      (`permissions.py:127-135`: the `writes` check runs before the
@@ -153,6 +224,9 @@ export function isWritePermitted(
   allowedWrites: string[] | null,
   protectedFiles: string[],
 ): boolean {
+  if (DEFAULT_EXEMPT_ARTIFACTS.some((p) => matchesPattern(path, p))) {
+    return true;
+  }
   if (allowedWrites !== null && allowedWrites.some((p) => matchesPattern(path, p))) {
     return true; // naming a path is what unlocks a protected one
   }

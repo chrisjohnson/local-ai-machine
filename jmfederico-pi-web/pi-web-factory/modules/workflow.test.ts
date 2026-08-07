@@ -201,15 +201,31 @@ function mockWorkflowFetch(opts: { assistantTextsByRole: Record<string, string[]
   const promptCallsByRole: Record<string, string[]> = {};
   const roleCallIndex: Record<string, number> = {};
   let lastPromptedSessionRole = ""; // tracks which role's prompt is "in flight" so /messages can answer correctly
+  // M-095: ensureProjectRegistered now does a verify-after-write GET
+  // /projects after its POST — this mock must actually reflect a
+  // just-POSTed project on the NEXT GET, not always return [], or every
+  // registration in these tests would (correctly, per the new client-side
+  // retry) look like a lost write and exhaust its retries. Echoes back
+  // whatever `path` the caller actually POSTed (NOT the test's own `cwd`
+  // closure variable) — `ensureProjectRegistered` registers
+  // `resolveMainCheckoutPath(cwd)`, which is `cwd` run through
+  // `realpathSync` (macOS symlinks `/tmp` -> `/private/tmp`), so the real
+  // registered path can legitimately differ from the raw `cwd` string.
+  let registeredProjectPath: string | undefined;
 
   globalThis.fetch = (async (input: string | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();
 
     if (url.endsWith("/projects") && (init?.method ?? "GET") === "GET") {
-      return new Response(JSON.stringify([]), { status: 200 });
+      const projects = registeredProjectPath
+        ? [{ id: "proj_1", name: "repo", path: registeredProjectPath, createdAt: "2026-01-01T00:00:00Z" }]
+        : [];
+      return new Response(JSON.stringify(projects), { status: 200 });
     }
     if (url.endsWith("/projects") && init?.method === "POST") {
-      return new Response(JSON.stringify({ id: "proj_1", name: "repo", path: cwd, createdAt: "2026-01-01T00:00:00Z" }), {
+      const body = JSON.parse(String(init.body)) as { path: string };
+      registeredProjectPath = body.path;
+      return new Response(JSON.stringify({ id: "proj_1", name: "repo", path: body.path, createdAt: "2026-01-01T00:00:00Z" }), {
         status: 200,
       });
     }
@@ -348,11 +364,25 @@ workflows:
         prompt: "Reply with JSON."
 `)[0] as Workflow;
 
+    // M-095: echo back whatever `path` the caller actually POSTed (NOT the
+    // test's own `cwd` closure variable) — ensureProjectRegistered registers
+    // resolveMainCheckoutPath(cwd), which can legitimately differ from the
+    // raw cwd string (e.g. macOS symlinks /tmp -> /private/tmp via
+    // realpathSync) — its verify-after-write GET must see a matching path.
+    let registeredProjectPath: string | undefined;
     globalThis.fetch = (async (input: string | URL, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input.toString();
-      if (url.endsWith("/projects") && (init?.method ?? "GET") === "GET") return new Response(JSON.stringify([]), { status: 200 });
-      if (url.endsWith("/projects") && init?.method === "POST")
-        return new Response(JSON.stringify({ id: "proj_1", name: "repo", path: cwd, createdAt: "x" }), { status: 200 });
+      if (url.endsWith("/projects") && (init?.method ?? "GET") === "GET") {
+        const projects = registeredProjectPath
+          ? [{ id: "proj_1", name: "repo", path: registeredProjectPath, createdAt: "x" }]
+          : [];
+        return new Response(JSON.stringify(projects), { status: 200 });
+      }
+      if (url.endsWith("/projects") && init?.method === "POST") {
+        const body = JSON.parse(String(init.body)) as { path: string };
+        registeredProjectPath = body.path;
+        return new Response(JSON.stringify({ id: "proj_1", name: "repo", path: body.path, createdAt: "x" }), { status: 200 });
+      }
       if (url.includes("/workspaces")) return new Response(JSON.stringify([{ id: "ws_1", path: cwd, isMain: true }]), { status: 200 });
       if (url.endsWith("/model")) return new Response("{}", { status: 200 });
       if (url.endsWith("/prompt")) return new Response(JSON.stringify({ accepted: true }), { status: 200 });
@@ -439,11 +469,25 @@ workflows:
         prompt: "Reply with JSON."
 `)[0] as Workflow;
 
+    // M-095: echo back whatever `path` the caller actually POSTed (NOT the
+    // test's own `cwd` closure variable) — ensureProjectRegistered registers
+    // resolveMainCheckoutPath(cwd), which can legitimately differ from the
+    // raw cwd string (e.g. macOS symlinks /tmp -> /private/tmp via
+    // realpathSync) — its verify-after-write GET must see a matching path.
+    let registeredProjectPath: string | undefined;
     globalThis.fetch = (async (input: string | URL, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input.toString();
-      if (url.endsWith("/projects") && (init?.method ?? "GET") === "GET") return new Response(JSON.stringify([]), { status: 200 });
-      if (url.endsWith("/projects") && init?.method === "POST")
-        return new Response(JSON.stringify({ id: "proj_1", name: "repo", path: cwd, createdAt: "x" }), { status: 200 });
+      if (url.endsWith("/projects") && (init?.method ?? "GET") === "GET") {
+        const projects = registeredProjectPath
+          ? [{ id: "proj_1", name: "repo", path: registeredProjectPath, createdAt: "x" }]
+          : [];
+        return new Response(JSON.stringify(projects), { status: 200 });
+      }
+      if (url.endsWith("/projects") && init?.method === "POST") {
+        const body = JSON.parse(String(init.body)) as { path: string };
+        registeredProjectPath = body.path;
+        return new Response(JSON.stringify({ id: "proj_1", name: "repo", path: body.path, createdAt: "x" }), { status: 200 });
+      }
       if (url.includes("/workspaces")) return new Response(JSON.stringify([{ id: "ws_1", path: cwd, isMain: true }]), { status: 200 });
       if (url.endsWith("/model")) return new Response("{}", { status: 200 });
       if (url.endsWith("/prompt") && init?.method === "POST") {
@@ -475,6 +519,157 @@ workflows:
     if (result.status !== "permissions-violation") throw new Error(JSON.stringify(result));
     expect(result.step).toBe("review");
     expect(result.permissions.violations).toContain("stack.py");
+  });
+});
+
+describe("runWorkflow — review-rejected outside a loop (M-080)", () => {
+  test("a no-loop Workflow ending in a review step with approved: false reports 'review-rejected', not 'success'", async () => {
+    const workflow: Workflow = loadWorkflowsFromString(`
+workflows:
+  - name: plan-build-review
+    steps:
+      - kind: agent
+        name: plan
+        role: plan
+        prompt: "Reply with JSON."
+      - kind: agent
+        name: build
+        role: build
+        prompt: "Plan said: {{plan.summary}}. Reply with JSON."
+      - kind: agent
+        name: review
+        role: review
+        prompt: "Build said: {{build.summary}}. Reply with JSON."
+`)[0] as Workflow;
+
+    mockWorkflowFetch({
+      assistantTextsByRole: {
+        plan: [JSON.stringify(agentEnvelope({ summary: "plan: add health endpoint" }))],
+        build: [JSON.stringify(agentEnvelope({ summary: "build: claimed done, but wasn't" }))],
+        review: [JSON.stringify(reviewEnvelope(false, { summary: "the file doesn't exist" }))],
+      },
+      workspacePath: cwd,
+    });
+
+    const result = await runWorkflow({
+      tracer,
+      config: testRolesConfig(),
+      workflow,
+      cwd,
+      taskPrompt: "add a /health endpoint",
+      baseUrl: BASE_URL,
+      adwId: "adw_wf_review_rejected",
+      sessionId: "sess_preexisting",
+    });
+
+    expect(result.status).toBe("review-rejected");
+    if (result.status !== "review-rejected") throw new Error(JSON.stringify(result));
+    expect(result.step).toBe("review");
+    expect(result.review.approved).toBe(false);
+    expect(result.review.blocking).toContain("missing validation");
+
+    // The run itself is traced as a failure, not a success.
+    const sessionRow = tracer.db
+      .query<{ status: string }, [string]>("select status from sessions where adw_id=?")
+      .get("adw_wf_review_rejected");
+    expect(sessionRow?.status).toBe("fail");
+  });
+
+  test("a no-loop Workflow ending in an approved review still reports 'success' (no false-positive regression)", async () => {
+    const workflow: Workflow = loadWorkflowsFromString(`
+workflows:
+  - name: plan-build-review
+    steps:
+      - kind: agent
+        name: plan
+        role: plan
+        prompt: "Reply with JSON."
+      - kind: agent
+        name: build
+        role: build
+        prompt: "Plan said: {{plan.summary}}. Reply with JSON."
+      - kind: agent
+        name: review
+        role: review
+        prompt: "Build said: {{build.summary}}. Reply with JSON."
+`)[0] as Workflow;
+
+    mockWorkflowFetch({
+      assistantTextsByRole: {
+        plan: [JSON.stringify(agentEnvelope({ summary: "plan: add health endpoint" }))],
+        build: [JSON.stringify(agentEnvelope({ summary: "build: implemented it" }))],
+        review: [JSON.stringify(reviewEnvelope(true, { summary: "looks good" }))],
+      },
+      workspacePath: cwd,
+    });
+
+    const result = await runWorkflow({
+      tracer,
+      config: testRolesConfig(),
+      workflow,
+      cwd,
+      taskPrompt: "add a /health endpoint",
+      baseUrl: BASE_URL,
+      adwId: "adw_wf_review_approved",
+      sessionId: "sess_preexisting",
+    });
+
+    expect(result.status).toBe("success");
+  });
+
+  test("bounded-build-review's loop with a review that never approves within max_rounds still reports 'loop-exhausted', unaffected by the review-rejected check", async () => {
+    mockWorkflowFetch({
+      assistantTextsByRole: {
+        build: [JSON.stringify(agentEnvelope({ summary: "build v1" }))],
+        review: [
+          JSON.stringify(reviewEnvelope(false)),
+          JSON.stringify(reviewEnvelope(false)),
+          JSON.stringify(reviewEnvelope(false)),
+        ],
+      },
+      workspacePath: cwd,
+    });
+
+    const workflow: Workflow = loadWorkflowsFromString(`
+workflows:
+  - name: bounded
+    steps:
+      - kind: agent
+        name: build
+        role: build
+        prompt: "Implement the task. Reply with JSON."
+      - kind: loop
+        name: build-review-loop
+        max_rounds: 3
+        until: {step: review, field: approved, equals: true}
+        steps:
+          - kind: agent
+            name: review
+            role: review
+            prompt: "Review the build. Build said: {{build.summary}}. Reply with JSON."
+          - kind: agent
+            name: build-retry
+            role: build
+            prompt: "Fix it up. Reply with JSON."
+`)[0] as Workflow;
+
+    const result = await runWorkflow({
+      tracer,
+      config: testRolesConfig(),
+      workflow,
+      cwd,
+      taskPrompt: "implement the feature",
+      baseUrl: BASE_URL,
+      adwId: "adw_wf_loop_still_exhausted",
+      sessionId: "sess_preexisting",
+    });
+
+    // Still loop-exhausted (the loop's own outcome), NOT review-rejected —
+    // confirms the loop path and the final review-rejected check don't
+    // double-handle the same rejection.
+    expect(result.status).toBe("loop-exhausted");
+    if (result.status !== "loop-exhausted") throw new Error(JSON.stringify(result));
+    expect(result.step).toBe("build-review-loop");
   });
 });
 
@@ -729,11 +924,25 @@ workflows:
   });
 
   test("an inner step's own terminal outcome (e.g. blocked-on-human) stops the loop immediately, not folded into loop-exhausted", async () => {
+    // M-095: echo back whatever `path` the caller actually POSTed (NOT the
+    // test's own `cwd` closure variable) — ensureProjectRegistered registers
+    // resolveMainCheckoutPath(cwd), which can legitimately differ from the
+    // raw cwd string (e.g. macOS symlinks /tmp -> /private/tmp via
+    // realpathSync) — its verify-after-write GET must see a matching path.
+    let registeredProjectPath: string | undefined;
     globalThis.fetch = (async (input: string | URL, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input.toString();
-      if (url.endsWith("/projects") && (init?.method ?? "GET") === "GET") return new Response(JSON.stringify([]), { status: 200 });
-      if (url.endsWith("/projects") && init?.method === "POST")
-        return new Response(JSON.stringify({ id: "proj_1", name: "repo", path: cwd, createdAt: "x" }), { status: 200 });
+      if (url.endsWith("/projects") && (init?.method ?? "GET") === "GET") {
+        const projects = registeredProjectPath
+          ? [{ id: "proj_1", name: "repo", path: registeredProjectPath, createdAt: "x" }]
+          : [];
+        return new Response(JSON.stringify(projects), { status: 200 });
+      }
+      if (url.endsWith("/projects") && init?.method === "POST") {
+        const body = JSON.parse(String(init.body)) as { path: string };
+        registeredProjectPath = body.path;
+        return new Response(JSON.stringify({ id: "proj_1", name: "repo", path: body.path, createdAt: "x" }), { status: 200 });
+      }
       if (url.includes("/workspaces")) return new Response(JSON.stringify([{ id: "ws_1", path: cwd, isMain: true }]), { status: 200 });
       if (url.endsWith("/model")) return new Response("{}", { status: 200 });
       if (url.endsWith("/prompt")) return new Response(JSON.stringify({ accepted: true }), { status: 200 });
@@ -905,11 +1114,25 @@ workflows:
         prompt: "Reply with JSON."
 `)[0] as Workflow;
 
+    // M-095: echo back whatever `path` the caller actually POSTed (NOT the
+    // test's own `cwd` closure variable) — ensureProjectRegistered registers
+    // resolveMainCheckoutPath(cwd), which can legitimately differ from the
+    // raw cwd string (e.g. macOS symlinks /tmp -> /private/tmp via
+    // realpathSync) — its verify-after-write GET must see a matching path.
+    let registeredProjectPath: string | undefined;
     globalThis.fetch = (async (input: string | URL, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input.toString();
-      if (url.endsWith("/projects") && (init?.method ?? "GET") === "GET") return new Response(JSON.stringify([]), { status: 200 });
-      if (url.endsWith("/projects") && init?.method === "POST")
-        return new Response(JSON.stringify({ id: "proj_1", name: "repo", path: cwd, createdAt: "x" }), { status: 200 });
+      if (url.endsWith("/projects") && (init?.method ?? "GET") === "GET") {
+        const projects = registeredProjectPath
+          ? [{ id: "proj_1", name: "repo", path: registeredProjectPath, createdAt: "x" }]
+          : [];
+        return new Response(JSON.stringify(projects), { status: 200 });
+      }
+      if (url.endsWith("/projects") && init?.method === "POST") {
+        const body = JSON.parse(String(init.body)) as { path: string };
+        registeredProjectPath = body.path;
+        return new Response(JSON.stringify({ id: "proj_1", name: "repo", path: body.path, createdAt: "x" }), { status: 200 });
+      }
       if (url.includes("/workspaces")) return new Response(JSON.stringify([{ id: "ws_1", path: cwd, isMain: true }]), { status: 200 });
       if (url.endsWith("/model")) {
         // The real failure mode: pi-web 404s on setModel (bad session id).

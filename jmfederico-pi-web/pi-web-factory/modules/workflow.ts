@@ -164,6 +164,15 @@ export type WorkflowRunResult =
       step: string;
       rounds: number;
       link: WorkflowRunLinkInfo;
+    }
+  | {
+      status: "review-rejected";
+      adwId: string;
+      sessionId: string;
+      /** The rejected review step's own name (first one found, in step-definition order — see the check that produces this in runWorkflow). */
+      step: string;
+      review: ReviewOutput;
+      link: WorkflowRunLinkInfo;
     };
 
 // ── {{stepName.field}} interpolation ────────────────────────────────────
@@ -269,6 +278,22 @@ function envelopeSchemaForRole(roleName: string): (typeof envelopeSchemas)[Agent
     );
   }
   return schema;
+}
+
+/**
+ * Structural check for "does this envelope look like a ReviewOutput" —
+ * shared by `runLoopStep` (deciding whether a not-satisfied `until` envelope
+ * is a review it can build a correction message from) and `runWorkflow`'s
+ * final review-rejected check (M-080). Deliberately structural (`approved`
+ * boolean + `findings`/`blocking` arrays present), not a role-name check —
+ * a `review` Step's role is always named "review" in every shipped Workflow,
+ * but this keeps the interpreter correct for a future Workflow that names
+ * its review-shaped step something else.
+ */
+function isReviewEnvelope(envelope: unknown): envelope is ReviewOutput {
+  if (!envelope || typeof envelope !== "object") return false;
+  const e = envelope as Record<string, unknown>;
+  return typeof e["approved"] === "boolean" && Array.isArray(e["findings"]) && Array.isArray(e["blocking"]);
 }
 
 /** Builds a short output_summary for a code step's phase_end from its GateReport — "N/M checks passed" on success, the first failing check's note on failure. */
@@ -558,9 +583,8 @@ async function runLoopStep(ctx: RunContext, loop: LoopStep): Promise<WorkflowRun
         // until.step is the LAST inner step, the next round's first agent
         // step — same map either way, since pendingCorrection persists
         // across the round boundary until consumed).
-        const asReview = envelope as unknown as ReviewOutput | undefined;
-        if (asReview && Array.isArray(asReview.blocking) && Array.isArray(asReview.findings)) {
-          pendingCorrection = asReview;
+        if (isReviewEnvelope(envelope)) {
+          pendingCorrection = envelope;
         }
       }
     }
@@ -688,6 +712,28 @@ export async function runWorkflow(opts: WorkflowRunOptions): Promise<WorkflowRun
       const ok = terminal.status === "success";
       opts.tracer.sessionFinish(adwId, ok);
       return terminal;
+    }
+
+    // M-080: every step's agent phase parsed successfully and no other
+    // terminal outcome fired (gate-failed/loop-exhausted/etc.) — but that
+    // alone doesn't mean the run should report SUCCESS. Any review-shaped
+    // step OUTSIDE a gating loop that came back approved: false must still
+    // flip the run to a distinct failure-shaped status: a no-loop Workflow
+    // (today just plan-build-review.yaml) has nothing else that reads
+    // `approved`, so without this check a run whose last real signal was
+    // "review rejected this" silently reported SUCCESS (the bug this card
+    // fixes). Loop-internal rejections never reach here — they already
+    // returned "loop-exhausted" (satisfied) or got corrected mid-loop, see
+    // runLoopStep. Scans stepResults in step-definition order (Object.entries
+    // preserves insertion order) and flips on the FIRST rejected review
+    // found — moot for today's single-review plan-build-review, but this is
+    // the documented behavior for a future multi-review Workflow.
+    for (const [name, envelope] of Object.entries(ctx.stepResults)) {
+      if (isReviewEnvelope(envelope) && !envelope.approved) {
+        const result: WorkflowRunResult = { status: "review-rejected", adwId, sessionId: ctx.sessionId, step: name, review: envelope, link };
+        opts.tracer.sessionFinish(adwId, false);
+        return result;
+      }
     }
 
     opts.tracer.sessionFinish(adwId, true);

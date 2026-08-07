@@ -19,15 +19,33 @@
  * is now resolved).
  *
  * ── Idempotency ──────────────────────────────────────────────────────────
- * `POST /projects` is ALREADY idempotent server-side by path (confirmed
- * live: re-POSTing the same `path` returns the existing project unchanged,
- * not a duplicate — see `ProjectStore`/`ProjectService.add` in pi-web's own
- * source, `src/server/projects/projectService.ts`). This module still does
- * its own `GET /projects` + find-by-path lookup FIRST, per the card's
- * explicit ask, rather than relying solely on that server-side behavior —
- * cheaper (no write) in the overwhelmingly common case of an
- * already-registered project, and keeps this module correct even if that
- * server-side dedup behavior is ever tightened/loosened upstream.
+ * `POST /projects` is idempotent server-side by path in the SEQUENTIAL
+ * case (confirmed live: re-POSTing the same `path` returns the existing
+ * project unchanged, not a duplicate — see `ProjectStore`/
+ * `ProjectService.add` in pi-web's own source,
+ * `src/server/projects/projectService.ts`) — but this module still does its
+ * own `GET /projects` + find-by-path lookup FIRST, per the card's explicit
+ * ask, rather than relying solely on that server-side behavior — cheaper
+ * (no write) in the overwhelmingly common case of an already-registered
+ * project, and keeps this module correct even if that server-side dedup
+ * behavior is ever tightened/loosened upstream.
+ *
+ * ── M-095: `POST /projects`'s response is NOT durable under concurrency ──
+ * Confirmed live, 2026-08-06, by deliberately reproducing the race: pi-web's
+ * own `ProjectStore` write path is a non-atomic read-modify-write. Under
+ * concurrent `POST /projects` calls, EVERY caller gets back a 2xx response
+ * with a real, valid-looking, unique `Project` record — but the underlying
+ * store silently loses all but a handful of them (a 6-way concurrent burst:
+ * only 2/6 persisted; a 10-way burst: only 4/10). This is NOT fixable from
+ * this repo — pi-web ships as a prebuilt image here
+ * (`ghcr.io/jmfederico/pi-web:latest`), no source mounted. So the flat
+ * claim above ("POST /projects is already idempotent") is only true
+ * SEQUENTIALLY — under real concurrency (which IS a normal, expected shape
+ * for this system: concurrent Workflow Runs against pi-web), a `POST`'s own
+ * response cannot be trusted as durable on its own. `ensureProjectRegistered`
+ * below verifies its own write actually persisted (a fresh `GET /projects`
+ * shows an entry for this exact `path`) and retries a bounded number of
+ * times before giving up loudly — see that function's own doc comment.
  */
 
 import { PiWebClientError } from "./piwebClient.ts";
@@ -75,6 +93,32 @@ export async function listProjects(baseUrl: string): Promise<PiWebProject[]> {
 }
 
 /**
+ * Thrown when `ensureProjectRegistered` exhausts its verify-after-write
+ * retries (M-095) — a dedicated error type, not a generic network/
+ * PiWebClientError, so a caller (or a human reading a stack trace) can tell
+ * "pi-web's own server-side write race ate this registration" apart from an
+ * ordinary network/HTTP failure.
+ */
+export class ProjectRegistrationRaceError extends Error {
+  constructor(path: string, attempts: number) {
+    super(
+      `project registration for ${path} appears to have been lost under concurrent load after ${String(attempts)} attempts — ` +
+        `this is a known pi-web server-side race (see M-095: POST /projects returns a valid-looking 2xx response to every ` +
+        `concurrent caller, but the underlying ProjectStore's non-atomic write silently drops all but a handful of them), ` +
+        `not a client bug — retry the whole Workflow Run`,
+    );
+    this.name = "ProjectRegistrationRaceError";
+  }
+}
+
+const REGISTRATION_MAX_ATTEMPTS = 3;
+const REGISTRATION_RETRY_DELAYS_MS = [50, 150, 400];
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
  * Idempotent project registration by absolute path: `GET /projects`, return
  * the existing entry if one already has this exact `path`; otherwise
  * `POST /projects {path}` and return the newly-created entry.
@@ -84,18 +128,53 @@ export async function listProjects(baseUrl: string): Promise<PiWebProject[]> {
  * one linked worktree) — this module does no path normalization of its own
  * beyond what pi-web's own `POST /projects` does server-side (`realpath`,
  * confirmed in `projectService.ts`).
+ *
+ * ── M-095: verify-after-write, with a short bounded retry ─────────────────
+ * A `POST /projects` response cannot be trusted as durable on its own under
+ * concurrent load (see this module's own header comment for the confirmed
+ * live repro) — so after POSTing, this function re-`GET`s `/projects` and
+ * confirms an entry for this exact `path` now actually exists before
+ * returning. Deliberately checks by `path`, not by the `id` the POST
+ * response claimed: a concurrent OTHER caller's write may have won and
+ * registered the SAME path under a DIFFERENT id — that's still a correctly-
+ * registered project for this path, and using ITS id is correct (using the
+ * POST response's own possibly-lost id would just reintroduce the bug).
+ * If verification fails, retries the whole POST+verify cycle up to
+ * `REGISTRATION_MAX_ATTEMPTS` times with a short fixed backoff
+ * (`REGISTRATION_RETRY_DELAYS_MS`) — the race window demonstrated live is a
+ * single event-loop tick wide, not a slow contention pattern, so no need
+ * for anything more elaborate. Exhausting retries throws
+ * `ProjectRegistrationRaceError` rather than silently proceeding with an
+ * unverified projectId — a Workflow Run must never hand `resolveWorkspaceId`
+ * an id already known to be unreliable (that's exactly the failure mode
+ * this card was filed from: a 404 much later, `piwebProject.ts:134`, once
+ * `resolveWorkspaceId` tried to use a project that was never really there).
  */
 export async function ensureProjectRegistered(baseUrl: string, path: string): Promise<{ projectId: string }> {
   const existing = await listProjects(baseUrl);
   const found = existing.find((p) => p.path === path);
   if (found) return { projectId: found.id };
 
-  const created = await requestJson<PiWebProject>(`${baseUrl}/projects`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path }),
-  });
-  return { projectId: created.id };
+  for (let attempt = 1; attempt <= REGISTRATION_MAX_ATTEMPTS; attempt += 1) {
+    const created = await requestJson<PiWebProject>(`${baseUrl}/projects`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path }),
+    });
+
+    // Verify-after-write: the POST's own response is not trustworthy alone
+    // under concurrency (module header comment) — confirm a fresh GET
+    // actually shows an entry for this path before trusting any id.
+    const afterWrite = await listProjects(baseUrl);
+    const verified = afterWrite.find((p) => p.path === path);
+    if (verified) return { projectId: verified.id };
+
+    if (attempt < REGISTRATION_MAX_ATTEMPTS) {
+      await sleep(REGISTRATION_RETRY_DELAYS_MS[attempt - 1] ?? REGISTRATION_RETRY_DELAYS_MS[REGISTRATION_RETRY_DELAYS_MS.length - 1]!);
+    }
+  }
+
+  throw new ProjectRegistrationRaceError(path, REGISTRATION_MAX_ATTEMPTS);
 }
 
 /**
