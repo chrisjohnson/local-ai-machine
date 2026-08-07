@@ -2,8 +2,8 @@
 id: M-082
 title: pi-web-factory — permissions enforcement flags incidental verification artifacts (e.g. __pycache__) as violations
 initiative_id: null
-claimed_by: null
-claimed_at: null
+claimed_by: claude
+claimed_at: "2026-08-06T00:00Z"
 blocks: null
 blocked_by: null
 status: null
@@ -239,6 +239,35 @@ Concrete implementation plan:
   a naive "**/__pycache__/" pattern is a no-op bug in matchesPattern's
   directory-prefix branch — plan specifies the corrected bare+nested pattern
   pairs, verified working. Cleared `status: needs-refinement`.
+- 2026-08-06 (claude): implemented per the Plan exactly. `modules/
+  permissions.ts`: added `export const DEFAULT_EXEMPT_ARTIFACTS: string[]`
+  (bare + `**/...**` nested pattern pairs for `__pycache__/`, `*.pyc`,
+  `*.pyo`, `.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`,
+  `node_modules/.cache/`, `.next/cache/`, `*.class`, `.DS_Store` -- the
+  corrected shape from the Plan, not the naive `**/__pycache__/` no-op
+  form); `isWritePermitted` now checks it FIRST, ahead of `writes:`/
+  `protectedFiles`, unconditionally exempting a match regardless of those
+  args. Updated the module header comment with the new exemption tier's
+  rationale, matching the existing "One upstream tier deliberately NOT
+  ported" documentation discipline. Tests added to
+  `modules/permissions.test.ts`: 7 new `isWritePermitted` unit cases
+  (repo-root + nested `__pycache__`/`.pytest_cache`, root-level stray
+  `*.pyc`, exemption overriding even an explicit `protectedFiles` entry, a
+  precise-substring-match negative case, and a regression guard against the
+  naive no-op pattern) plus one `enforceWrites` integration test mirroring
+  the actual incident exactly (`allowedWrites: []`, a fully read-only
+  `review`-shaped config, `__pycache__/stack.cpython-311.pyc` created ->
+  asserts `violations: []`, file left in place, not rolled back).
+  Verification: `bun test modules/permissions.test.ts` -- 25/25 pass; full
+  suite 257/278 pass, same 21 pre-existing environment-only failures as
+  before this change (confirmed identical failing-test-name set). `bunx tsc
+  --noEmit` clean. Pushed to `main` at `33adf5b` (bundled with M-080/M-095/
+  M-096 in one commit per the coordinating agent's instruction). No deploy
+  step needed for this card specifically -- pure logic change in
+  pi-web-factory's own always-synced code, picked up by whatever combined
+  `docker compose build jmfederico-pi-web` the coordinator runs once all
+  parallel work lands (deliberately not run by this session, per
+  coordination to avoid racing M-103/M-099's own deploys).
 
 ## Handoff notes
 Repro trace: `gate_fail:permissions` event, `{"item":"__pycache__/stack.cpython-311.pyc","ok":false,"note":"rolled back — outside writes allowlist"}`, on the `review` Step of a `plan-build-review` run whose task involved a Python file. Session/scratch repo already cleaned up as part of this session's other demo-run cleanup — re-derive a fresh repro rather than trusting old IDs.

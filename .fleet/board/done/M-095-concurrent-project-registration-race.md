@@ -2,8 +2,8 @@
 id: M-095
 title: pi-web-factory project registration races when two cli.ts runs against different new projects launch simultaneously
 initiative_id: null
-claimed_by: null
-claimed_at: null
+claimed_by: claude
+claimed_at: "2026-08-06T00:00Z"
 blocks: null
 blocked_by: null
 status: null
@@ -182,6 +182,64 @@ of whether upstream ever fixes the root cause.
   retry in ensureProjectRegistered. All scratch projects/dirs cleaned up
   after (verified via GET /projects before/after). Cleared
   `status: needs-refinement`.
+- 2026-08-06 (claude): re-confirmed the race is still live before
+  implementing (never assume a prior finding is still true): fired a fresh
+  6-way concurrent `POST /projects` burst directly against the box's
+  `jmfederico-pi-web` container -- all 6 got 2xx responses, only 3/6
+  actually persisted (`GET /projects` before: 12, after burst: 15, only
+  3 of the 6 `m095-verify-*` paths present) -- same lossy-write signature as
+  the original finding. Cleaned up the 3 that did persist + their `/tmp`
+  dirs, back to baseline 12. Also spent the Plan's suggested ~15 minutes on
+  item 4 (whether `resolveWorkspaceId`/workspace creation has a similar
+  race): registered one project, created 6 worktrees concurrently via `git
+  worktree add`, then fired 6 concurrent `GET /projects/:id/workspaces`
+  calls -- all 6 requests consistently returned all 7 workspaces (main + 6),
+  no loss. Confirms the scope decision: `resolveWorkspaceId`'s
+  `WorkspaceService.list()` is a live `git worktree list --porcelain` read
+  against the filesystem, not a stored/persisted write subject to
+  `ProjectStore`'s same non-atomic read-modify-write pattern -- item 4's
+  wrapper is NOT needed, scope stays at `ensureProjectRegistered` only, per
+  the Plan's own "confirm/rule out before deciding scope" instruction.
+  Implemented: `modules/piwebProject.ts`'s `ensureProjectRegistered` now
+  does a verify-after-write `GET /projects` after its `POST`, matching by
+  `path` (not the POST response's own possibly-lost `id` -- a concurrent
+  OTHER caller's write winning the same path under a different id is still
+  correctly handled, uses that id). Retries up to `REGISTRATION_MAX_ATTEMPTS`
+  (3) with `REGISTRATION_RETRY_DELAYS_MS` (50/150/400ms) backoff (no shared
+  retry helper exists in this codebase -- `run.ts`'s own parse-retry loop has
+  no delay between attempts since each is a fresh model call, not a race
+  window wait -- so this backoff is local to piwebProject.ts). Exhausting
+  retries throws a new `ProjectRegistrationRaceError` naming the path and
+  attempt count, not a generic/swallowed failure. Updated the module header
+  comment to correct the now-confirmed-false-under-concurrency "POST
+  /projects is ALREADY idempotent" claim. Tests added to
+  `modules/piwebProject.test.ts` (mocked fetch, not the live race per the
+  Plan's own explicit "do NOT depend on hitting the real race live, would
+  be flaky" instruction): lost-write-then-retry-succeeds, concurrent-other-
+  caller-wins-same-path-different-id, and retries-exhausted-throws-
+  ProjectRegistrationRaceError. Also had to fix a latent gap in
+  `modules/workflow.test.ts`'s shared/inline fetch mocks (5 places) -- they
+  unconditionally returned `[]` from every `GET /projects` call, which
+  (correctly, per this new client-side retry) now looked like every
+  registration was a lost write; updated them to echo back whatever `path`
+  the caller actually POSTed (not the test's own `cwd` closure variable,
+  since `ensureProjectRegistered` registers `resolveMainCheckoutPath(cwd)`
+  which can legitimately differ from raw `cwd` via `realpathSync`, e.g.
+  macOS's `/tmp` -> `/private/tmp` symlink -- this WAS the actual cause of
+  the first round of test failures after wiring in the retry, not a bug in
+  the retry logic itself). Verification: `bun test
+  modules/piwebProject.test.ts` -- 10/10 pass; `bun test
+  modules/workflow.test.ts` -- 27/27 pass; full suite 257/278 pass, same 21
+  pre-existing environment-only failures as before this change (confirmed
+  identical failing-test-name set pre/post). `bunx tsc --noEmit` clean.
+  Pushed to `main` at `33adf5b` (bundled with M-080/M-082/M-096 in one
+  commit per the coordinating agent's instruction). Deploy to the box
+  deliberately deferred to the coordinator's single combined
+  `docker compose build jmfederico-pi-web` pass, to avoid racing M-103/
+  M-099's own parallel deploys of the same container -- this card's live
+  race repro above was run against the box's CURRENT (pre-fix) code, not
+  this session's new retry logic, since that isn't live yet; the client-
+  side fix itself is verified via the mocked unit tests only until deploy.
 
 ## Handoff notes
 Now reproduced reliably and deliberately, multiple times, with the root

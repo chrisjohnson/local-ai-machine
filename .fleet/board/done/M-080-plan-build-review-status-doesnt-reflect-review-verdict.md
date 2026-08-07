@@ -2,8 +2,8 @@
 id: M-080
 title: pi-web-factory — plan-build-review's overall status doesn't reflect review's approved verdict
 initiative_id: null
-claimed_by: null
-claimed_at: null
+claimed_by: claude
+claimed_at: "2026-08-06T00:00Z"
 blocks: null
 blocked_by: null
 status: null
@@ -179,6 +179,36 @@ Concrete implementation plan:
   no change; `planBuildTest.ts` has no review step at all and is unaffected.
   Plan is concrete (exact functions/line ranges, new status variant, cli.ts
   wiring, tests). Cleared `status: needs-refinement`.
+- 2026-08-06 (claude): implemented per the Plan exactly. `modules/workflow.ts`:
+  added `"review-rejected"` to the `WorkflowRunResult` discriminated union
+  (`{status, adwId, sessionId, step, review: ReviewOutput, link}`); factored
+  a shared `isReviewEnvelope()` structural-check helper (used by both
+  `runLoopStep`'s existing correction logic and the new check, replacing
+  that function's ad hoc `Array.isArray` checks); at the end of `runWorkflow`,
+  after `runSteps` returns `undefined` but before falling through to
+  `status: "success"`, scans `ctx.stepResults` in step-definition order for
+  the first review-shaped envelope with `approved: false` and returns
+  `review-rejected` instead (loop-internal rejections never reach this —
+  they already resolved to `loop-exhausted` or got corrected earlier).
+  `cli.ts`: added a `case "review-rejected":` arm to `describeResult`
+  (modeled on the `permissions-violation` case), new dedicated exit code 7.
+  `chains/registry.ts` needed no change (type-only re-export). Tests added
+  to `modules/workflow.test.ts` (3 new cases: no-loop rejected review ->
+  `review-rejected` not `success`; no-loop approved review still ->
+  `success` (no false-positive regression); `bounded-build-review`'s loop
+  exhaustion still reports `loop-exhausted`, unaffected). Verification:
+  `bun test` — 27/27 pass in `modules/workflow.test.ts` (up from 24
+  pre-existing + 3 new), full suite 257/278 pass, the 21 failures are all
+  pre-existing/environment-only (`live pi-web server`/`real spawned
+  process` labeled tests, confirmed identical failing set before and after
+  this change on an isolated Mac checkout with no pi-web server running).
+  `bunx tsc --noEmit` clean (both the root and `visualizer/src` tsconfigs).
+  Pushed to `main` at `33adf5b` (bundled with M-082/M-095/M-096 in one
+  commit per the coordinating agent's instruction). Deploy to the box
+  (`docker compose build jmfederico-pi-web`) deliberately deferred --
+  coordinator is running a single combined deploy once M-103/M-099/this
+  session's parallel work all land, to avoid three agents racing the same
+  container rebuild.
 
 ## Handoff notes
 Full repro trace (adwId `adw_b1b0a8101909`, now cleaned up — session archived+

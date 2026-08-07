@@ -256,6 +256,19 @@ export function describeResult(result: WorkflowResultBase, baseUrl: string = DEF
         exitCode: 6,
       };
     }
+    case "review-rejected": {
+      // M-080: a no-loop Workflow's review step explicitly did not approve —
+      // distinct from permissions-violation (4) and gate-failed (5) so a
+      // human/CI script watching exit codes can tell "review said no" apart
+      // from an enforcement/gate failure.
+      const review = "review" in result ? (result as { review?: { blocking?: string[]; summary?: string } }).review : undefined;
+      const blocking = review?.blocking ?? [];
+      const detail = blocking.length > 0 ? blocking.join("; ") : review?.summary ?? "(no summary given)";
+      return {
+        message: `REVIEW-REJECTED (step=${stepName()}) — ${idLine} — ${link} — review did not approve: ${detail}`,
+        exitCode: 7,
+      };
+    }
     default:
       return { message: `UNKNOWN STATUS ${JSON.stringify(result.status)} — ${idLine} — ${link}`, exitCode: 1 };
   }

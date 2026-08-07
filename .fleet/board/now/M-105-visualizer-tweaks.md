@@ -22,6 +22,7 @@ Chris made this ticket, pardon errors
 5. If they aren't already, add a field for step title in the workflow steps schema, and give a succinct but human friendly name. The keyword for the step might be plan, and it's fine to show the keyword in the gantt timebar, but then in the detail section below, where you've got plan (in black) follwoed by plan (in purple), we can replace that with the human friendly step title from the workflow definition, such as "Construct a Plan"
 6. Likewise, a human-friendly description of what the step is *generally* supposed to accomplish, also in the workflow definition. Call this field the "summary" on the details page, and what you currently have as "summary" should actually be "result"
 7. attempt 0 == we should be indexing from 1, at least in the UI
+8. On page load for details page, if there's and active step, activate/highlight that step as though we moused over it already
 
 ## Signals
 
