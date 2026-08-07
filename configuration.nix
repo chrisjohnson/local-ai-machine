@@ -497,6 +497,25 @@ in
     "ttm.pages_limit=32505856"
   ];
 
+  # 15 GiB swapfile (2026-08-07, Chris's directive). Rationale: with the two
+  # standing models co-resident (laguna v2 ~81GB + ornith q4 ~23GB GTT plus a
+  # ~14GB system floor) the box sits within a few GiB of its 124GB unified
+  # budget, and llama.cpp preallocates the full KV cache at load time — the
+  # 2026-08-02/08-06 OOM incidents were global OOM with ZERO swap (0B swap,
+  # no swapfile, confirmed). Swap is a pressure-relief valve, NOT a load
+  # target: the kernel only touches it when the resident set genuinely
+  # overruns (e.g. a transient overshoot while a model finishes loading).
+  # The 15GiB size is deliberately modest — big enough to absorb a load
+  # overshoot without ever becoming a plausible way to run a THIRD big model.
+  # hardware-configuration.nix's generated `swapDevices = [ ];` merges with
+  # this entry (Nix list merge).
+  swapDevices = [
+    {
+      device = "/swapfile";
+      size = 15360;
+    }
+  ];
+
   # MediaTek MT7925 WiFi (fallback link, see NetworkManager below): udev's
   # automatic module loading has been unreliable for this device on this
   # board, so force it explicitly rather than depend on autodetection.
