@@ -65,8 +65,53 @@ In short: nothing was lost, nothing is broken, the visualizer has nothing to
 render because no code Step has ever actually fired in a real run.
 
 ## Plan
-<!-- open design question for Chris, not autonomously decided -->
-Options, not yet chosen:
+**Decided, 2026-08-07 (Chris, direct):**
+- Keep using scratch repos for testing — not ready to point pi-web-factory
+  at a real durable project yet. This resolves Option 1's "zero real
+  candidate projects" blocker: it's not a blocker, scratch repos are the
+  intended test substrate for now, so Option 1's remaining friction (a
+  worktree-safe `test:` command) can be validated with a scratch repo built
+  for exactly that (e.g. a tiny throwaway repo with a trivial, self-
+  contained test command — no real installs needed).
+- Prefer explicit **workflow variants** over Option 2's conditional-step
+  interpreter change: "Having a with and without test variant seems ok" —
+  i.e. ship a `plan-build-review-with-tests` (or similarly named) Workflow
+  YAML alongside the existing `plan-build-review`, rather than teaching the
+  interpreter/schema a new conditional-step concept. Explicitly: "feel free
+  to create workflow variants as needed and we'll settle that better over
+  time" — this is a standing license to add more Workflow shapes going
+  forward rather than trying to keep exactly two/three forever, and directly
+  motivated filing [[M-104]] (a routing skill that picks the right variant
+  given a prompt, since a human/hand-maintained routing table won't scale
+  as variants multiply).
+
+**Now concretely actionable, in order:**
+1. Add a new Workflow YAML, `plan-build-review-with-tests` (or better name
+   if one falls out during implementation): `plan -> build -> code(run-tests)
+   -> review`, or `plan -> build -> code(run-tests)` if Chris would rather
+   the mechanical test gate replace the agent review rather than precede it
+   — implementer's call, document the reasoning either way. Register it in
+   `chains/registry.ts` alongside the existing three.
+2. Build a scratch repo fixture specifically for exercising this (a tiny
+   throwaway git repo with a trivial, near-instant, dependency-free test
+   command — e.g. a one-line shell script asserting a file's contents —
+   living wherever this codebase's other test fixtures/scratch repos live)
+   so the `test:` command has zero worktree-safety friction to prove the
+   `kind: "code"` Step machinery end-to-end.
+3. Run it for real via the new Workflow, confirm a real `kind: "code"` Step
+   shows up correctly in the visualizer (this is the actual, original ask —
+   verify visually, not just via the trace DB).
+4. Fix the latent gap flagged in the 2026-08-06 decision-log entry while
+   here: `runCodeStep`'s `project.test ?? ""` silently no-ops instead of
+   erroring when `test:` is omitted — add the same explicit `if (!testCmd)`
+   guard `planBuildTest.ts` already has.
+
+Original options below, kept for context/history — (1) and (2) as originally
+scoped are effectively superseded by the decisions above; (3)/(4) still
+stand as-is (leave-as-is was not chosen; the visualizer-passive-indicator
+idea (4) is still a reasonable independent addition, not in conflict with
+the above, just not prioritized).
+
 
 1. **Start giving real target projects a `.pi-web-factory.yaml` test
    command, then invoke `/skill:plan-build-test` for real.**
