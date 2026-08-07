@@ -139,6 +139,78 @@ into two, per Chris's "let's proceed with the fixes" covering both in one
 go; the original suggestion to split was about independent shippability,
 not a requirement).
 
+**Implementation, 2026-08-07 (claude, sub-agent):**
+- [x] Fix 1 — write-path catch-all: `runWorkflow()` (`modules/workflow.ts`)
+  wrapped in a `try/catch`. `RunContext` gained `openPhase: { phaseId,
+  stepName } | undefined`, set by `runAgentStep`/`runCodeStep` right before
+  each Step's `phase_start` write, and cleared explicitly on every
+  non-throwing return path (deliberately NOT via a `finally` in those two
+  functions — an inner `finally` would blank `openPhase` before the
+  exception ever reaches `runWorkflow`'s own `catch`, per ordinary JS
+  unwind order; found this the hard way when the first version of the new
+  tests failed). On catch: writes a terminal `phase_end` (`status: 'fail'`,
+  the caught error's `message` as `error`/`outputSummary`) for
+  `ctx.openPhase` if one was open, calls `tracer.sessionFinish(adwId,
+  false)`, then re-throws.
+- [x] Fix 2 — reconciliation pass: `visualizer/server.ts` gained a second,
+  separate read-write `bun:sqlite` handle (`reconcileDb`) alongside the
+  existing readonly `db` handle (used by every `/api/...` route,
+  unchanged) — `reconcileStuckRuns()` scans `phases` rows `status='running'`
+  and marks a row (plus its `sessions` row, if that row's own `status` is
+  also `'running'`) `'fail'` on either OR'd condition: (1) `GET
+  /sessions?cwd=<project>` against pi-web (`PI_WEB_FACTORY_BASE_URL`)
+  returns no live session, or (2) the row's `started_at`/latest `events`
+  activity is older than `RECONCILE_STALE_MS` — reused directly from
+  `piwebClient.ts`'s `PI_WEB_FACTORY_STEP_TIMEOUT_MS` (exported as
+  `DEFAULT_WAIT_FOR_COMPLETION_TIMEOUT_MS`, no second constant invented).
+  Runs once on startup (fire-and-forget, logged) and every
+  `PI_WEB_FACTORY_VISUALIZER_RECONCILE_INTERVAL_MS`, **default 5 minutes**
+  (`DEFAULT_RECONCILE_INTERVAL_MS`, chosen as a reasonable middle ground —
+  frequent enough a dead run doesn't sit visibly "running" long, infrequent
+  enough the extra db connection + per-project pi-web round trip is
+  negligible background load on a box that may be running real GPU work).
+  Job-runner-heartbeat-as-a-cleaner-signal noted as an explicit out-of-scope
+  follow-on in the code comment, per the card's own refinement.
+- [x] Tests: `modules/workflow.test.ts` — new `describe("runWorkflow —
+  catch-all on an uncaught exception (M-100 Fix 1)")`, two cases (an agent
+  step's `setModel` 404 before `waitForCompletion`, reproducing the real
+  M-089 trigger exactly; a code step's `projectConfigFor` throwing) —
+  both confirm the phase row lands `status='fail'` (not left `'running'`)
+  and the session row lands `status='fail'` too, and that the original
+  error still propagates (`rejects.toThrow`). `visualizer/server.test.ts` —
+  new `describe("reconciliation pass (M-100 Fix 2)")` against its own
+  scratch db/spawned server instance with a short `PI_WEB_FACTORY_STEP_
+  TIMEOUT_MS` and a stubbed pi-web `/sessions` endpoint: a stale row flips
+  to `fail` even when the stub reports a live session (condition 2 alone
+  sufficient); a fresh row with no live session also flips to `fail`
+  (condition 1 alone sufficient); a fresh, genuinely-live row is left
+  completely untouched (no false positive).
+- [x] Full suite run (`bun test`, inside the `pi-web-factory-visualizer`
+  container against a scratch copy, since bun isn't installed on the dev
+  Mac): 258 pass / 6 fail, all 6 failures pre-existing and unrelated
+  (integration tests needing a live pi-web session or an `ssh
+  local-ai-machine` bridge unreachable from inside a container — confirmed
+  identical failures against the untouched, already-deployed checkout
+  before this change). `tsc --noEmit` clean (0 errors).
+- [x] **Real end-to-end verification on the box**, per the task brief —
+  confirmed pi-web genuinely had no live session for
+  `/tmp/pi-web-factory-m089-verify` before deploy (`curl
+  'http://localhost:8080/api/sessions?cwd=/tmp/pi-web-factory-m089-verify'`
+  → `[]`), then after `docker compose build jmfederico-pi-web && docker
+  compose up -d pi-web-factory-visualizer` (which recreated `pi-web` too,
+  as expected), the visualizer's own startup log showed `[visualizer]
+  reconciliation (startup): scanned 2 running Step(s), marked 2 failed` —
+  and `curl http://192.168.1.226:8090/api/runs` confirmed both
+  `adw_32d8104649e2` and `adw_9d7a3daa303d` flipped from `status: running`
+  to `status: fail`, each Step's `error` reading `"reconciled: stale, no
+  runner activity within timeout"` (condition 2 — staleness — is what
+  actually fired for these two, since their `started_at` was from the
+  prior day). Both containers confirmed healthy post-deploy (`docker ps`:
+  both `Up`; `curl` 200 on both `http://192.168.1.226:8090/` and
+  `http://localhost:8080/` on the box). The live GPU benchmark sweep
+  (`llm-inference-bench`) was left untouched throughout — no new
+  GPU-consuming Workflow Run was triggered.
+
 ## Signals
 
 ## Decision log
