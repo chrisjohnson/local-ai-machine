@@ -37,8 +37,15 @@ version: '3.8'
 # container back up simultaneously (~111GB/124GB used), since none of
 # them were in an explicit "stopped" state at the moment of the crash.
 # Infra services below keep the restart policy — no GPU-contention risk
-# there. Which model should auto-start on boot (if any) is an open
-# question, deferred until the sweep/exclusivity design is more settled.
+# there. EXCEPTION (2026-08-07, Chris's directive): the two standing
+# production models — laguna-s-2.1-118b-q4km--llamacpp-vulkan-radv-v2
+# (big-moe, 8108) and ornith-1.0-35b-mtp-q4--llamacpp-vulkan-radv-v1
+# (medium-moe, 8113) — deliberately carry `restart: always` + the
+# always-up label so they self-heal and auto-start on boot, mirroring
+# the infra policy. These two are the sanctioned co-resident pair (see
+# the OOM analysis in knowledge/research/2026-08-02-dflash-vulkan-sweep-
+# and-rocm-control.md and the v2 comment below); any other model service
+# stays restart-free and exclusive/stoppable by default.
 #
 # --gpu-memory-utilization: judge-sized models (roughly <25B — the ones
 # almost always run co-resident alongside a larger candidate model, e.g.
@@ -527,9 +534,16 @@ services:
   # (both running = ~120GiB/124GiB before, OOM-killed qwen 2026-08-02). v1's f16 KV
   # config is preserved untouched (its benchmark_runs[] stay valid). v2 has no
   # benchmark_runs yet — run one before treating any v2 number as comparable.
+  #
+  # 2026-08-07 (Chris's directive): this is the standing big-moe production model.
+  # Always-up + restart: always so it self-heals and auto-starts on boot (see the
+  # header comment for the exception rationale and the OOM analysis).
   laguna-s-2.1-118b-q4km--llamacpp-vulkan-radv-v2:
     image: docker.io/kyuz0/amd-strix-halo-toolboxes:vulkan-radv
     container_name: laguna-s-2.1-118b-q4km--llamacpp-vulkan-radv-v2
+    restart: always
+    labels:
+      com.local-ai-machine.always-up: "true"
     devices:
       - /dev/kfd:/dev/kfd
       - /dev/dri:/dev/dri
@@ -854,9 +868,17 @@ services:
   # point of this card. Not started here — deploy step only defines +
   # triggers the download; starting the container is a later smoke-test
   # step.
+  #
+  # 2026-08-07 (Chris's directive): this is the standing medium-moe production
+  # model. Always-up + restart: always so it self-heals and auto-starts on boot
+  # (same exception rationale as laguna v2 above; the pair is the sanctioned
+  # co-resident memory budget).
   ornith-1.0-35b-mtp-q4--llamacpp-vulkan-radv-v1:
     image: docker.io/kyuz0/amd-strix-halo-toolboxes:vulkan-radv
     container_name: ornith-1.0-35b-mtp-q4--llamacpp-vulkan-radv-v1
+    restart: always
+    labels:
+      com.local-ai-machine.always-up: "true"
     devices:
       - /dev/kfd:/dev/kfd
       - /dev/dri:/dev/dri
