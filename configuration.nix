@@ -335,17 +335,14 @@ let
     # decoding, but per ds4's own docs speculative decoding is "currently
     # experimental and explicitly opt-in," not a mature/default feature
     # the way the unsloth Qwen3.6 MTP GGUFs already proven on this box are.
-    { name = "ds4-deepseek-v4-flash-iq2xxs"; repo = "antirez/deepseek-v4-gguf"; hfFiles = [
-        "DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2.gguf"
-        "DeepSeek-V4-Flash-MTP-Q4K-Q8_0-F32.gguf"
-      ]; }
-    # M-051: re-download of the entry directly above, this time with the
-    # CORRECT GGUF variant. The Strix-Halo-specific upstream doc
+    # M-051: re-download of the WRONG (non-imatrix) GGUF variant below this
+    # point in revision history, this time with the CORRECT variant. The
+    # Strix-Halo-specific upstream doc
     # (github.com/antirez/ds4/blob/main/STRIXHALO.md, section "5. Use the
     # right GGUF") explicitly says: "Use the standard IQ2XXS/Q2K/Q8 imatrix
     # GGUF: DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf"
-    # — the entry above lacks the `-imatrix` suffix and was downloaded per
-    # the repo's general (non-hardware-specific) README instead, before
+    # — the superseded entry lacked the `-imatrix` suffix and was downloaded
+    # per the repo's general (non-hardware-specific) README instead, before
     # this doc was found. Both files are ~86.72GB (imatrix calibration
     # affects quantization quality, not size) — a correctness gap, not a
     # capacity one. Full history: catalog/builds/ds4-deepseek-v4-flash-iq2xxs--ds4-strix-halo.yaml
@@ -356,13 +353,12 @@ let
     # (~80.76 GiB, imatrix variant — note there is also a same-size
     # `-imatrix-0731.gguf` file in this repo; STRIXHALO.md names the plain
     # `-imatrix.gguf` one, not the `-0731` one, so that's what's used here),
-    # MTP add-on 3,807,602,400 bytes (~3.55 GiB, byte-identical file to the
-    # one already downloaded above, but redeclared here so this entry is
-    # self-contained / re-downloadable independently of the wrong-variant
-    # one, which Chris may want to delete later to reclaim ~84GB). Old
-    # entry deliberately left in place above rather than removed as part of
-    # this change — deleting a ~90GB local dir is a separate, deliberate
-    # decision, not a side effect of fixing the download list.
+    # MTP add-on 3,807,602,400 bytes (~3.55 GiB, byte-identical file in
+    # both variants). The WRONG-variant local dir (/var/lib/ai-models/
+    # ds4-deepseek-v4-flash-iq2xxs, ~85GB) was DELETED on 2026-08-07 per
+    # Chris's directive — this model entry is intentionally absent now (the
+    # dir no longer exists, so a model-sync must not re-download it). The
+    # imatrix entry below is self-contained / re-downloadable on its own.
     { name = "ds4-deepseek-v4-flash-iq2xxs-imatrix"; repo = "antirez/deepseek-v4-gguf"; hfFiles = [
         "DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf"
         "DeepSeek-V4-Flash-MTP-Q4K-Q8_0-F32.gguf"
