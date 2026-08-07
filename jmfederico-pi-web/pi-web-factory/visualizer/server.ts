@@ -9,14 +9,27 @@
  * Vite/Vue dependency added to this project's `package.json`) from ONE
  * `Bun.serve` process, per the card's brief ("one process to run").
  *
- * ── Read-only, always ───────────────────────────────────────────────────
- * Opens `factory.db` with `{ readonly: true }` (bun:sqlite) — this process
- * NEVER writes to the trace db, confirmed live (see this file's own
- * companion test / the M-077 card's decision log): `bun:sqlite` throws
- * "attempt to write a readonly database" on any write attempt against a
- * readonly-opened handle, which is exactly the safety property wanted here
- * (the visualizer must never be able to corrupt or race the real writer,
- * `Tracer`, used by `cli.ts`/live Workflow Runs).
+ * ── Read-only, always (for the read API) ────────────────────────────────
+ * Opens `factory.db` with `{ readonly: true }` (bun:sqlite) for every route
+ * below — this process NEVER writes to the trace db through the read API,
+ * confirmed live (see this file's own companion test / the M-077 card's
+ * decision log): `bun:sqlite` throws "attempt to write a readonly database"
+ * on any write attempt against a readonly-opened handle, which is exactly
+ * the safety property wanted here (the read API must never be able to
+ * corrupt or race the real writer, `Tracer`, used by `cli.ts`/live Workflow
+ * Runs).
+ *
+ * ── M-100 Fix 2: one deliberate exception, its own separate handle ───────
+ * The reconciliation pass (below, `reconcileStuckRuns`) is a genuine,
+ * intentional writer: it marks orphaned `phases`/`sessions` rows `'fail'`
+ * when a job runner died without ever getting to write its own terminal
+ * status (see that section's own doc comment for the full mechanism and
+ * why Fix 1 alone can't cover it). Flipping the ONE readonly handle above
+ * to read-write would silently weaken the safety property every other route
+ * in this file relies on, so this pass opens a SECOND, separate read-write
+ * `Database` handle (`reconcileDb`), used ONLY inside the reconciliation
+ * section — every `/api/...` route continues to use the original readonly
+ * `db` handle, unchanged.
  *
  * ── `rowid` on `events` despite its TEXT primary key ───────────────────
  * `events.event_id` is declared `TEXT PRIMARY KEY` (schema.ts), which does
@@ -43,6 +56,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { SCHEMA } from "../modules/schema.ts";
 import { WORKTREE_SUBDIR } from "../modules/worktree.ts";
+import { DEFAULT_BASE_URL, DEFAULT_WAIT_FOR_COMPLETION_TIMEOUT_MS } from "../modules/piwebClient.ts";
 import index from "./src/index.html";
 
 /**
@@ -83,6 +97,195 @@ if (!existsSync(DB_PATH)) {
 // be able to write to the trace db (see module doc comment above).
 const db = new Database(DB_PATH, { readonly: true });
 db.run("PRAGMA busy_timeout=5000;");
+
+// ── M-100 Fix 2: reconciliation pass ───────────────────────────────────────
+//
+// Fix 1 (workflow.ts's `runWorkflow` catch-all) only covers a job runner
+// process that gets the chance to unwind its own stack (an uncaught JS
+// exception). It does NOT cover SIGKILL, OOM-kill, a container recreate
+// killing the `docker exec` process mid-run, or a host reboot — none of
+// which give JS a chance to run a `catch` block at all. Those leave a
+// `phases`/`sessions` row stuck at `status='running'` forever, with nothing
+// in the codebase ever revisiting it (M-100's Decision log: confirmed zero
+// prior reconciliation/staleness logic anywhere). This pass is the general
+// fix for that whole class: it runs OUTSIDE the (possibly dead) job-runner
+// process, from the one long-lived process in this system that already owns
+// the read path (`server.ts`).
+//
+// ── Why a SECOND db handle, read-write, scoped to just this ──────────────
+// This module's whole design opens `db` (above) `{ readonly: true }`
+// specifically so the visualizer can never write to the trace db (module
+// header comment) — that's a real safety property (bun:sqlite throws on any
+// write attempt against a readonly handle), and this pass must not weaken
+// it for the rest of the file. Marking terminal statuses is a genuine,
+// intentional write, so it gets its OWN separate read-write connection,
+// opened and used ONLY inside this section — every other route/query in
+// this file keeps using the readonly `db` handle above, unchanged. This
+// keeps "the read API literally cannot write" true for the read API, while
+// still letting the one deliberate writer (reconciliation) do its job.
+const reconcileDb = new Database(DB_PATH);
+reconcileDb.run("PRAGMA busy_timeout=5000;");
+
+/**
+ * Staleness threshold for "no active runner" (condition 2 below) — reused
+ * directly from `piwebClient.ts`'s `PI_WEB_FACTORY_STEP_TIMEOUT_MS`
+ * (`DEFAULT_WAIT_FOR_COMPLETION_TIMEOUT_MS`, M-094's own wait-loop timeout)
+ * rather than inventing a second env var/constant for what's conceptually
+ * the same question — "how long is too long for a Step to still genuinely
+ * be in flight." M-100's card explicitly calls for reusing this constant.
+ */
+const RECONCILE_STALE_MS = DEFAULT_WAIT_FOR_COMPLETION_TIMEOUT_MS;
+
+/** How often the periodic reconciliation sweep runs, beyond the mandatory startup pass. Chosen as a few minutes: frequent enough that a genuinely dead run doesn't sit visibly "running" for long after it's gone stale, infrequent enough that this read-write connection (and the `GET /api/sessions?cwd=` round trip to pi-web per distinct project, per sweep) is negligible background load on a box that may also be running real GPU work. Overridable for tests via PI_WEB_FACTORY_VISUALIZER_RECONCILE_INTERVAL_MS. */
+const DEFAULT_RECONCILE_INTERVAL_MS = 5 * 60 * 1000;
+const RECONCILE_INTERVAL_MS = (() => {
+  const raw = process.env["PI_WEB_FACTORY_VISUALIZER_RECONCILE_INTERVAL_MS"];
+  if (!raw) return DEFAULT_RECONCILE_INTERVAL_MS;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_RECONCILE_INTERVAL_MS;
+})();
+
+/** Base URL for the pi-web instance whose live session list this pass cross-checks against — same env var / default `piwebClient.ts` itself uses, so this pass talks to the same pi-web the job runner does. */
+const PIWEB_BASE_URL = process.env["PI_WEB_FACTORY_BASE_URL"] ?? DEFAULT_BASE_URL;
+
+interface StaleCandidateRow {
+  phase_id: string;
+  adw_id: string;
+  status: string;
+  started_at: string | null;
+  project_cwd: string | null;
+  session_status: string | null;
+  latest_event_at: string | null;
+}
+
+/**
+ * `GET /sessions?cwd=<cwd>` against pi-web directly — the same manual check
+ * used throughout M-100's investigation (`curl
+ * 'http://localhost:8080/api/sessions?cwd=<project>'`). No typed helper for
+ * this exists yet in `piwebClient.ts` (every existing helper there operates
+ * on an already-known session id, not a cwd-based lookup) — kept narrow and
+ * local here rather than growing that module's surface for a single caller.
+ * Returns `true` when pi-web reports at least one live session for `cwd`.
+ * Network/parse failures are treated as "cannot confirm dead" (returns
+ * `true`, i.e. does NOT mark failed on this signal alone) — a transient
+ * pi-web hiccup must never itself be read as "no session," since that's one
+ * of this pass's two independently-DEFINITIVE signals (module comment
+ * below); condition 2 (staleness) still applies independently regardless of
+ * whether this check succeeds.
+ */
+async function hasLiveSession(cwd: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${PIWEB_BASE_URL}/sessions?cwd=${encodeURIComponent(cwd)}`);
+    if (!res.ok) return true;
+    const body = (await res.json()) as unknown;
+    return Array.isArray(body) && body.length > 0;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * One reconciliation sweep: scans `phases` rows still `status='running'`
+ * and marks the ones that meet either of two INDEPENDENT, individually-
+ * definitive conditions as `'fail'` — a logical OR, not an AND (M-100's
+ * card, "Refinement, 2026-08-07" section, is explicit that Chris corrected
+ * an earlier AND-based draft to this OR-based version):
+ *
+ *   1. **No active session**: pi-web's own `GET /sessions?cwd=<project>`
+ *      returns no live session for the row's project. Definitive on its
+ *      own — the underlying agent conversation is provably gone — so this
+ *      marks the row failed regardless of how fresh its timestamp looks.
+ *   2. **No active runner (staleness proxy)**: the row's `started_at` (or
+ *      its most recent associated `events` row, whichever is later) is
+ *      older than `RECONCILE_STALE_MS`. Also definitive on its own, even if
+ *      pi-web's session API still shows something live for that project —
+ *      a live pi-web session does NOT prove the job-runner process driving
+ *      it is still alive; the runner could have died while the session it
+ *      opened sits idle indefinitely. Staleness is the only signal for "no
+ *      job runner is present" available today: there's no first-class
+ *      job-runner heartbeat/registration to check more directly anywhere in
+ *      this codebase. A real heartbeat mechanism would be a strictly
+ *      cleaner signal than this staleness proxy — flagged here as a
+ *      natural follow-on, deliberately out of scope for this pass.
+ *
+ * Rows that are neither stale NOR session-dead are left completely
+ * untouched — no false positives on real in-progress work.
+ */
+async function reconcileStuckRuns(): Promise<{ scanned: number; markedFailed: number }> {
+  const staleCutoffIso = new Date(Date.now() - RECONCILE_STALE_MS).toISOString();
+
+  const rows = reconcileDb
+    .query<StaleCandidateRow, []>(
+      `SELECT p.phase_id, p.adw_id, p.status, p.started_at, s.project_cwd,
+              s.status AS session_status,
+              (SELECT MAX(e.started_at) FROM events e WHERE e.adw_id = p.adw_id) AS latest_event_at
+       FROM phases p
+       LEFT JOIN sessions s ON s.adw_id = p.adw_id
+       WHERE p.status = 'running'`,
+    )
+    .all();
+
+  let markedFailed = 0;
+
+  for (const row of rows) {
+    // "Most recent of started_at / latest associated event" — schema.ts's
+    // `events.started_at` is the only other queryable timestamp for a
+    // phase's own activity (phases.ended_at is NULL by construction while
+    // status='running').
+    const candidates = [row.started_at, row.latest_event_at].filter((v): v is string => v !== null);
+    const lastActivityIso = candidates.length > 0 ? candidates.sort().at(-1)! : null;
+    const isStale = lastActivityIso === null ? true : lastActivityIso < staleCutoffIso;
+
+    // Condition 2 checked first — purely local (no network round trip),
+    // cheap short-circuit before condition 1's pi-web call.
+    let reason: string | undefined;
+    if (isStale) {
+      reason = "reconciled: stale, no runner activity within timeout";
+    } else if (row.project_cwd !== null && !(await hasLiveSession(row.project_cwd))) {
+      reason = "reconciled: no live pi-web session found";
+    }
+
+    if (!reason) continue; // neither condition met — genuinely still running, leave untouched
+
+    const nowIso = new Date().toISOString();
+    reconcileDb.run(
+      `UPDATE phases SET status='fail', error=?, ended_at=? WHERE phase_id=?`,
+      [reason, nowIso, row.phase_id],
+    );
+    // Mirror tracer.ts's own sessionFinish(adwId, false) normalization
+    // (status='fail', ended_at=now) — only for a session whose own status
+    // is ALSO still 'running' (a session can have other, still-genuinely-
+    // live Steps; this pass must not force-fail a session out from under
+    // work that's actually fine).
+    if (row.session_status === "running") {
+      reconcileDb.run(`UPDATE sessions SET status='fail', ended_at=? WHERE adw_id=?`, [nowIso, row.adw_id]);
+    }
+    markedFailed += 1;
+  }
+
+  return { scanned: rows.length, markedFailed };
+}
+
+async function runReconciliationSweep(label: string): Promise<void> {
+  try {
+    const { scanned, markedFailed } = await reconcileStuckRuns();
+    if (markedFailed > 0) {
+      console.log(`[visualizer] reconciliation (${label}): scanned ${String(scanned)} running Step(s), marked ${String(markedFailed)} failed`);
+    }
+  } catch (error) {
+    console.error(`[visualizer] reconciliation (${label}) failed:`, error);
+  }
+}
+
+// Runs once on startup, per M-100's explicit "on startup, IN ADDITION TO
+// periodic" requirement — fire-and-forget (top-level await would block the
+// server from listening; this pass is allowed to finish after routes are
+// already serving).
+void runReconciliationSweep("startup");
+// ...and periodically thereafter, every RECONCILE_INTERVAL_MS.
+setInterval(() => {
+  void runReconciliationSweep("periodic");
+}, RECONCILE_INTERVAL_MS);
 
 // ── row shapes (raw SQL column names — mapped to camelCase in the API) ────
 

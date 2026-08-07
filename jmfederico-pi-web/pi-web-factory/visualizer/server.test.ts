@@ -244,6 +244,21 @@ describe("visualizer server (real spawned process, real HTTP)", () => {
     expect(text).toContain("pi-web-factory visualizer");
   });
 
+  test("M-100 Fix 2: reconciliation is wired up — startup pass runs against a real spawned server without crashing it", async () => {
+    // Full behavioral coverage (stale row -> fail, fresh row untouched,
+    // live-vs-dead session cross-check) lives in the dedicated
+    // "reconciliation pass (M-100 Fix 2)" describe block below, against its
+    // own scratch db/server instance with a controlled staleness threshold
+    // and a stubbed pi-web. This test just confirms the already-running
+    // shared server instance (this describe block's own beforeAll) didn't
+    // fail to start or serve requests because of the reconciliation wiring
+    // (e.g. a bad query, an unhandled promise rejection tearing down the
+    // process) — regression coverage for "the reconciliation pass must not
+    // break the ordinary read API it now lives alongside."
+    const res = await fetch(`${baseUrl}/api/runs`);
+    expect(res.status).toBe(200);
+  });
+
   test("the server's db handle is genuinely readonly — direct write attempt against the same file fails, confirming the running process cannot have a writable handle open", async () => {
     // Open our OWN separate connection with the intended writer semantics
     // (create:false, no readonly) to prove the FILE and its schema are
@@ -265,5 +280,179 @@ describe("visualizer server (real spawned process, real HTTP)", () => {
     const res = await fetch(`${baseUrl}/api/runs/${ADW_ID}`);
     const body = (await res.json()) as { run: { title: string } };
     expect(body.run.title).toBe("title changed by test");
+  });
+});
+
+// ── M-100 Fix 2: reconciliation pass ────────────────────────────────────
+//
+// Its own dedicated scratch db + spawned server instance (distinct port,
+// distinct db, distinct env) so the staleness threshold
+// (PI_WEB_FACTORY_STEP_TIMEOUT_MS) and pi-web base URL
+// (PI_WEB_FACTORY_BASE_URL) can be controlled tightly for this suite without
+// affecting the shared instance above.
+
+const RECONCILE_TEST_PORT = 8791;
+const RECONCILE_STALE_MS = 500; // short, so the startup pass sweeps within the test's own timeout
+const STALE_ADW_ID = "adw_reconcile_stale01";
+const FRESH_ADW_ID = "adw_reconcile_fresh01";
+const NO_SESSION_ADW_ID = "adw_reconcile_nosess01";
+const STALE_PROJECT_CWD = "/tmp/reconcile-test-stale-project";
+const FRESH_PROJECT_CWD = "/tmp/reconcile-test-fresh-project";
+const NO_SESSION_PROJECT_CWD = "/tmp/reconcile-test-no-session-project";
+
+describe("reconciliation pass (M-100 Fix 2)", () => {
+  let reconcileDir: string;
+  let reconcileDbPath: string;
+  let reconcileProc: ReturnType<typeof Bun.spawn>;
+  let reconcileBaseUrl: string;
+  let fakePiWeb: ReturnType<typeof Bun.serve>;
+  let fakePiWebSessionsRequests: string[] = [];
+
+  beforeAll(async () => {
+    reconcileDir = mkdtempSync(join(tmpdir(), "pi-web-factory-visualizer-reconcile-test-"));
+    reconcileDbPath = join(reconcileDir, "factory.db");
+
+    // A stale row: started_at far enough in the past to already exceed
+    // RECONCILE_STALE_MS by the time the server's startup sweep runs, AND
+    // (deliberately) a project pi-web's fake /sessions endpoint reports as
+    // still LIVE — proving staleness alone (condition 2) is sufficient, per
+    // the OR semantics, even when condition 1 (no live session) does NOT
+    // also hold.
+    const staleStartedAt = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    // A fresh row: started_at is "now" — must be left untouched even though
+    // its project also isn't in the fake pi-web's "live" set (proving
+    // freshness alone protects a row regardless of session state, matching
+    // "AND-based false positives are not allowed" from the other direction:
+    // a fresh row must never be flagged just because the session check
+    // happens to fail/return empty too fast — the staleness check must be
+    // evaluated independently, not skipped).
+    const freshStartedAt = new Date().toISOString();
+
+    const tracer = new Tracer(reconcileDbPath);
+    tracer.sessionStart(STALE_ADW_ID, { engineer: "test", projectCwd: STALE_PROJECT_CWD, adwName: "test-workflow" });
+    tracer.phaseUpsert({
+      phaseId: `${STALE_ADW_ID}_build`,
+      adwId: STALE_ADW_ID,
+      seq: 1,
+      name: "build",
+      kind: "agent",
+      role: "build",
+      description: "stale build step",
+      status: "running",
+      startedAt: staleStartedAt,
+    });
+
+    tracer.sessionStart(FRESH_ADW_ID, { engineer: "test", projectCwd: FRESH_PROJECT_CWD, adwName: "test-workflow" });
+    tracer.phaseUpsert({
+      phaseId: `${FRESH_ADW_ID}_build`,
+      adwId: FRESH_ADW_ID,
+      seq: 1,
+      name: "build",
+      kind: "agent",
+      role: "build",
+      description: "fresh, genuinely still-running build step",
+      status: "running",
+      startedAt: freshStartedAt,
+    });
+
+    // A row that's fresh (would NOT trip the staleness proxy) but whose
+    // project pi-web reports zero live sessions for — proving condition 1
+    // alone is also independently sufficient, exactly the real-world M-100
+    // scenario (the two real stuck rows on the box: fresh-looking, but
+    // provably no live pi-web session).
+    tracer.sessionStart(NO_SESSION_ADW_ID, { engineer: "test", projectCwd: NO_SESSION_PROJECT_CWD, adwName: "test-workflow" });
+    tracer.phaseUpsert({
+      phaseId: `${NO_SESSION_ADW_ID}_build`,
+      adwId: NO_SESSION_ADW_ID,
+      seq: 1,
+      name: "build",
+      kind: "agent",
+      role: "build",
+      description: "fresh timestamp, but no live pi-web session",
+      status: "running",
+      startedAt: freshStartedAt,
+    });
+    tracer.close();
+
+    // A tiny stub standing in for pi-web's real GET /sessions?cwd=<cwd> —
+    // reports STALE_PROJECT_CWD and FRESH_PROJECT_CWD as having a live
+    // session, and NO_SESSION_PROJECT_CWD as having none.
+    fakePiWeb = Bun.serve({
+      port: 0,
+      fetch(req) {
+        const url = new URL(req.url);
+        if (url.pathname === "/api/sessions") {
+          const cwd = url.searchParams.get("cwd") ?? "";
+          fakePiWebSessionsRequests.push(cwd);
+          const live = cwd === STALE_PROJECT_CWD || cwd === FRESH_PROJECT_CWD;
+          return Response.json(live ? [{ id: "sess_live", cwd, path: "", created: "x", modified: "x", messageCount: 1, firstMessage: "" }] : []);
+        }
+        return new Response("not found", { status: 404 });
+      },
+    });
+
+    reconcileBaseUrl = `http://localhost:${String(RECONCILE_TEST_PORT)}`;
+    reconcileProc = Bun.spawn({
+      cmd: ["bun", join(import.meta.dir, "server.ts")],
+      env: {
+        ...process.env,
+        PI_WEB_FACTORY_VISUALIZER_DB_PATH: reconcileDbPath,
+        PI_WEB_FACTORY_VISUALIZER_PORT: String(RECONCILE_TEST_PORT),
+        PI_WEB_FACTORY_STEP_TIMEOUT_MS: String(RECONCILE_STALE_MS),
+        PI_WEB_FACTORY_BASE_URL: `${fakePiWeb.url.origin}/api`,
+        // Long periodic interval — this suite only needs the mandatory
+        // startup pass to have run by the time its assertions check.
+        PI_WEB_FACTORY_VISUALIZER_RECONCILE_INTERVAL_MS: String(60 * 60 * 1000),
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+
+    await waitForServer(`${reconcileBaseUrl}/api/runs`, Date.now() + 15_000);
+    // The startup reconciliation sweep is fire-and-forget (module comment:
+    // "allowed to finish after routes are already serving") — poll until
+    // its effect (the stale row flipping to 'fail') is observable, rather
+    // than a fixed sleep.
+    const deadline = Date.now() + 10_000;
+    for (;;) {
+      const res = await fetch(`${reconcileBaseUrl}/api/runs/${STALE_ADW_ID}`);
+      const body = (await res.json()) as { run: { status: string } };
+      if (body.run.status === "fail") break;
+      if (Date.now() >= deadline) throw new Error("reconciliation startup sweep did not complete in time");
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  }, 30_000);
+
+  afterAll(() => {
+    reconcileProc.kill();
+    fakePiWeb.stop(true);
+    rmSync(reconcileDir, { recursive: true, force: true });
+  });
+
+  test("a stale running row (past the staleness threshold) is marked fail, even though pi-web still reports a live session for its project", async () => {
+    const res = await fetch(`${reconcileBaseUrl}/api/runs/${STALE_ADW_ID}`);
+    const body = (await res.json()) as { run: { status: string }; steps: Array<{ status: string; error: string | null }> };
+    expect(body.run.status).toBe("fail");
+    expect(body.steps[0]!.status).toBe("fail");
+    expect(body.steps[0]!.error).toContain("stale");
+  });
+
+  test("a fresh, genuinely-running row is left completely untouched — no false positive", async () => {
+    const res = await fetch(`${reconcileBaseUrl}/api/runs/${FRESH_ADW_ID}`);
+    const body = (await res.json()) as { run: { status: string }; steps: Array<{ status: string }> };
+    expect(body.run.status).toBe("running");
+    expect(body.steps[0]!.status).toBe("running");
+  });
+
+  test("a fresh row whose project has NO live pi-web session is marked fail — condition 1 alone is sufficient, independent of staleness", async () => {
+    const res = await fetch(`${reconcileBaseUrl}/api/runs/${NO_SESSION_ADW_ID}`);
+    const body = (await res.json()) as { run: { status: string }; steps: Array<{ status: string; error: string | null }> };
+    expect(body.run.status).toBe("fail");
+    expect(body.steps[0]!.status).toBe("fail");
+    expect(body.steps[0]!.error).toContain("no live pi-web session");
+  });
+
+  test("the fake pi-web session check was actually called for the relevant projects (cross-check genuinely happened, not skipped)", () => {
+    expect(fakePiWebSessionsRequests).toContain(NO_SESSION_PROJECT_CWD);
   });
 });

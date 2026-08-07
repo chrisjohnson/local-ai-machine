@@ -311,6 +311,22 @@ interface RunContext {
    * function, not here, for where the prefixing actually happens.
    */
   taskPromptInjected: boolean;
+  /**
+   * The phaseId of whatever Step is CURRENTLY open (a `phase_start` has been
+   * traced but its terminal `phase_end` has not yet been written), or
+   * `undefined` when no Step is open (between steps, or before the first
+   * step has started). M-100 Fix 1: `runAgentStep`/`runCodeStep` both know
+   * their own phaseId transiently, but a top-level catch-all around the
+   * whole run (see `runWorkflow`'s try/catch) needs to know it too, to close
+   * out whichever Step was open at the moment an uncaught exception hit —
+   * e.g. a `PiWebClientError` thrown by `setModel`/`sendPrompt` BEFORE
+   * `waitForCompletion` resolves, which today leaves the row `status:
+   * 'running'` forever (see this card's Decision log for the full trace).
+   * Set right before a Step's `phase_start` is traced, cleared right after
+   * its `phase_end` is traced — so it's accurate at every point in between,
+   * including inside `runLoopStep`'s inner steps.
+   */
+  openPhase: { phaseId: string; stepName: string } | undefined;
 }
 
 /**
@@ -342,6 +358,23 @@ async function runAgentStep(
 
   ctx.seq += 1;
   const phaseId = `${ctx.adwId}_${step.name}`;
+  // M-100 Fix 1: mark this Step "open" BEFORE runAgentPhase's own
+  // phase_start write (it happens inside runAgentPhase, first thing) —
+  // openPhase must already be accurate for the whole duration of this call,
+  // including the window before phase_start lands, since runWorkflow's
+  // catch-all needs to know which row to close out even if the very first
+  // await inside runAgentPhase (setModel/sendPrompt) throws.
+  //
+  // Deliberately NOT cleared in a `finally` here: a `finally` in THIS
+  // function would run (and clear ctx.openPhase) BEFORE an exception
+  // propagates up to runWorkflow's own try/catch (inner finally always
+  // finishes before an outer catch runs, per ordinary JS unwind order) —
+  // which would blank out openPhase right before the one place that needs
+  // to read it. Instead: cleared explicitly on every NON-throwing return
+  // path below (both the terminal-outcome branch and the success branch),
+  // so it's still accurate at the moment of a throw, and still correctly
+  // reset to "nothing open" once this function returns normally.
+  ctx.openPhase = { phaseId, stepName: step.name };
   const result = await runAgentPhase({
     tracer: ctx.tracer,
     baseUrl: ctx.baseUrl,
@@ -364,6 +397,7 @@ async function runAgentStep(
     outputTypeName: step.role,
     protectedFiles,
   });
+  ctx.openPhase = undefined;
 
   const outcome = toRunOutcome(ctx.adwId, ctx.sessionId, step.name, ctx.link, result);
   if (outcome) return outcome;
@@ -388,11 +422,18 @@ async function runCodeStep(ctx: RunContext, step: CodeStep): Promise<{ report: G
     name: step.name,
     payload: { kind: "code", owner: role.name, description: `code role: ${role.function}`, seq: ctx.seq },
   });
+  // M-100 Fix 1: this Step is now open (phase_start just traced) — see
+  // ctx.openPhase's doc comment. Deliberately NOT cleared via `finally`
+  // here — same reasoning as runAgentStep above: an inner `finally` would
+  // run (and blank ctx.openPhase) before an exception ever reaches
+  // runWorkflow's own catch. Cleared explicitly on every non-throwing
+  // return path below instead.
+  ctx.openPhase = { phaseId, stepName: step.name };
 
-  // A code Role's own function (e.g. run-tests) is what pulls testCmd out of
-  // the project's config (see roles.ts's CODE_ROLE_REGISTRY:
-  // `testsPass(project.test ?? "", cwd)`), so this interpreter only needs to
-  // supply the ProjectConfig itself, via the SAME project-local lookup
+  // A code Role's own function (e.g. run-tests) is what pulls testCmd out
+  // of the project's config (see roles.ts's CODE_ROLE_REGISTRY:
+  // `testsPass(project.test ?? "", cwd)`), so this interpreter only needs
+  // to supply the ProjectConfig itself, via the SAME project-local lookup
   // cli.ts/planBuildTest.ts's own testCmd derivation already established
   // (M-070) — reused directly, not re-derived.
   const projectConfig = projectConfigFor(ctx.sessionCwd);
@@ -417,6 +458,7 @@ async function runCodeStep(ctx: RunContext, step: CodeStep): Promise<{ report: G
   });
 
   ctx.stepResults[step.name] = report;
+  ctx.openPhase = undefined;
 
   if (!passed) {
     return {
@@ -521,6 +563,37 @@ async function runLoopStep(ctx: RunContext, loop: LoopStep): Promise<WorkflowRun
  * `chains/planBuildTest.ts`'s hand-written sequencing (module header
  * comment has the full breakdown). `sessionStart`/`sessionFinish` bracket
  * the whole run at the adwId level, same as planBuildTest.ts.
+ *
+ * ── M-100 Fix 1: write-path catch-all ─────────────────────────────────────
+ * `cli.ts` invokes this once per Workflow Run as a one-shot OS process (the
+ * **job runner**, in this codebase's terminology — one job-runner process
+ * per Workflow Run, no daemon/worker holds these runs once started). Before
+ * this fix, ANY uncaught exception thrown before `runSteps` returns a
+ * terminal result (e.g. the `PiWebClientError` 404 that triggered M-100's
+ * investigation — a bad `--session-id` makes `setModel`/`sendPrompt` throw
+ * before `waitForCompletion` is even reached) propagated all the way up to
+ * `cli.ts`'s top-level `main().catch()`, which only logs and exits
+ * non-zero — no `phase_end`/`sessionFinish` write anywhere in that chain.
+ * Since `tracer.ts` writes status incrementally (`phase_start` sets
+ * `phases.status='running'`; only a LATER `phase_end` resolves it), a killed
+ * mid-flight run left its `phases`/`sessions` rows stuck at `'running'`
+ * forever — exactly the stuck-card symptom M-100 reported.
+ *
+ * The `try/catch` below wraps this function's entire body from the moment
+ * `ctx` (and therefore `ctx.openPhase`, threaded through `runAgentStep`/
+ * `runCodeStep` — see `RunContext`'s doc comment) exists. On any uncaught
+ * exception it writes a terminal `phase_end` (status `fail`) for whichever
+ * Step was open at that moment, calls `tracer.sessionFinish(adwId, false)`
+ * for the run, then RE-THROWS — `cli.ts`'s `main().catch()` still needs to
+ * see the real error and exit non-zero (this is a write-path completeness
+ * fix, not an error-swallowing one).
+ *
+ * This does NOT cover every way a process can die (SIGKILL, OOM-kill, a
+ * container recreate killing the `docker exec` process, host reboot — none
+ * of which give JS a chance to run a `catch` block at all). That class of
+ * failure is M-100 Fix 2's job: `visualizer/server.ts`'s reconciliation
+ * pass, which catches orphaned `running` rows from OUTSIDE the dead
+ * process, on a timer, independent of whether any code here ever got to run.
  */
 export async function runWorkflow(opts: WorkflowRunOptions): Promise<WorkflowRunResult> {
   const baseUrl = opts.baseUrl ?? DEFAULT_BASE_URL;
@@ -542,16 +615,17 @@ export async function runWorkflow(opts: WorkflowRunOptions): Promise<WorkflowRun
   opts.tracer.sessionRequest(adwId, opts.taskPrompt);
   opts.tracer.sessionSetTitle(adwId, deriveTitleFromPrompt(opts.taskPrompt));
 
-  const session = opts.sessionId
-    ? { id: opts.sessionId }
-    : await startSession(baseUrl, sessionCwd, `${adwId}:${opts.workflow.name}`);
-
   const ctx: RunContext = {
     tracer: opts.tracer,
     config: opts.config,
     baseUrl,
     adwId,
-    sessionId: session.id,
+    // Placeholder until the real session exists below — overwritten before
+    // any Step can run (nothing in this window can throw an error whose
+    // catch-all handling depends on sessionId being real: openPhase is still
+    // undefined here). Typed as a real `string` (not optional) because every
+    // later reader of ctx.sessionId legitimately expects one.
+    sessionId: opts.sessionId ?? "",
     sessionCwd,
     testCwd: opts.testCwd ?? sessionCwd,
     link,
@@ -560,35 +634,57 @@ export async function runWorkflow(opts: WorkflowRunOptions): Promise<WorkflowRun
     seq: 0,
     taskPrompt: opts.taskPrompt,
     taskPromptInjected: false,
+    openPhase: undefined,
   };
 
-  // Task-prompt seeding for the Workflow's first agent step (top-level or
-  // loop-nested) is handled inside runAgentStep itself via
-  // ctx.taskPromptInjected — see that function and the field's own doc
-  // comment. Every step after it uses its own authored `prompt`.
-  const runSteps = async (steps: Step[]): Promise<WorkflowRunResult | undefined> => {
-    for (const step of steps) {
-      if (step.kind === "agent") {
-        const result = await runAgentStep(ctx, step);
-        if ("status" in result) return result;
-      } else if (step.kind === "code") {
-        const result = await runCodeStep(ctx, step);
-        if ("status" in result) return result;
-      } else {
-        const result = await runLoopStep(ctx, step);
-        if (result) return result;
+  try {
+    const session = opts.sessionId
+      ? { id: opts.sessionId }
+      : await startSession(baseUrl, sessionCwd, `${adwId}:${opts.workflow.name}`);
+    ctx.sessionId = session.id;
+
+    // Task-prompt seeding for the Workflow's first agent step (top-level or
+    // loop-nested) is handled inside runAgentStep itself via
+    // ctx.taskPromptInjected — see that function and the field's own doc
+    // comment. Every step after it uses its own authored `prompt`.
+    const runSteps = async (steps: Step[]): Promise<WorkflowRunResult | undefined> => {
+      for (const step of steps) {
+        if (step.kind === "agent") {
+          const result = await runAgentStep(ctx, step);
+          if ("status" in result) return result;
+        } else if (step.kind === "code") {
+          const result = await runCodeStep(ctx, step);
+          if ("status" in result) return result;
+        } else {
+          const result = await runLoopStep(ctx, step);
+          if (result) return result;
+        }
       }
+      return undefined;
+    };
+
+    const terminal = await runSteps(opts.workflow.steps);
+    if (terminal) {
+      const ok = terminal.status === "success";
+      opts.tracer.sessionFinish(adwId, ok);
+      return terminal;
     }
-    return undefined;
-  };
 
-  const terminal = await runSteps(opts.workflow.steps);
-  if (terminal) {
-    const ok = terminal.status === "success";
-    opts.tracer.sessionFinish(adwId, ok);
-    return terminal;
+    opts.tracer.sessionFinish(adwId, true);
+    return { status: "success", adwId, sessionId: ctx.sessionId, link, steps: ctx.stepResults };
+  } catch (error) {
+    // M-100 Fix 1 — see this function's own doc comment above.
+    const message = error instanceof Error ? error.message : String(error);
+    if (ctx.openPhase) {
+      opts.tracer.event({
+        adwId,
+        phaseId: ctx.openPhase.phaseId,
+        type: "phase_end",
+        name: ctx.openPhase.stepName,
+        payload: { status: "fail", error: message, outputSummary: message },
+      });
+    }
+    opts.tracer.sessionFinish(adwId, false);
+    throw error;
   }
-
-  opts.tracer.sessionFinish(adwId, true);
-  return { status: "success", adwId, sessionId: session.id, link, steps: ctx.stepResults };
 }

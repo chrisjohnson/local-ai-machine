@@ -313,7 +313,12 @@ export function lastAssistantText(messages: SessionMessage[]): string | undefine
  * session never runs this code (see this function's own doc comment) — the
  * override cannot, by construction, change how a human waits.
  */
-const DEFAULT_WAIT_FOR_COMPLETION_TIMEOUT_MS = (() => {
+// Exported (M-100 Fix 2) so the visualizer's reconciliation pass can reuse
+// the SAME staleness threshold as this module's own wait-loop, rather than
+// inventing a second env var/constant for "how long is too long to still be
+// running" — see visualizer/server.ts's reconciliation pass for the other
+// use site.
+export const DEFAULT_WAIT_FOR_COMPLETION_TIMEOUT_MS = (() => {
   const raw = process.env["PI_WEB_FACTORY_STEP_TIMEOUT_MS"];
   if (!raw) return 120_000;
   const parsed = Number(raw);

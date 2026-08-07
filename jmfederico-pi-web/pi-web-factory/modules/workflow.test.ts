@@ -839,6 +839,122 @@ workflows:
   });
 });
 
+// ── M-100 Fix 1: write-path catch-all ──────────────────────────────────────
+
+describe("runWorkflow — catch-all on an uncaught exception (M-100 Fix 1)", () => {
+  test("an agent step's setModel throwing before waitForCompletion still writes a terminal fail phase_end and sessionFinish, then re-throws", async () => {
+    // Reproduces M-100's real root cause exactly: a PiWebClientError (e.g. a
+    // bad/nonexistent --session-id, HTTP 404) thrown by setModel/sendPrompt
+    // BEFORE waitForCompletion is ever reached. Before this fix, that
+    // propagated all the way past runWorkflow uncaught, leaving the phase
+    // row stuck at status='running' forever (see this card's Decision log).
+    const workflow: Workflow = loadWorkflowsFromString(`
+workflows:
+  - name: single
+    steps:
+      - kind: agent
+        name: plan
+        role: plan
+        prompt: "Reply with JSON."
+`)[0] as Workflow;
+
+    globalThis.fetch = (async (input: string | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.endsWith("/projects") && (init?.method ?? "GET") === "GET") return new Response(JSON.stringify([]), { status: 200 });
+      if (url.endsWith("/projects") && init?.method === "POST")
+        return new Response(JSON.stringify({ id: "proj_1", name: "repo", path: cwd, createdAt: "x" }), { status: 200 });
+      if (url.includes("/workspaces")) return new Response(JSON.stringify([{ id: "ws_1", path: cwd, isMain: true }]), { status: 200 });
+      if (url.endsWith("/model")) {
+        // The real failure mode: pi-web 404s on setModel (bad session id).
+        return new Response(JSON.stringify({ error: "Session not found" }), { status: 404 });
+      }
+      throw new Error(`unexpected fetch to ${url}`);
+    }) as typeof fetch;
+
+    await expect(
+      runWorkflow({
+        tracer,
+        config: testRolesConfig(),
+        workflow,
+        cwd,
+        taskPrompt: "add a thing",
+        baseUrl: BASE_URL,
+        adwId: "adw_wf_catchall",
+        sessionId: "sess_bad_id",
+      }),
+    ).rejects.toThrow(/404/);
+
+    // The open Step (plan) must have a terminal fail phase_end, not be left
+    // at status='running' forever.
+    const phaseRow = tracer.db
+      .query<{ status: string; error: string | null }, [string]>("select status, error from phases where phase_id=?")
+      .get("adw_wf_catchall_plan");
+    expect(phaseRow?.status).toBe("fail");
+    expect(phaseRow?.error).toContain("404");
+
+    // The Workflow Run itself must also be resolved to a terminal status,
+    // via tracer.sessionFinish(adwId, false) — not left 'running'.
+    const sessionRow = tracer.db
+      .query<{ status: string }, [string]>("select status from sessions where adw_id=?")
+      .get("adw_wf_catchall");
+    expect(sessionRow?.status).toBe("fail");
+  });
+
+  test("a code step's role.run() throwing still writes a terminal fail phase_end for that step, then re-throws", async () => {
+    // Same catch-all, exercised via a code Step instead of an agent Step —
+    // confirms ctx.openPhase tracking works for both runAgentStep AND
+    // runCodeStep call sites (see RunContext's doc comment), not just the
+    // agent-step path M-100's original investigation happened to hit.
+    const config = loadRolesConfigFromString(
+      `
+defaults: {model: local-litellm/medium-moe, thinking: medium, protected_files: []}
+roles:
+  - name: run-tests
+    kind: code
+    function: run-tests
+`,
+      "<test>",
+    );
+    const workflow: Workflow = loadWorkflowsFromString(`
+workflows:
+  - name: single
+    steps:
+      - kind: code
+        name: test
+        role: run-tests
+`)[0] as Workflow;
+
+    mockWorkflowFetch({ assistantTextsByRole: {}, workspacePath: cwd });
+
+    // No factory.config.yaml in this scratch repo -> projectConfigFor (or
+    // the role's own run()) throws before any gate_pass/gate_fail/phase_end
+    // gets traced — a real, uncontrived way for a code Step to blow up
+    // mid-flight, not a synthetic-only scenario.
+    await expect(
+      runWorkflow({
+        tracer,
+        config,
+        workflow,
+        cwd,
+        taskPrompt: "x",
+        baseUrl: BASE_URL,
+        adwId: "adw_wf_catchall_code",
+        sessionId: "sess_preexisting",
+      }),
+    ).rejects.toThrow();
+
+    const phaseRow = tracer.db
+      .query<{ status: string }, [string]>("select status from phases where phase_id=?")
+      .get("adw_wf_catchall_code_test");
+    expect(phaseRow?.status).toBe("fail");
+
+    const sessionRow = tracer.db
+      .query<{ status: string }, [string]>("select status from sessions where adw_id=?")
+      .get("adw_wf_catchall_code");
+    expect(sessionRow?.status).toBe("fail");
+  });
+});
+
 describe("runWorkflow — worktree-per-run (M-071 pattern, generalized)", () => {
   test("a fresh run (no sessionId) creates a real worktree and uses it as the session cwd", async () => {
     const workflow: Workflow = loadWorkflowsFromString(`
