@@ -298,3 +298,17 @@ now has a concrete prerequisite (a durable real target project, not a
 No code changes needed to resolve the "did we lose this" question — that
 part's answered. Whatever's decided next is a product/default-behavior call,
 not a bug fix.
+
+- 2026-08-07 (claude): implemented per the Plan above — `workflows/
+  plan-build-review-with-tests.yaml` (new), `chains/registry.ts` updated to
+  register it, `runCodeStep` in `modules/workflow.ts` fixed to error on a
+  missing `test:` command instead of silently no-op-passing, new coverage in
+  `modules/workflow.test.ts` (commit `ee4d6a3`). Landed by a sub-agent whose
+  own board-update step got interrupted mid-flight by this session's deploy-
+  coordination message (three parallel agents were told to hold their own
+  deploys) — finishing the board update now since the source/tests already
+  merged cleanly and the combined deploy has since gone out. Full live
+  screenshot verification (a real `kind: "code"` step rendering in the
+  visualizer) was not independently re-confirmed after this deploy due to
+  this session running low on budget — worth a quick manual check next time
+  the visualizer's open.
