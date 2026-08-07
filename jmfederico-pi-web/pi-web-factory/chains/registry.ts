@@ -4,14 +4,17 @@
  * comment for the rename's full reasoning).
  *
  * ── M-076: Workflows are now YAML data, not hand-written TS files ────────
- * Two of the three entries below (`plan-build-review`, `bounded-build-review`)
- * are ordinary YAML `Workflow` definitions (`modules/workflowDef.ts`) loaded
- * from `workflows/*.yaml` and executed by ONE generic interpreter
- * (`modules/workflow.ts`'s `runWorkflow`) — adding a FOURTH workflow from
+ * Three of the four entries below (`plan-build-review`, `bounded-build-review`,
+ * `plan-build-review-with-tests` — the last added M-099) are ordinary YAML
+ * `Workflow` definitions (`modules/workflowDef.ts`) loaded from
+ * `workflows/*.yaml` and executed by ONE generic interpreter
+ * (`modules/workflow.ts`'s `runWorkflow`) — adding another workflow from
  * here on is a YAML edit plus one line in `WORKFLOW_FILES` below, not a new
- * TS file. The third entry, `plan-build-test`, is `chains/planBuildTest.ts`
+ * TS file (M-099 proved this out for real: `plan-build-review-with-tests`
+ * needed zero interpreter changes, only a new YAML + this registration).
+ * The remaining entry, `plan-build-test`, is `chains/planBuildTest.ts`
  * (M-066) — the original, hand-written implementation, deliberately KEPT
- * (not retired) as a third, independent, already-tested option; see this
+ * (not retired) as an independent, already-tested option; see this
  * file's own `planBuildTest` section below and the M-076 card's decision log
  * for why.
  *
@@ -60,6 +63,7 @@ export type WorkflowRunner = (opts: WorkflowRunOptionsBase) => Promise<WorkflowR
 const WORKFLOW_FILES = [
   join(import.meta.dir, "..", "workflows", "plan-build-review.yaml"),
   join(import.meta.dir, "..", "workflows", "bounded-build-review.yaml"),
+  join(import.meta.dir, "..", "workflows", "plan-build-review-with-tests.yaml"),
 ];
 
 function loadAllWorkflows(): Workflow[] {
@@ -118,6 +122,7 @@ export const workflowRegistry: Record<string, WorkflowRunner> = {
   "plan-build-review": runnerFor("plan-build-review"),
   "bounded-build-review": runnerFor("bounded-build-review"),
   "plan-build-test": runPlanBuildTest,
+  "plan-build-review-with-tests": runnerFor("plan-build-review-with-tests"),
 };
 
 export function workflowNames(): string[] {

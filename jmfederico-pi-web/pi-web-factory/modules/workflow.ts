@@ -438,6 +438,26 @@ async function runCodeStep(ctx: RunContext, step: CodeStep): Promise<{ report: G
   // (M-070) — reused directly, not re-derived.
   const projectConfig = projectConfigFor(ctx.sessionCwd);
 
+  // M-099 Fix: `run-tests`' own registered function computes
+  // `project.test ?? ""` and hands THAT straight to `testsPass`, which
+  // shells out via `sh -c ""` — an empty command that exits 0 and reads as
+  // a silent "pass" rather than "not configured". A `.pi-web-factory.yaml`
+  // that exists but omits `test:` must fail loudly here, exactly like
+  // `planBuildTest.ts`'s own hand-written `if (!testCmd)` guard on its
+  // equivalent code phase — not silently no-op through to a green gate.
+  if (role.function === "run-tests" && !projectConfig.test) {
+    const reason = "no test command configured for this project (add `test:` to .pi-web-factory.yaml)";
+    ctx.tracer.event({
+      adwId: ctx.adwId,
+      phaseId,
+      type: "phase_end",
+      name: step.name,
+      payload: { status: "fail", error: reason },
+    });
+    ctx.openPhase = undefined;
+    return { status: "failed", adwId: ctx.adwId, sessionId: ctx.sessionId, step: step.name, reason, link: ctx.link };
+  }
+
   const report = await role.run(projectConfig, ctx.testCwd);
   const passed = report.checks.every((c) => c.ok);
   const summary = summarizeGateReport(report);

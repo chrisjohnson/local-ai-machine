@@ -557,6 +557,53 @@ workflows:
       .get("adw_wf_code_fail");
     expect(gateRow?.passed).toBe(0);
   });
+
+  test("a .pi-web-factory.yaml that omits test: fails loudly instead of silently passing (M-099)", async () => {
+    // Deliberately no "test:" key at all — distinct from the pass/fail cases
+    // above, which both set one explicitly. Before M-099's fix, roles.ts's
+    // run-tests function computed `project.test ?? ""` and shelled out
+    // `sh -c ""`, which exits 0 and reads as a false "pass". No gate_results
+    // row should even be written for this case — it must fail before ever
+    // calling testsPass.
+    writeFileSync(join(cwd, ".pi-web-factory.yaml"), "typecheck: 'true'\n");
+    const workflow: Workflow = loadWorkflowsFromString(`
+workflows:
+  - name: code-only
+    steps:
+      - kind: code
+        name: test
+        role: run-tests
+`)[0] as Workflow;
+
+    mockWorkflowFetch({ assistantTextsByRole: {}, workspacePath: cwd });
+
+    const result = await runWorkflow({
+      tracer,
+      config: testRolesConfig(),
+      workflow,
+      cwd,
+      taskPrompt: "run tests",
+      baseUrl: BASE_URL,
+      adwId: "adw_wf_code_no_test_cmd",
+      sessionId: "sess_preexisting",
+    });
+
+    expect(result.status).toBe("failed");
+    if (result.status !== "failed") throw new Error(JSON.stringify(result));
+    expect(result.step).toBe("test");
+    expect(result.reason).toContain("no test command configured");
+
+    const phaseRow = tracer.db
+      .query<{ status: string; error: string | null }, [string]>("select status, error from phases where phase_id=?")
+      .get("adw_wf_code_no_test_cmd_test");
+    expect(phaseRow?.status).toBe("fail");
+    expect(phaseRow?.error).toContain("no test command configured");
+
+    const gateRow = tracer.db
+      .query<{ passed: number }, [string]>("select passed from gate_results where adw_id=? and gate='run-tests'")
+      .get("adw_wf_code_no_test_cmd");
+    expect(gateRow).toBeNull();
+  });
 });
 
 describe("runWorkflow — loop step", () => {
