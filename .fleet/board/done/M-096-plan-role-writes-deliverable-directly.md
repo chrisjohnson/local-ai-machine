@@ -2,8 +2,8 @@
 id: M-096
 title: plan Role sometimes writes the actual deliverable instead of just a plan doc
 initiative_id: null
-claimed_by: null
-claimed_at: null
+claimed_by: claude
+claimed_at: "2026-08-06T00:00Z"
 blocks: null
 blocked_by: null
 status: null
@@ -202,6 +202,48 @@ No automated test can directly verify "the model follows this prompt better"
   prompts/plan.md (pi-web-factory isn't baked into the container yet,
   M-068) — plan specifies fixing the live copy first, prompts/plan.md in
   the same change to stay in sync. Cleared `status: needs-refinement`.
+- 2026-08-06 (claude): implemented per the Plan exactly, both locations in
+  the SAME change (confirmed byte-identical via a Python string-equality
+  check both before writing and after, matching the "known, deliberate
+  duplication" convention `plugins/pi-web-factory-prompts/index.ts`'s own
+  header comment documents -- no separate sync script exists, it's a manual
+  keep-both-in-sync discipline, same as build.md/review.md/scout.md/
+  document.md's existing pairs): rewrote `prompts/plan.md`'s single
+  sentence into the Plan's expanded paragraph (states the actual artifact
+  shape as a PLAN document, the explicit "if the task says 'write a design
+  doc named X.md'" worked example naming the exact recurring trigger
+  phrasing, "no matter how the task is phrased" to preempt rationalizing
+  around it, and "you may only write files under specs/" as the first-ever
+  in-band statement of the actual enforced constraint) and applied the
+  identical text (JSON-escaped) to
+  `plugins/pi-web-factory-prompts/roles.json`'s `"plan"` key -- that file is
+  the LIVE copy per this card's own prior research, fixed first/together,
+  not prompts/plan.md alone. Also folded in the Plan's lower-priority
+  `artifacts` field suggestion in the same edit (one added sentence: list
+  the plan document's own path in `artifacts`, e.g. `specs/X-plan.md`, not
+  the deliverable's path) rather than spinning it into a second card, per
+  the Plan's own "try folding it into the same edit" instruction.
+  Verification: confirmed both files byte-identical after the edit (Python
+  `json.load` + string comparison, not just eyeballing); ran
+  `plugins/pi-web-factory-prompts`'s own `bun test` (7/7 pass, unaffected --
+  those tests cover `parseRoleMarker` only, not prompt content) and the
+  full `pi-web-factory` suite (257/278 pass, same 21 pre-existing
+  environment-only failures as before this change) plus `bunx tsc --noEmit`
+  clean. **Item 2 of the Plan's own verification section (re-running a
+  live `plan-build-review` Workflow with a trigger-shaped prompt to confirm
+  the model actually stops writing the deliverable) is NOT done and cannot
+  be done yet** -- confirmed live on the box that the running
+  `jmfederico-pi-web` container's `roles.json` copy still has the OLD
+  (pre-fix) prompt text (checked via `docker compose exec ... cat
+  .../roles.json`), since this fix requires a container rebuild
+  (`docker compose build jmfederico-pi-web`) to take effect -- deliberately
+  NOT run by this session per the coordinating agent's explicit instruction
+  to defer to one combined deploy once M-103/M-099/this session's parallel
+  work all land, to avoid three agents racing the same container rebuild.
+  This is the one card of the four whose full verification genuinely
+  requires that deploy -- flagging clearly per the coordinator's own ask.
+  Pushed source to `main` at `33adf5b` (bundled with M-080/M-082/M-095 in
+  one commit).
 
 ## Handoff notes
 Three real, reproduced occurrences on record: two from M-078's decision log
