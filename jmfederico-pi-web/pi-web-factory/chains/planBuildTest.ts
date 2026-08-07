@@ -175,6 +175,8 @@ export interface PlanBuildTestOptions {
    */
   mainCheckoutPath?: string;
   engineer?: string;
+  /** M-103: the ticket this run belongs to — see modules/workflow.ts's `WorkflowRunOptions.ticketId` for the full doc comment (identical semantics, ported here so this chain's runs get a ticket the same way the generic interpreter's do). */
+  ticketId?: string;
 }
 
 export interface PlanBuildTestLinkInfo {
@@ -286,7 +288,13 @@ export async function planBuildTest(opts: PlanBuildTestOptions): Promise<PlanBui
   // run later can look up (`select project_cwd from sessions where
   // adw_id=?`) to recover the exact worktree path to pass back in as
   // `--project` on a `--session-id` resume (see sessionId's doc comment).
-  opts.tracer.sessionStart(adwId, { engineer: opts.engineer, projectCwd: sessionCwd, adwName: "planBuildTest" });
+  opts.tracer.sessionStart(adwId, {
+    engineer: opts.engineer,
+    projectCwd: sessionCwd,
+    adwName: "planBuildTest",
+    ticketId: opts.ticketId,
+    taskPromptForTicket: opts.taskPrompt,
+  });
   opts.tracer.sessionRequest(adwId, opts.taskPrompt);
   opts.tracer.sessionSetTitle(adwId, deriveTitleFromPrompt(opts.taskPrompt));
 

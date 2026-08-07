@@ -1,19 +1,45 @@
 /**
- * detailView.ts: one Workflow Run's Gantt-style Step timeline (M-077 plan
- * items 4-6). Idle/paused gaps between Steps are compressed to a fixed
- * width (gantt.ts's `computeGanttLayout`) — only each Step's own real
- * duration is drawn proportionally.
+ * detailView.ts: a TICKET's detail page (M-103 — this page conceptually
+ * became a ticket detail page, not a bare run detail page; see this
+ * module's own header comment below for the full reasoning) — a
+ * Gantt-style Step timeline for whichever ATTEMPT (Workflow Run) is
+ * currently shown, defaulting to the ticket's latest. Idle/paused gaps
+ * between Steps are compressed to a fixed width (gantt.ts's
+ * `computeGanttLayout`) — only each Step's own real duration is drawn
+ * proportionally.
  *
- * While the run's status is "running", polls `/api/runs/:adwId/events?since=`
- * to (a) discover which Step is currently active (an events-derived signal,
- * more precise than just "the phases row with status=running" alone — an
- * agent_start/tool_call/log event arriving for a phase is direct evidence of
- * live activity) and (b) collect `tool_call` events nested (via `parent_id`)
- * under that Step, rendered as a simple timestamped list in the Step's
- * expanded detail panel.
+ * ── M-103: ticket-level, full detail per attempt ──────────────────────────
+ * Chris, explicit: multiple attempts at the same job should be
+ * inspectable via a small pair of subtle arrow icons, and each attempt
+ * shown is FULL detail, never summarized — "you're flipping through
+ * complete runs and inspecting them." This view fetches
+ * `GET /api/tickets/:ticketId` once (every linked run's COMPLETE summary,
+ * steps included — server.ts's `ticketsToApi`/`/api/tickets/:ticketId`
+ * route), keeps the whole attempt history in memory, and re-renders the
+ * SAME full Gantt-timeline/Step-detail-panel UI a bare run detail page
+ * always had, just pointed at whichever attempt's index the human has
+ * navigated to (`shownIndex`, 0 = latest). Live polling (the run-status
+ * poll + the events cursor-poll) only ever targets the LATEST attempt
+ * (`allRuns[0]`) — an older, terminal attempt has nothing left to poll for
+ * and its data never changes underneath a human inspecting it.
+ *
+ * `main.ts`'s router passes `ticketId` plus an optional `initialAdwId`
+ * (from `?attempt=<adwId>`, e.g. a grid card that was mid-paged when
+ * clicked through) — when present, the view opens showing THAT attempt
+ * instead of defaulting to latest, so navigating from the grid never
+ * surprises a human by silently resetting their place.
+ *
+ * While the LATEST attempt's status is "running", polls
+ * `/api/runs/:adwId/events?since=` to (a) discover which Step is currently
+ * active (an events-derived signal, more precise than just "the phases row
+ * with status=running" alone — an agent_start/tool_call/log event arriving
+ * for a phase is direct evidence of live activity) and (b) collect
+ * `tool_call` events nested (via `parent_id`) under that Step, rendered as
+ * a simple timestamped list in the Step's expanded detail panel.
  */
 
-import { fetchEventsSince, fetchRunDetail, type EventRecord, type RunDetail, type Step } from "./api";
+import { fetchEventsSince, fetchRunDetail, fetchTicketDetail, type EventRecord, type RunSummary } from "./api";
+import { attemptNavHtml, moveAttemptIndex, type AttemptNavDirection } from "./attemptNav";
 import { computeGanttLayout, type GanttLayout } from "./gantt";
 import {
   escapeHtml,
@@ -27,6 +53,7 @@ import {
 import { roleColor } from "./roleColor";
 import { stepBarStyle } from "./stepBarStyle";
 import { runTitle } from "./runTitle";
+import type { Step } from "./api";
 
 const RUN_POLL_INTERVAL_MS = 3000;
 const EVENTS_POLL_INTERVAL_MS = 2000;
@@ -42,26 +69,33 @@ function roleBadgeHtml(role: string | null): string {
 
 export class DetailView {
   private container: HTMLElement;
-  private adwId: string;
+  private ticketId: string;
+  private initialAdwId: string | undefined;
   private runPollHandle: ReturnType<typeof setInterval> | null = null;
   private eventsPollHandle: ReturnType<typeof setInterval> | null = null;
   private disposed = false;
 
-  private detail: RunDetail | null = null;
+  /** The ticket's full attempt history, most recent first — index 0 is always latest. Populated by the initial `/api/tickets/:ticketId` fetch; refreshed only for index 0 (the latest attempt), while it's still running (see refreshLatestRun). */
+  private allRuns: RunSummary[] = [];
+  private ticketTitle: string | null = null;
+  private shownIndex = 0;
+  private loadError: string | null = null;
+
   private events: EventRecord[] = [];
   private eventsCursor = 0;
   private lastEventAtByPhase: Map<string, number> = new Map();
   private expandedPhaseId: string | null = null;
 
-  constructor(container: HTMLElement, adwId: string) {
+  constructor(container: HTMLElement, ticketId: string, initialAdwId?: string) {
     this.container = container;
-    this.adwId = adwId;
+    this.ticketId = ticketId;
+    this.initialAdwId = initialAdwId;
   }
 
   async start(): Promise<void> {
-    await this.refreshRun();
+    await this.loadTicket();
     this.runPollHandle = setInterval(() => {
-      void this.refreshRun();
+      void this.refreshLatestRun();
     }, RUN_POLL_INTERVAL_MS);
   }
 
@@ -71,39 +105,72 @@ export class DetailView {
     if (this.eventsPollHandle) clearInterval(this.eventsPollHandle);
   }
 
-  private async refreshRun(): Promise<void> {
+  private async loadTicket(): Promise<void> {
     try {
-      this.detail = await fetchRunDetail(this.adwId);
+      const detail = await fetchTicketDetail(this.ticketId);
+      this.allRuns = detail.runs;
+      this.ticketTitle = detail.title;
+      if (this.initialAdwId) {
+        const idx = detail.runs.findIndex((r) => r.adwId === this.initialAdwId);
+        this.shownIndex = idx >= 0 ? idx : 0;
+      }
     } catch (error) {
       if (this.disposed) return;
-      this.container.innerHTML = `<div class="error-banner">Failed to load run ${escapeHtml(this.adwId)}: ${escapeHtml(
-        error instanceof Error ? error.message : String(error),
-      )}</div>`;
+      this.loadError = error instanceof Error ? error.message : String(error);
+      this.render();
       return;
     }
     if (this.disposed) return;
+    this.updateEventsPolling();
+    this.render();
+  }
 
-    const isRunning = this.detail.run.status === "running";
+  /** Re-fetches ONLY the latest attempt (index 0) — called on the run-status poll tick. An older, already-terminal attempt the human has paged to is never re-fetched; there's nothing new to learn about it. */
+  private async refreshLatestRun(): Promise<void> {
+    const latest = this.allRuns[0];
+    if (!latest) return;
+    let detail: Awaited<ReturnType<typeof fetchRunDetail>>;
+    try {
+      detail = await fetchRunDetail(latest.adwId);
+    } catch (error) {
+      if (this.disposed) return;
+      this.loadError = error instanceof Error ? error.message : String(error);
+      this.render();
+      return;
+    }
+    if (this.disposed) return;
+    this.allRuns[0] = { ...detail.run, steps: detail.steps };
+    this.updateEventsPolling();
+    this.render();
+  }
+
+  private updateEventsPolling(): void {
+    // Live events polling only ever targets the LATEST attempt, and only
+    // while it's actually running AND the human is currently looking at it
+    // (shownIndex === 0) — an older attempt has no live events left to
+    // poll for, and there's no point polling events for the latest attempt
+    // while the human isn't even looking at it right now (it'll pick back
+    // up the moment they page back to it, via the render()/onAttemptNavClick
+    // path re-calling this).
+    const latest = this.allRuns[0];
+    const isRunning = this.shownIndex === 0 && latest?.status === "running";
     if (isRunning && !this.eventsPollHandle) {
       this.eventsPollHandle = setInterval(() => {
         void this.refreshEvents();
       }, EVENTS_POLL_INTERVAL_MS);
       void this.refreshEvents();
     } else if (!isRunning && this.eventsPollHandle) {
-      // Run finished — stop polling events, one final fetch to catch any
-      // trailing events already written before the terminal status landed.
       clearInterval(this.eventsPollHandle);
       this.eventsPollHandle = null;
-      void this.refreshEvents();
     }
-
-    this.render();
   }
 
   private async refreshEvents(): Promise<void> {
+    const latest = this.allRuns[0];
+    if (!latest) return;
     let newEvents: EventRecord[];
     try {
-      newEvents = await fetchEventsSince(this.adwId, this.eventsCursor);
+      newEvents = await fetchEventsSince(latest.adwId, this.eventsCursor);
     } catch {
       return; // events polling is best-effort — a transient failure shouldn't blank the page
     }
@@ -121,10 +188,29 @@ export class DetailView {
     this.render();
   }
 
+  private async onAttemptNavClick(direction: AttemptNavDirection): Promise<void> {
+    this.shownIndex = moveAttemptIndex(this.shownIndex, direction, this.allRuns.length);
+    // Switching away from/to the latest attempt changes whether live events
+    // polling should be active — and switching TO an attempt this view has
+    // never shown before means its own events list needs a clean slate
+    // (events belong to one specific adwId, never shared across attempts).
+    this.events = [];
+    this.eventsCursor = 0;
+    this.lastEventAtByPhase.clear();
+    this.expandedPhaseId = null;
+    this.updateEventsPolling();
+    this.render();
+  }
+
+  private currentRun(): RunSummary | undefined {
+    return this.allRuns[this.shownIndex];
+  }
+
   private activePhaseIds(nowMs: number): Set<string> {
     const active = new Set<string>();
-    if (!this.detail || this.detail.run.status !== "running") return active;
-    for (const step of this.detail.steps) {
+    const run = this.currentRun();
+    if (!run || run.status !== "running" || this.shownIndex !== 0) return active;
+    for (const step of run.steps) {
       if (step.status === "running") active.add(step.phaseId);
     }
     for (const [phaseId, lastMs] of this.lastEventAtByPhase) {
@@ -142,14 +228,24 @@ export class DetailView {
   }
 
   private render(): void {
-    if (!this.detail) return;
-    const { run, steps } = this.detail;
+    if (this.loadError) {
+      this.container.innerHTML = `<a class="back-link" href="#/">&larr; all runs</a><div class="error-banner">Failed to load ticket ${escapeHtml(this.ticketId)}: ${escapeHtml(this.loadError)}</div>`;
+      return;
+    }
+    const run = this.currentRun();
+    if (!run) {
+      this.container.innerHTML = `<a class="back-link" href="#/">&larr; all runs</a><div class="loading">Loading ticket…</div>`;
+      return;
+    }
+
+    const { steps } = run;
     const nowMs = Date.now();
     const layout = computeGanttLayout(steps, nowMs);
     const active = this.activePhaseIds(nowMs);
 
-    const title = runTitle(run);
-    const isLive = run.status === "running";
+    const title = this.ticketTitle ?? runTitle(run);
+    const isLive = run.status === "running" && this.shownIndex === 0;
+    const nav = attemptNavHtml(this.ticketId, this.shownIndex, this.allRuns.length);
 
     this.container.innerHTML = `
       <a class="back-link" href="#/">&larr; all runs</a>
@@ -158,7 +254,9 @@ export class DetailView {
           <div class="run-title" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
           <span class="status-pill status-${run.status ?? "queued"}"><span class="status-dot"></span>${escapeHtml(run.status ?? "unknown")}</span>
         </div>
+        ${nav ? `<div class="run-meta">${nav}</div>` : ""}
         <div class="run-meta">
+          <span>ticket ${escapeHtml(this.ticketId)}</span>
           <span>adwId ${escapeHtml(run.adwId)}</span>
           <span>started ${formatDateTime(run.startedAt)}</span>
           <span>duration ${formatDuration(run.startedAt, run.endedAt, nowMs)}</span>
@@ -188,6 +286,11 @@ export class DetailView {
         this.render();
       });
     });
+    this.container.querySelectorAll<HTMLButtonElement>("[data-attempt-nav-dir]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        void this.onAttemptNavClick(btn.dataset["attemptNavDir"] as AttemptNavDirection);
+      });
+    });
   }
 
   private stepRowHtml(step: Step, sl: { x: number; width: number }, active: Set<string>): string {
@@ -212,7 +315,7 @@ export class DetailView {
   }
 
   private stepDetailHtml(phaseId: string, active: Set<string>): string {
-    const step = this.detail?.steps.find((s) => s.phaseId === phaseId);
+    const step = this.currentRun()?.steps.find((s) => s.phaseId === phaseId);
     if (!step) return "";
     const nowMs = Date.now();
     const toolCalls = this.toolCallsFor(phaseId);

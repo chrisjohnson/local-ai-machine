@@ -97,6 +97,15 @@ export interface WorkflowRunOptions {
   /** Overrides resolveMainCheckoutPath(opts.cwd) — see planBuildTest.ts's identical option. */
   mainCheckoutPath?: string;
   engineer?: string;
+  /**
+   * M-103: the ticket this run belongs to. Omitted -> a fresh internal
+   * ticket is minted (`ticket.ts`'s `mintOrAttachTicket`, via
+   * `Tracer.sessionStart`). Passed -> this run attaches to that ticket
+   * (creating its row if the id is novel — e.g. an external `.fleet` id
+   * seen for the first time). Every run belongs to exactly one ticket,
+   * always — see schema.ts's module header and ticket.ts.
+   */
+  ticketId?: string;
 }
 
 export interface WorkflowRunLinkInfo {
@@ -611,7 +620,13 @@ export async function runWorkflow(opts: WorkflowRunOptions): Promise<WorkflowRun
   const workspaceId = await resolveWorkspaceId(baseUrl, projectId, sessionCwd);
   const link: WorkflowRunLinkInfo = { projectId, workspaceId, cwd: sessionCwd };
 
-  opts.tracer.sessionStart(adwId, { engineer: opts.engineer, projectCwd: sessionCwd, adwName: opts.workflow.name });
+  opts.tracer.sessionStart(adwId, {
+    engineer: opts.engineer,
+    projectCwd: sessionCwd,
+    adwName: opts.workflow.name,
+    ticketId: opts.ticketId,
+    taskPromptForTicket: opts.taskPrompt,
+  });
   opts.tracer.sessionRequest(adwId, opts.taskPrompt);
   opts.tracer.sessionSetTitle(adwId, deriveTitleFromPrompt(opts.taskPrompt));
 

@@ -453,6 +453,81 @@ describe("Tracer — M-074 schema additions", () => {
   });
 });
 
+describe("Tracer — M-103 ticket wiring", () => {
+  test("sessionStart with neither ticketId nor taskPromptForTicket leaves ticket_id NULL — no run forced into ticketing it didn't ask for", () => {
+    const adwId = "adw_noticket001";
+    tracer.sessionStart(adwId, { projectCwd: "/tmp/proj" });
+    const row = tracer.db.query<{ ticket_id: string | null }, [string]>("select ticket_id from sessions where adw_id=?").get(adwId);
+    expect(row?.ticket_id).toBeNull();
+  });
+
+  test("sessionStart with taskPromptForTicket but no explicit ticketId mints a fresh internal ticket_<hex> id and links the run to it", () => {
+    const adwId = "adw_mint001";
+    tracer.sessionStart(adwId, { projectCwd: "/tmp/proj", taskPromptForTicket: "add a /health endpoint" });
+
+    const sessionRow = tracer.db.query<{ ticket_id: string | null }, [string]>("select ticket_id from sessions where adw_id=?").get(adwId);
+    expect(sessionRow?.ticket_id).toMatch(/^ticket_[0-9a-f]{12}$/);
+
+    const ticketRow = tracer.db
+      .query<{ title: string | null; latest_run_adw_id: string | null }, [string]>(
+        "select title, latest_run_adw_id from tickets where ticket_id=?",
+      )
+      .get(sessionRow!.ticket_id!);
+    expect(ticketRow?.title).toBe("add a /health endpoint");
+    expect(ticketRow?.latest_run_adw_id).toBe(adwId);
+  });
+
+  test("sessionStart with an explicit ticketId that doesn't exist yet creates that ticket row (covers an external id, e.g. a .fleet board id, seen for the first time)", () => {
+    const adwId = "adw_extticket001";
+    tracer.sessionStart(adwId, { projectCwd: "/tmp/proj", ticketId: "M-103", taskPromptForTicket: "external ticket first run" });
+
+    const sessionRow = tracer.db.query<{ ticket_id: string | null }, [string]>("select ticket_id from sessions where adw_id=?").get(adwId);
+    expect(sessionRow?.ticket_id).toBe("M-103");
+
+    const ticketRow = tracer.db.query<{ title: string | null }, [string]>("select title from tickets where ticket_id=?").get("M-103");
+    expect(ticketRow?.title).toBe("external ticket first run");
+  });
+
+  test("sessionStart with an explicit ticketId that ALREADY exists attaches the new run without changing the ticket's title", () => {
+    const firstAdwId = "adw_attach_first001";
+    const secondAdwId = "adw_attach_second001";
+    tracer.sessionStart(firstAdwId, { projectCwd: "/tmp/proj", ticketId: "M-200", taskPromptForTicket: "original task title" });
+    tracer.sessionStart(secondAdwId, { projectCwd: "/tmp/proj", ticketId: "M-200", taskPromptForTicket: "a retry's own different prompt text" });
+
+    const ticketRow = tracer.db
+      .query<{ title: string | null; latest_run_adw_id: string | null }, [string]>(
+        "select title, latest_run_adw_id from tickets where ticket_id=?",
+      )
+      .get("M-200");
+    // Title stays whatever the FIRST linked run set — not overwritten by the second.
+    expect(ticketRow?.title).toBe("original task title");
+    // latest_run_adw_id advances to the newest run.
+    expect(ticketRow?.latest_run_adw_id).toBe(secondAdwId);
+
+    const secondSessionRow = tracer.db
+      .query<{ ticket_id: string | null }, [string]>("select ticket_id from sessions where adw_id=?")
+      .get(secondAdwId);
+    expect(secondSessionRow?.ticket_id).toBe("M-200");
+  });
+
+  test("two runs attached to the same ticket are both queryable as that ticket's full attempt history, most recent first", () => {
+    const firstAdwId = "adw_history_first001";
+    const secondAdwId = "adw_history_second001";
+    tracer.sessionStart(firstAdwId, { projectCwd: "/tmp/proj", ticketId: "M-300", taskPromptForTicket: "attempt 1" });
+    tracer.sessionFinish(firstAdwId, false);
+    tracer.sessionStart(secondAdwId, { projectCwd: "/tmp/proj", ticketId: "M-300", taskPromptForTicket: "attempt 2 (retry)" });
+
+    const rows = tracer.db
+      .query<{ adw_id: string; status: string }, [string]>(
+        "select adw_id, status from sessions where ticket_id=? order by started_at desc, adw_id desc",
+      )
+      .all("M-300");
+    expect(rows.map((r) => r.adw_id)).toContain(firstAdwId);
+    expect(rows.map((r) => r.adw_id)).toContain(secondAdwId);
+    expect(rows.length).toBe(2);
+  });
+});
+
 // ── deriveTitleFromPrompt (used by workflow.ts/planBuildTest.ts to
 // populate sessions.title at Workflow Run start — a real title, not the
 // bare adwId or the full untruncated prompt) ──────────────────────────────

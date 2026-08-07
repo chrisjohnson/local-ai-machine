@@ -74,6 +74,16 @@ const StepSchema = z.discriminatedUnion("kind", [AgentStepSchema, CodeStepSchema
 const RawWorkflowSchema = z.object({
   name: z.string().min(1),
   steps: z.array(StepSchema).min(1),
+  /**
+   * M-103: max ADDITIONAL full-run attempts allowed after an initial
+   * failure, before a ticket is marked exhausted and left for a human. A
+   * BETWEEN-runs retry budget — each retry is its own fresh `adwId`/
+   * trace-db row, linked to the same ticket — distinct from `loop`'s
+   * `max_rounds` (a WITHIN-one-run, same-session correction loop). Default
+   * 0 (no automatic retries) — existing Workflow YAML files need no changes
+   * to keep their current, retry-free behavior.
+   */
+  retries: z.number().int().min(0).default(0),
 });
 
 const RawWorkflowsFileSchema = z.object({
@@ -114,6 +124,8 @@ export type Step = AgentStep | CodeStep | LoopStep;
 export interface Workflow {
   name: string;
   steps: Step[];
+  /** M-103: between-runs retry budget — see RawWorkflowSchema's doc comment. */
+  retries: number;
 }
 
 /**

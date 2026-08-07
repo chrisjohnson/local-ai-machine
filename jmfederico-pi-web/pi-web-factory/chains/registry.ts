@@ -42,6 +42,8 @@ export interface WorkflowRunOptionsBase {
   testCmd?: string;
   /** Local cwd for a test/gate code step's shell-out, when it must differ from `cwd` — see planBuildTest.ts's own testCwd doc comment. */
   testCwd?: string;
+  /** M-103: the ticket this run belongs to — see modules/workflow.ts's `WorkflowRunOptions.ticketId` doc comment. Threaded through unchanged to whichever runner (YAML Workflow or planBuildTest) this name resolves to. */
+  ticketId?: string;
 }
 
 /** Fields every registered workflow's result carries, regardless of its own status union — what `cli.ts`'s `describeResult` renders. */
@@ -68,6 +70,24 @@ function loadAllWorkflows(): Workflow[] {
 
 const YAML_WORKFLOWS = loadAllWorkflows();
 
+/**
+ * M-103: read-only access to every loaded YAML Workflow's own definition
+ * (name, steps, `retries` budget) — needed by the visualizer's reconciliation
+ * loop to look up a failed run's `retries` budget by its `sessions.adw_name`
+ * (the Workflow name a run recorded at `sessionStart`, `workflow.ts`) without
+ * duplicating this module's own YAML-loading/registration logic. Exposes the
+ * already-loaded array directly (not a new lookup function) — callers that
+ * need `workflowFor`'s throw-on-missing semantics can import that directly
+ * from `workflowDef.ts` themselves. Note this only covers YAML-defined
+ * Workflows, not `chains/planBuildTest.ts` (the one hand-written chain) —
+ * that chain has no `retries` concept of its own to look up (see M-103's
+ * card: `retries` was added to `workflowDef.ts`'s schema specifically, not
+ * to `planBuildTest.ts`'s options).
+ */
+export function loadedWorkflows(): Workflow[] {
+  return YAML_WORKFLOWS;
+}
+
 /** Builds a `WorkflowRunner` for a named, already-loaded YAML Workflow — a thin adapter from `WorkflowRunOptionsBase` to `runWorkflow`'s own options shape. */
 function runnerFor(workflowName: string): WorkflowRunner {
   const workflow = workflowFor(YAML_WORKFLOWS, workflowName);
@@ -83,6 +103,7 @@ function runnerFor(workflowName: string): WorkflowRunner {
       adwId: opts.adwId,
       sessionId: opts.sessionId,
       engineer: opts.engineer,
+      ticketId: opts.ticketId,
     };
     return runWorkflow(runOpts);
   };
@@ -107,6 +128,7 @@ async function runPlanBuildTest(opts: WorkflowRunOptionsBase): Promise<WorkflowR
     adwId: opts.adwId,
     sessionId: opts.sessionId,
     engineer: opts.engineer,
+    ticketId: opts.ticketId,
   };
   return planBuildTest(runOpts);
 }

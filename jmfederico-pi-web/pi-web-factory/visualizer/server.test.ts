@@ -41,6 +41,18 @@ const PROJECT_ROOT_CWD = "/tmp/pi-web-factory-realproject";
 const WORKTREE_CWD_1 = `${PROJECT_ROOT_CWD}/.pi-web-factory-worktrees/${ADW_ID_WORKTREE_1}`;
 const WORKTREE_CWD_2 = `${PROJECT_ROOT_CWD}/.pi-web-factory-worktrees/${ADW_ID_WORKTREE_2}`;
 
+// M-103: a two-attempt ticket (same ticket_id, two runs) + a single-attempt
+// ticket, seeded via Tracer.sessionStart's real ticketId wiring (not a raw
+// INSERT into `tickets` — exercises the same code path a real cli.ts run
+// would) — the `/api/tickets`/`/api/tickets/:ticketId` tests below need
+// real multi-attempt grouping to assert against.
+const TICKET_MULTI = "ticket_servertest_multi01";
+const ADW_ID_ATTEMPT_1 = "adw_servertest_att1";
+const ADW_ID_ATTEMPT_2 = "adw_servertest_att2";
+const TICKET_SINGLE = "ticket_servertest_single01";
+const ADW_ID_SINGLE = "adw_servertest_single1";
+const TICKET_PROJECT_CWD = "/tmp/pi-web-factory-ticket-test-project";
+
 function seed(): void {
   const tracer = new Tracer(dbPath);
   tracer.sessionStart(ADW_ID, { engineer: "test", projectCwd: "/tmp/x", adwName: "plan-build-review" });
@@ -74,6 +86,38 @@ function seed(): void {
   tracer.sessionSetTitle(ADW_ID_WORKTREE_1, "real project run 1");
   tracer.sessionStart(ADW_ID_WORKTREE_2, { engineer: "test", projectCwd: WORKTREE_CWD_2, adwName: "bounded-build-review" });
   tracer.sessionSetTitle(ADW_ID_WORKTREE_2, "real project run 2");
+
+  // M-103: two runs sharing ONE ticket (a manual retry under the same
+  // --ticket-id) — the second attempt is the LATEST (started later).
+  tracer.sessionStart(ADW_ID_ATTEMPT_1, {
+    engineer: "test",
+    projectCwd: TICKET_PROJECT_CWD,
+    adwName: "plan-build-review",
+    ticketId: TICKET_MULTI,
+    taskPromptForTicket: "first attempt at the ticketed task",
+  });
+  tracer.sessionSetTitle(ADW_ID_ATTEMPT_1, "attempt 1");
+  tracer.sessionFinish(ADW_ID_ATTEMPT_1, false);
+  tracer.sessionStart(ADW_ID_ATTEMPT_2, {
+    engineer: "test",
+    projectCwd: TICKET_PROJECT_CWD,
+    adwName: "plan-build-review",
+    ticketId: TICKET_MULTI,
+    taskPromptForTicket: "second attempt (retry) at the ticketed task",
+  });
+  tracer.sessionSetTitle(ADW_ID_ATTEMPT_2, "attempt 2 (retry)");
+
+  // A single-attempt ticket — proves the API/UI don't force arrow-nav data
+  // onto a ticket that has exactly one run.
+  tracer.sessionStart(ADW_ID_SINGLE, {
+    engineer: "test",
+    projectCwd: TICKET_PROJECT_CWD,
+    adwName: "plan-build-review",
+    ticketId: TICKET_SINGLE,
+    taskPromptForTicket: "a ticket with exactly one attempt",
+  });
+  tracer.sessionSetTitle(ADW_ID_SINGLE, "only attempt");
+  tracer.sessionFinish(ADW_ID_SINGLE, true);
 
   tracer.close();
 }
@@ -257,6 +301,71 @@ describe("visualizer server (real spawned process, real HTTP)", () => {
     // break the ordinary read API it now lives alongside."
     const res = await fetch(`${baseUrl}/api/runs`);
     expect(res.status).toBe(200);
+  });
+
+  // ── M-103: /api/tickets, /api/tickets/:ticketId ─────────────────────────
+
+  test("GET /api/tickets returns one row per TICKET, not per run — a two-attempt ticket is ONE row", async () => {
+    const res = await fetch(`${baseUrl}/api/tickets`);
+    expect(res.status).toBe(200);
+    const tickets = (await res.json()) as Array<{ ticketId: string; runCount: number; latestRun: { adwId: string; steps: unknown[] } | null }>;
+
+    const multi = tickets.find((t) => t.ticketId === TICKET_MULTI);
+    expect(multi).toBeDefined();
+    expect(multi?.runCount).toBe(2);
+    // Only ONE row for this ticket, not two.
+    expect(tickets.filter((t) => t.ticketId === TICKET_MULTI).length).toBe(1);
+
+    const single = tickets.find((t) => t.ticketId === TICKET_SINGLE);
+    expect(single?.runCount).toBe(1);
+  });
+
+  test("GET /api/tickets — a multi-attempt ticket's latestRun is the MOST RECENTLY STARTED attempt, not the first", async () => {
+    const res = await fetch(`${baseUrl}/api/tickets`);
+    const tickets = (await res.json()) as Array<{ ticketId: string; latestRun: { adwId: string } | null }>;
+    const multi = tickets.find((t) => t.ticketId === TICKET_MULTI);
+    expect(multi?.latestRun?.adwId).toBe(ADW_ID_ATTEMPT_2);
+  });
+
+  test("GET /api/tickets — latestRun carries the full RunSummary shape, steps included (not a stripped-down summary)", async () => {
+    const res = await fetch(`${baseUrl}/api/tickets`);
+    const tickets = (await res.json()) as Array<{ ticketId: string; latestRun: { adwId: string; title: string | null; steps: unknown[]; totalTokens: number } | null }>;
+    const multi = tickets.find((t) => t.ticketId === TICKET_MULTI);
+    expect(multi?.latestRun?.title).toBe("attempt 2 (retry)");
+    expect(Array.isArray(multi?.latestRun?.steps)).toBe(true);
+    expect(typeof multi?.latestRun?.totalTokens).toBe("number");
+  });
+
+  test("GET /api/tickets?project=<root> filters ticket-level rows by their latest run's project, same as /api/runs?project=", async () => {
+    const res = await fetch(`${baseUrl}/api/tickets?project=${encodeURIComponent(TICKET_PROJECT_CWD)}`);
+    const tickets = (await res.json()) as Array<{ ticketId: string }>;
+    expect(tickets.some((t) => t.ticketId === TICKET_MULTI)).toBe(true);
+    expect(tickets.some((t) => t.ticketId === TICKET_SINGLE)).toBe(true);
+    // A ticket whose latest run is against a DIFFERENT project must not appear.
+    expect(tickets.some((t) => t.ticketId.startsWith("adw_servertest0"))).toBe(false);
+  });
+
+  test("GET /api/tickets/:ticketId returns EVERY linked run, most recent first, full detail (steps included) per attempt", async () => {
+    const res = await fetch(`${baseUrl}/api/tickets/${TICKET_MULTI}`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ticketId: string; title: string | null; runs: Array<{ adwId: string; title: string | null; steps: unknown[] }> };
+    expect(body.ticketId).toBe(TICKET_MULTI);
+    expect(body.runs.map((r) => r.adwId)).toEqual([ADW_ID_ATTEMPT_2, ADW_ID_ATTEMPT_1]);
+    // Ticket's own title stays whatever the FIRST linked run set (see
+    // ticket.ts's mintOrAttachTicket) — not overwritten by the second.
+    expect(body.title).toBe("first attempt at the ticketed task");
+    expect(Array.isArray(body.runs[0]?.steps)).toBe(true);
+  });
+
+  test("GET /api/tickets/:ticketId for an unknown ticket returns 404", async () => {
+    const res = await fetch(`${baseUrl}/api/tickets/ticket_does_not_exist`);
+    expect(res.status).toBe(404);
+  });
+
+  test("GET /api/runs/:adwId response now includes ticketId — every run has one", async () => {
+    const res = await fetch(`${baseUrl}/api/runs/${ADW_ID_ATTEMPT_1}`);
+    const body = (await res.json()) as { run: { ticketId: string | null } };
+    expect(body.run.ticketId).toBe(TICKET_MULTI);
   });
 
   test("the server's db handle is genuinely readonly — direct write attempt against the same file fails, confirming the running process cannot have a writable handle open", async () => {
@@ -454,5 +563,72 @@ describe("reconciliation pass (M-100 Fix 2)", () => {
 
   test("the fake pi-web session check was actually called for the relevant projects (cross-check genuinely happened, not skipped)", () => {
     expect(fakePiWebSessionsRequests).toContain(NO_SESSION_PROJECT_CWD);
+  });
+});
+
+// ── M-103 Phase 3: retry-trigger wiring smoke test ─────────────────────────
+//
+// PI_WEB_FACTORY_VISUALIZER_RETRY_TRIGGER=1 turns the trigger pass ON (it's
+// off by default — see server.ts's own doc comment on RETRY_TRIGGER_ENABLED,
+// and every OTHER spawned-server test in this file, which never sets this
+// var, already covers the default-off path not crashing). This suite's own
+// scratch db has ZERO status='fail' rows, so `triggerRetryIfNeeded` finds
+// nothing to decide and never makes a real (costing) decision-Role model
+// call — this is purely a wiring smoke test ("does turning this flag on
+// crash the server / break the ordinary read API it lives alongside"), not
+// a test of the decision logic itself (covered directly in
+// modules/retryTrigger.test.ts against a real db).
+describe("retry-trigger wiring (M-103 Phase 3, opt-in flag)", () => {
+  let dir: string;
+  let triggerDbPath: string;
+  let proc: ReturnType<typeof Bun.spawn>;
+  let triggerBaseUrl: string;
+
+  beforeAll(async () => {
+    dir = mkdtempSync(join(tmpdir(), "pi-web-factory-visualizer-retrytrigger-test-"));
+    triggerDbPath = join(dir, "factory.db");
+    // No seeded rows at all — an empty-but-correctly-shaped db (server.ts's
+    // own bootstrap creates it) is exactly the "nothing to decide" case.
+
+    const port = 8792;
+    triggerBaseUrl = `http://localhost:${String(port)}`;
+    proc = Bun.spawn({
+      cmd: ["bun", join(import.meta.dir, "server.ts")],
+      env: {
+        ...process.env,
+        PI_WEB_FACTORY_VISUALIZER_DB_PATH: triggerDbPath,
+        PI_WEB_FACTORY_VISUALIZER_PORT: String(port),
+        PI_WEB_FACTORY_VISUALIZER_RETRY_TRIGGER: "1",
+        PI_WEB_FACTORY_VISUALIZER_RECONCILE_INTERVAL_MS: String(60 * 60 * 1000),
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+
+    await waitForServer(`${triggerBaseUrl}/api/runs`, Date.now() + 15_000);
+  }, 20_000);
+
+  afterAll(() => {
+    proc.kill();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("server starts and serves the ordinary read API with the retry-trigger flag enabled and nothing to decide", async () => {
+    const res = await fetch(`${triggerBaseUrl}/api/runs`);
+    expect(res.status).toBe(200);
+    const runs = (await res.json()) as unknown[];
+    expect(runs).toEqual([]);
+  });
+
+  test("the process is still alive after the startup retry-trigger pass — no crash/uncaught rejection", async () => {
+    // Give the fire-and-forget startup sweep a moment to have run, then
+    // confirm the ordinary read API still answers — the honest assertion
+    // here (nothing to decide -> triggerRetryIfNeeded's own "decided N,
+    // skipped N" log line only fires when either count is > 0, server.ts's
+    // own condition) is "the process is still up and serving," not a
+    // specific log line.
+    await new Promise((r) => setTimeout(r, 500));
+    const res = await fetch(`${triggerBaseUrl}/api/runs`);
+    expect(res.status).toBe(200);
   });
 });

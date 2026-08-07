@@ -1,7 +1,14 @@
 /**
- * main.ts: tiny hash-router entrypoint. Two routes:
- *   `#/`             -> ListView (all Workflow Runs)
- *   `#/runs/:adwId`  -> DetailView (one run's Gantt timeline)
+ * main.ts: tiny hash-router entrypoint. Routes (M-103: the detail route is
+ * ticket-level now, not run-level):
+ *   `#/`                                -> ListView (all tickets)
+ *   `#/tickets/:ticketId`               -> DetailView (a ticket's attempt
+ *                                          history, defaulting to latest)
+ *   `#/tickets/:ticketId?attempt=<id>`  -> DetailView, opened directly on
+ *                                          that specific attempt (e.g. a
+ *                                          grid card that was mid-paged when
+ *                                          clicked through — see
+ *                                          listView.ts's `cardOuterHtml`)
  *
  * A hash router (not the History API) keeps this genuinely dependency-free —
  * no server-side route fallback needed, `Bun.serve`'s single `"/"` HTML
@@ -32,20 +39,22 @@ function route(): void {
   currentView = null;
 
   const hash = window.location.hash || "#/";
-  // `#/runs/:adwId` (detail) vs `#/` or `#/?project=<cwd>` (list, optionally
-  // filtered) — the `?query` part, if present, lives after the hash's own
-  // path segment, so split it off before matching the detail route.
+  // `#/tickets/:ticketId` (detail) vs `#/` or `#/?project=<cwd>` (list,
+  // optionally filtered) — the `?query` part, if present, lives after the
+  // hash's own path segment, so split it off before matching the detail
+  // route.
   const [hashPath, hashQuery] = hash.split("?");
-  const detailMatch = /^#\/runs\/([^/]+)$/.exec(hashPath ?? hash);
+  const detailMatch = /^#\/tickets\/([^/]+)$/.exec(hashPath ?? hash);
 
   appEl!.innerHTML = `${renderHeader()}<div id="view-root"></div>`;
   const viewRoot = document.getElementById("view-root");
   if (!viewRoot) return;
 
   if (detailMatch && detailMatch[1]) {
-    const adwId = decodeURIComponent(detailMatch[1]);
-    viewRoot.innerHTML = `<div class="loading">Loading run…</div>`;
-    const view = new DetailView(viewRoot, adwId);
+    const ticketId = decodeURIComponent(detailMatch[1]);
+    const initialAdwId = new URLSearchParams(hashQuery ?? "").get("attempt") ?? undefined;
+    viewRoot.innerHTML = `<div class="loading">Loading ticket…</div>`;
+    const view = new DetailView(viewRoot, ticketId, initialAdwId);
     currentView = view;
     void view.start();
     return;

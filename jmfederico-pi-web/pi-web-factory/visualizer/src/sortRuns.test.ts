@@ -6,8 +6,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { sortRuns } from "./sortRuns";
-import type { RunSummary } from "./api";
+import { sortRuns, sortTickets } from "./sortRuns";
+import type { RunSummary, TicketSummary } from "./api";
 
 function mkRun(overrides: Partial<RunSummary>): RunSummary {
   return {
@@ -24,7 +24,19 @@ function mkRun(overrides: Partial<RunSummary>): RunSummary {
     totalTokens: 0,
     totalCost: 0,
     archived: false,
+    ticketId: null,
     steps: [],
+    ...overrides,
+  };
+}
+
+function mkTicket(overrides: Partial<TicketSummary> & { latestRun: RunSummary | null }): TicketSummary {
+  return {
+    ticketId: overrides.latestRun?.adwId ? `ticket_${overrides.latestRun.adwId}` : "ticket_none",
+    filePath: null,
+    createdAt: null,
+    title: null,
+    runCount: 1,
     ...overrides,
   };
 }
@@ -101,5 +113,42 @@ describe("sortRuns", () => {
     const original = [...runs];
     sortRuns(runs);
     expect(runs).toEqual(original);
+  });
+});
+
+describe("sortTickets (M-103)", () => {
+  test("orders tickets by the SAME rule sortRuns applies to their latestRun", () => {
+    const t1 = mkTicket({ ticketId: "t1", latestRun: mkRun({ adwId: "a", status: "success", endedAt: "2026-01-01T00:00:00.000Z" }) });
+    const t2 = mkTicket({ ticketId: "t2", latestRun: mkRun({ adwId: "b", status: "running", startedAt: "2026-01-01T05:00:00.000Z" }) });
+    const t3 = mkTicket({ ticketId: "t3", latestRun: mkRun({ adwId: "c", status: "fail", endedAt: "2026-01-01T02:00:00.000Z" }) });
+
+    const sorted = sortTickets([t1, t2, t3]);
+    // running first, then most-recently-ended first.
+    expect(sorted.map((t) => t.ticketId)).toEqual(["t2", "t3", "t1"]);
+  });
+
+  test("a ticket with no latestRun (defensive edge case) sorts last, without crashing", () => {
+    const withRun = mkTicket({ ticketId: "has-run", latestRun: mkRun({ adwId: "a", status: "success", endedAt: "2026-01-01T00:00:00.000Z" }) });
+    const withoutRun = mkTicket({ ticketId: "no-run", latestRun: null });
+
+    const sorted = sortTickets([withoutRun, withRun]);
+    expect(sorted.map((t) => t.ticketId)).toEqual(["has-run", "no-run"]);
+  });
+
+  test("preserves each ticket's own runCount/title fields through the sort", () => {
+    const ticket = mkTicket({ ticketId: "t1", title: "my ticket", runCount: 3, latestRun: mkRun({ adwId: "a", status: "success" }) });
+    const sorted = sortTickets([ticket]);
+    expect(sorted[0]?.title).toBe("my ticket");
+    expect(sorted[0]?.runCount).toBe(3);
+  });
+
+  test("does not mutate the input array", () => {
+    const tickets = [
+      mkTicket({ ticketId: "t1", latestRun: mkRun({ adwId: "a", status: "running", startedAt: "2026-01-01T00:10:00.000Z" }) }),
+      mkTicket({ ticketId: "t2", latestRun: mkRun({ adwId: "b", status: "running", startedAt: "2026-01-01T00:00:00.000Z" }) }),
+    ];
+    const original = [...tickets];
+    sortTickets(tickets);
+    expect(tickets).toEqual(original);
   });
 });

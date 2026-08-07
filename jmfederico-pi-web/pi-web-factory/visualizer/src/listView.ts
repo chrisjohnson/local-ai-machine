@@ -1,58 +1,74 @@
 /**
  * listView.ts: main page — a responsive, live-updating GRID of condensed
  * run cards (spec section 3), replacing the old plain vertical list.
- * Clicking a card still navigates to `#/runs/:adwId` (DetailView),
- * unchanged in spirit.
+ * Clicking a card still navigates to a detail page, unchanged in spirit.
+ *
+ * ── M-103: cards are TICKET-level, not run-level ──────────────────────────
+ * Chris, explicit: multiple attempts at "conceptually the same job" should
+ * merge into ONE card, showing the latest attempt by default, with a small
+ * pair of subtle arrow icons to page through earlier attempts inline,
+ * without leaving the grid. `GET /api/tickets` (server.ts) is this view's
+ * data source now, not `/api/runs` directly — each ticket carries its own
+ * `latestRun` (the exact same `RunSummary` shape a run card always rendered,
+ * steps included) plus `runCount`. Clicking a card navigates to
+ * `#/tickets/:ticketId` (DetailView, now a TICKET detail page — see that
+ * file's own header comment), not `#/runs/:adwId` directly; the arrow-nav
+ * still lets a human flip through every attempt's FULL detail (not a
+ * summarized view — Chris's own words: "you're flipping through complete
+ * runs and inspecting them") right here on the grid card too, via
+ * `TicketCardController`'s own on-demand fetch of `/api/tickets/:ticketId`.
  *
  * ── polling architecture / performance decisions ────────────────────────
- * ONE poll of `/api/runs` every `POLL_INTERVAL_MS` drives the whole grid's
- * summary data (unchanged pattern from the old list view) — this alone is
- * enough to update status pills, sort order, and dim/tint a card the moment
- * it transitions to success/fail.
+ * ONE poll of `/api/tickets` every `POLL_INTERVAL_MS` drives the whole
+ * grid's summary data (unchanged pattern from the old `/api/runs` poll,
+ * just re-pointed at the ticket-level endpoint) — enough to update status
+ * pills, sort order, and dim/tint a card the moment its latest run
+ * transitions to success/fail.
  *
- * Each card whose `status === "running"` additionally gets its OWN
- * `RunningCardController`, which polls `/api/runs/:adwId` (steps + status)
- * on its own short interval — bounded to exactly the currently-running
- * subset, never one poll per card across the whole grid. A run's mini-Gantt
- * needs each Step's `status`/`startedAt`/`endedAt`, which only changes via
- * the `phases` table (not the `events` stream) — so `/api/runs/:adwId` is
- * the right endpoint here, not `/api/runs/:adwId/events?since=` (that
- * cursor-poll is what DetailView uses for the nested tool-call list, which
- * the condensed grid card deliberately does NOT show — the spec asks for a
- * mini TIMELINE here, not the full nested-event drill-down, which stays on
- * the detail page).
+ * Each card whose latest run's `status === "running"` additionally gets its
+ * own `RunningCardController`, which polls `/api/runs/:adwId` (steps +
+ * status) on its own short interval — bounded to exactly the
+ * currently-running subset, never one poll per card across the whole grid.
+ * A run's mini-Gantt needs each Step's `status`/`startedAt`/`endedAt`, which
+ * only changes via the `phases` table (not the `events` stream) — so
+ * `/api/runs/:adwId` is the right endpoint here, not
+ * `/api/runs/:adwId/events?since=` (that cursor-poll is what DetailView uses
+ * for the nested tool-call list, which the condensed grid card deliberately
+ * does NOT show — the spec asks for a mini TIMELINE here, not the full
+ * nested-event drill-down, which stays on the detail page).
  *
  * ── render diffing strategy ──────────────────────────────────────────────
  * Chosen approach, documented per the spec's explicit ask: on every
- * `/api/runs` tick, the grid's outer HTML (card shells + `run-grid`
+ * `/api/tickets` tick, the grid's outer HTML (card shells + `run-grid`
  * container) is rebuilt via one `innerHTML` write — but a completed
  * (success/fail) card's own inner content is a static string produced once
- * and cached (`finishedCardHtml`), so re-running the outer render is cheap
- * string concatenation, not re-computing Gantt layouts or role lookups for
- * cards that can no longer change. A RUNNING card's inner HTML (including
- * its mini-Gantt) is only recomputed by its OWN `RunningCardController` on
- * ITS OWN poll tick (via a targeted `innerHTML` write scoped to that one
- * card element), never by the outer grid refresh — so a grid of e.g. 30
- * finished + 3 running cards only ever does real work for those 3 on their
- * own cadence, not 30 on every outer tick. This was judged simpler and
- * plenty fast for the realistic scale here (a handful to a few dozen
- * concurrent/recent runs) versus a full VDOM-style keyed diff, which would
- * add real complexity for a page that, per the spec, must stay CPU-light —
- * the extra diffing machinery itself has a cost. If real-world card counts
- * grow into the hundreds, a keyed/windowed approach would be the next step
- * (see also the "cap live mini-Gantt cards" fallback the spec explicitly
- * allows, applied below via `MAX_LIVE_MINI_GANTT_CARDS`).
+ * and cached, so re-running the outer render is cheap string concatenation,
+ * not re-computing Gantt layouts or role lookups for cards that can no
+ * longer change. A RUNNING card's inner HTML (including its mini-Gantt) is
+ * only recomputed by its OWN `RunningCardController` on ITS OWN poll tick
+ * (via a targeted `innerHTML` write scoped to that one card element), never
+ * by the outer grid refresh — so a grid of e.g. 30 finished + 3 running
+ * cards only ever does real work for those 3 on their own cadence, not 30 on
+ * every outer tick. This was judged simpler and plenty fast for the
+ * realistic scale here (a handful to a few dozen concurrent/recent tickets)
+ * versus a full VDOM-style keyed diff, which would add real complexity for
+ * a page that, per the spec, must stay CPU-light — the extra diffing
+ * machinery itself has a cost. If real-world card counts grow into the
+ * hundreds, a keyed/windowed approach would be the next step (see also the
+ * "cap live mini-Gantt cards" fallback the spec explicitly allows, applied
+ * below via `MAX_LIVE_MINI_GANTT_CARDS`).
  *
  * Animations (the pulsing glow on running cards) are pure CSS
  * `@keyframes`/class toggles (`style.css`'s `.run-card-running`) — never
  * JS-driven inline-style-per-frame or `requestAnimationFrame`.
  */
 
-import { fetchRunDetail, fetchRuns, type RunSummary, type Step } from "./api";
+import { fetchRunDetail, fetchRuns, fetchTicketDetail, fetchTickets, type RunSummary, type Step, type TicketSummary } from "./api";
 import { escapeHtml, formatCost, formatDateTime, formatDuration, formatTokens } from "./format";
 import { miniGanttHtml } from "./miniGantt";
 import { runTitle } from "./runTitle";
-import { sortRuns } from "./sortRuns";
+import { sortTickets } from "./sortRuns";
+import { attemptNavHtml, moveAttemptIndex, type AttemptNavDirection } from "./attemptNav";
 
 const POLL_INTERVAL_MS = 4000;
 /** Running cards poll their own Steps a bit faster than the outer grid summary poll, so the mini-Gantt visibly grows/updates while a run is active. */
@@ -102,8 +118,8 @@ function runMetaHtml(run: RunSummary, nowMs: number): string {
   `;
 }
 
-/** Card shell shared by both running and finished cards — everything except the mini-Gantt body, which callers fill in (live for running, static/omitted for finished). */
-function runCardShellOpenHtml(run: RunSummary, nowMs: number): string {
+/** Card shell shared by both running and finished cards — everything except the mini-Gantt body, which callers fill in (live for running, static/omitted for finished). `nav` is the attempt-paging arrow control (empty string for a single-attempt ticket — see attemptNav.ts). */
+function runCardShellOpenHtml(run: RunSummary, nowMs: number, nav: string): string {
   const title = runTitle(run);
   return `
     <div class="run-card-top">
@@ -111,6 +127,7 @@ function runCardShellOpenHtml(run: RunSummary, nowMs: number): string {
       ${statusPill(run.status)}
     </div>
     ${runMetaHtml(run, nowMs)}
+    ${nav}
   `;
 }
 
@@ -120,21 +137,25 @@ function runCardShellOpenHtml(run: RunSummary, nowMs: number): string {
  * the underlying run data itself changes (it won't, once terminal).
  *
  * Includes the mini-Gantt: `run.steps` now arrives pre-batched on every
- * `/api/runs` list response (`server.ts`'s `runsToApi`), so ALL cards show
- * their timeline inline, not just running ones — found missing in review
- * against the reference screenshot (M-090 follow-up, 2026-08-05): a
- * finished card previously showed only the shell (title/status/meta), no
- * timeline at all, until clicked through to the detail page.
+ * `/api/runs`/`/api/tickets` list response, so ALL cards show their
+ * timeline inline, not just running ones.
  */
-function finishedCardHtml(run: RunSummary, nowMs: number): string {
+function finishedCardHtml(run: RunSummary, nowMs: number, nav: string): string {
   const gantt = `<div class="mini-gantt">${miniGanttHtml(run.steps, nowMs)}</div>`;
-  return `${runCardShellOpenHtml(run, nowMs)}${gantt}`;
+  return `${runCardShellOpenHtml(run, nowMs, nav)}${gantt}`;
 }
 
-function cardOuterHtml(run: RunSummary, innerHtml: string): string {
+function cardOuterHtml(ticketId: string, run: RunSummary, innerHtml: string): string {
   const cls = runCardStatusClass(run.status);
+  // Links to the TICKET detail page (M-103) — not the bare run — carrying
+  // the currently-shown attempt as `?attempt=<adwId>` so clicking through
+  // opens the SAME attempt the card was displaying, not silently resetting
+  // to latest (found while wiring this up: without threading the attempt
+  // through, paging to attempt 1/3 on the grid then clicking through would
+  // surprisingly land on attempt 3/3's detail instead).
+  const href = `#/tickets/${encodeURIComponent(ticketId)}?attempt=${encodeURIComponent(run.adwId)}`;
   return `
-    <a class="run-card ${cls}" href="#/runs/${encodeURIComponent(run.adwId)}" data-adw-id="${escapeHtml(run.adwId)}">
+    <a class="run-card ${cls}" href="${href}" data-ticket-id="${escapeHtml(ticketId)}">
       ${innerHtml}
     </a>
   `;
@@ -179,23 +200,35 @@ function filterBarHtml(allProjects: string[], selected: string | null): string {
  * immediately re-renders into it so there's no visible blank gap, while
  * leaving the controller's own poll interval running uninterrupted (no
  * wasted extra `/api/runs/:adwId` calls from tearing down and recreating).
+ *
+ * ── M-103: attempt-nav lives here too ─────────────────────────────────────
+ * A running card's ticket may still have earlier, terminal attempts (a
+ * manual retry under the same `--ticket-id`, or a future automated one) —
+ * the arrow control is wired up the same way a finished card's is (see
+ * `TicketCardController`), fetching the ticket's full history on demand
+ * only when a human actually clicks an arrow, never on every poll tick.
  */
 class RunningCardController {
   private cardEl: HTMLElement;
-  private adwId: string;
+  private ticketId: string;
   private pollHandle: ReturnType<typeof setInterval> | null = null;
   private disposed = false;
   private steps: Step[] = [];
   private latestRun: RunSummary;
+  private runCount: number;
+  /** Cached full attempt history (most recent first) — fetched lazily, only once a human interacts with the arrows. */
+  private allRuns: RunSummary[] | null = null;
+  private shownIndex = 0;
 
-  constructor(cardEl: HTMLElement, run: RunSummary) {
+  constructor(cardEl: HTMLElement, ticketId: string, run: RunSummary, runCount: number) {
     this.cardEl = cardEl;
-    this.adwId = run.adwId;
+    this.ticketId = ticketId;
     this.latestRun = run;
-    // `run.steps` already arrived batched on the outer /api/runs poll — seed
-    // with it so the first paint shows the real (if slightly stale) Gantt
-    // immediately, instead of an empty "no Steps yet" flash while the first
-    // per-card `/api/runs/:adwId` fetch is still in flight.
+    this.runCount = runCount;
+    // `run.steps` already arrived batched on the outer /api/tickets poll —
+    // seed with it so the first paint shows the real (if slightly stale)
+    // Gantt immediately, instead of an empty "no Steps yet" flash while the
+    // first per-card `/api/runs/:adwId` fetch is still in flight.
     this.steps = run.steps;
   }
 
@@ -215,15 +248,25 @@ class RunningCardController {
   /** Re-points this controller at a freshly-rendered DOM node (see class doc comment) and immediately repaints it — the outer grid re-creates every card element on each of ITS OWN poll ticks, so a still-running controller must be re-bound every time, not just once at creation. */
   rebindCardEl(cardEl: HTMLElement): void {
     this.cardEl = cardEl;
+    this.wireAttemptNav();
     this.renderCurrent();
   }
 
   private async refresh(): Promise<void> {
     try {
-      const detail = await fetchRunDetail(this.adwId);
+      const detail = await fetchRunDetail(this.latestRun.adwId);
       if (this.disposed) return;
       this.latestRun = detail.run;
       this.steps = detail.steps;
+      // If the human is currently viewing the LATEST attempt (index 0,
+      // the default), keep the live-updating steps flowing into what's
+      // shown. If they've paged to an older attempt, this poll still
+      // refreshes `latestRun`/`steps` for when they page back to 0, but
+      // the currently-DISPLAYED attempt (an older, terminal one) never
+      // changes underneath them mid-inspection.
+      if (this.allRuns && this.shownIndex === 0) {
+        this.allRuns[0] = { ...detail.run, steps: detail.steps };
+      }
     } catch {
       // best-effort — a transient failure just skips this tick, the shell
       // (status pill/meta) still reflects the last-known-good outer grid poll
@@ -233,12 +276,116 @@ class RunningCardController {
     this.renderCurrent();
   }
 
+  private displayedRun(): RunSummary {
+    if (this.allRuns) return this.allRuns[this.shownIndex] ?? this.latestRun;
+    return this.latestRun;
+  }
+
+  private async ensureAllRunsLoaded(): Promise<void> {
+    if (this.allRuns) return;
+    try {
+      const detail = await fetchTicketDetail(this.ticketId);
+      this.allRuns = detail.runs;
+      this.runCount = detail.runs.length;
+    } catch {
+      // best-effort — arrows silently no-op if this fails; the card still
+      // shows the latest attempt correctly regardless.
+    }
+  }
+
+  private wireAttemptNav(): void {
+    this.cardEl.querySelectorAll<HTMLButtonElement>("[data-attempt-nav-dir]").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        void this.onAttemptNavClick(btn.dataset["attemptNavDir"] as AttemptNavDirection);
+      });
+    });
+  }
+
+  private async onAttemptNavClick(direction: AttemptNavDirection): Promise<void> {
+    await this.ensureAllRunsLoaded();
+    if (this.disposed || !this.allRuns) return;
+    this.shownIndex = moveAttemptIndex(this.shownIndex, direction, this.allRuns.length);
+    this.renderCurrent();
+  }
+
   private renderCurrent(): void {
     const nowMs = Date.now();
-    const shell = runCardShellOpenHtml(this.latestRun, nowMs);
-    const gantt = `<div class="mini-gantt">${miniGanttHtml(this.steps, nowMs)}</div>`;
-    this.cardEl.className = `run-card ${runCardStatusClass(this.latestRun.status)}`;
+    const displayed = this.displayedRun();
+    const isLatest = this.shownIndex === 0;
+    const shownSteps = isLatest ? this.steps : displayed.steps;
+    const nav = attemptNavHtml(this.ticketId, this.shownIndex, this.runCount);
+    const shell = runCardShellOpenHtml(displayed, nowMs, nav);
+    const gantt = `<div class="mini-gantt">${miniGanttHtml(shownSteps, nowMs)}</div>`;
+    this.cardEl.className = `run-card ${runCardStatusClass(displayed.status)}`;
     this.cardEl.innerHTML = `${shell}${gantt}`;
+    this.cardEl.setAttribute("href", `#/tickets/${encodeURIComponent(this.ticketId)}?attempt=${encodeURIComponent(displayed.adwId)}`);
+    this.wireAttemptNav();
+  }
+}
+
+/**
+ * Owns one FINISHED (non-running) ticket card's attempt-nav interaction —
+ * the finished-card counterpart to `RunningCardController`, but with no
+ * polling of its own (a finished ticket's latest attempt can't change) —
+ * only fetches `/api/tickets/:ticketId` lazily, on the human's first arrow
+ * click, exactly like the running controller does.
+ */
+class TicketCardController {
+  private cardEl: HTMLElement;
+  private ticketId: string;
+  private latestRun: RunSummary;
+  private runCount: number;
+  private allRuns: RunSummary[] | null = null;
+  private shownIndex = 0;
+
+  constructor(cardEl: HTMLElement, ticketId: string, run: RunSummary, runCount: number) {
+    this.cardEl = cardEl;
+    this.ticketId = ticketId;
+    this.latestRun = run;
+    this.runCount = runCount;
+  }
+
+  /** Re-binds to a freshly-rendered card element after an outer grid re-render (same reasoning as RunningCardController.rebindCardEl) — only needed for cards a human has already interacted with (has non-default `shownIndex` or a cached `allRuns`); ListView only keeps controllers alive across ticks for tickets it still needs to track, see ListView.refresh. */
+  rebindCardEl(cardEl: HTMLElement): void {
+    this.cardEl = cardEl;
+    this.wireAttemptNav();
+    this.render();
+  }
+
+  render(): void {
+    const nowMs = Date.now();
+    const displayed = this.allRuns ? (this.allRuns[this.shownIndex] ?? this.latestRun) : this.latestRun;
+    const nav = attemptNavHtml(this.ticketId, this.shownIndex, this.runCount);
+    this.cardEl.className = `run-card ${runCardStatusClass(displayed.status)}`;
+    this.cardEl.innerHTML = finishedCardHtml(displayed, nowMs, nav);
+    this.cardEl.setAttribute("href", `#/tickets/${encodeURIComponent(this.ticketId)}?attempt=${encodeURIComponent(displayed.adwId)}`);
+    this.wireAttemptNav();
+  }
+
+  private wireAttemptNav(): void {
+    this.cardEl.querySelectorAll<HTMLButtonElement>("[data-attempt-nav-dir]").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        void this.onAttemptNavClick(btn.dataset["attemptNavDir"] as AttemptNavDirection);
+      });
+    });
+  }
+
+  private async onAttemptNavClick(direction: AttemptNavDirection): Promise<void> {
+    if (!this.allRuns) {
+      try {
+        const detail = await fetchTicketDetail(this.ticketId);
+        this.allRuns = detail.runs;
+        this.runCount = detail.runs.length;
+      } catch {
+        return; // best-effort — arrows silently no-op on failure
+      }
+    }
+    this.shownIndex = moveAttemptIndex(this.shownIndex, direction, this.allRuns.length);
+    this.render();
   }
 }
 
@@ -250,8 +397,10 @@ export class ListView {
   private selectedProject: string | null;
   /** Distinct known `projectRoot` values, derived once from an unfiltered fetch, populates the `<select>`'s options regardless of which project is currently selected. */
   private allProjects: string[] = [];
-  /** One controller per currently-running card, keyed by adwId — torn down/rebuilt whenever the running set changes across an outer poll tick. */
+  /** One controller per currently-running ticket card, keyed by ticketId. */
   private runningControllers: Map<string, RunningCardController> = new Map();
+  /** One controller per FINISHED ticket card that has had its attempt-nav interacted with (or simply exists on the current page — see refresh() for the exact lifetime rule), keyed by ticketId. */
+  private finishedControllers: Map<string, TicketCardController> = new Map();
 
   constructor(container: HTMLElement, initialProject: string | null = null) {
     this.container = container;
@@ -271,10 +420,14 @@ export class ListView {
     if (this.pollHandle) clearInterval(this.pollHandle);
     for (const controller of this.runningControllers.values()) controller.stop();
     this.runningControllers.clear();
+    this.finishedControllers.clear();
   }
 
   private async loadProjectOptions(): Promise<void> {
     try {
+      // Reuses /api/runs (not /api/tickets) purely because it's already the
+      // full flat list of every projectCwd ever seen — same distinct-project
+      // derivation this view always did, unaffected by the ticket grouping.
       const allRuns = await fetchRuns();
       const distinct = new Set<string>();
       for (const r of allRuns) {
@@ -299,13 +452,14 @@ export class ListView {
   }
 
   private async refresh(): Promise<void> {
-    let runs: RunSummary[];
+    let tickets: TicketSummary[];
     try {
-      runs = await fetchRuns(this.selectedProject);
+      tickets = await fetchTickets(this.selectedProject);
     } catch (error) {
       if (this.disposed) return;
       for (const controller of this.runningControllers.values()) controller.stop();
       this.runningControllers.clear();
+      this.finishedControllers.clear();
       this.container.innerHTML = `<div class="error-banner">Failed to load runs: ${escapeHtml(
         error instanceof Error ? error.message : String(error),
       )}</div>`;
@@ -313,13 +467,19 @@ export class ListView {
     }
     if (this.disposed) return;
 
+    // Defensive: a ticket with no linked runs at all (server.ts's own
+    // doc comment — shouldn't happen in practice) has nothing to render as
+    // a card; exclude rather than crash on a null latestRun.
+    const withRuns = tickets.filter((t): t is TicketSummary & { latestRun: RunSummary } => t.latestRun !== null);
+
     const nowMs = Date.now();
-    const sorted = sortRuns(runs);
+    const sorted = sortTickets(withRuns);
     const filterBar = filterBarHtml(this.allProjects, this.selectedProject);
 
     if (sorted.length === 0) {
       for (const controller of this.runningControllers.values()) controller.stop();
       this.runningControllers.clear();
+      this.finishedControllers.clear();
       const emptyHtml = `<div class="empty-state">${
         this.selectedProject ? "No Workflow Runs recorded for this project." : "No Workflow Runs recorded yet."
       }</div>`;
@@ -328,65 +488,100 @@ export class ListView {
       return;
     }
 
-    // Which currently-visible runs are eligible for a live mini-Gantt
-    // controller — running status, capped at MAX_LIVE_MINI_GANTT_CARDS
-    // (see that const's doc comment for the fallback rationale). The cap
-    // applies in current sort order, i.e. the oldest-started running runs
-    // (already first per sortRuns) win the live slots.
+    // Which currently-visible tickets are eligible for a live mini-Gantt
+    // controller — latest run status running, capped at
+    // MAX_LIVE_MINI_GANTT_CARDS (see that const's doc comment for the
+    // fallback rationale). The cap applies in current sort order, i.e. the
+    // oldest-started running runs (already first per sortTickets) win the
+    // live slots.
     const liveEligibleIds = new Set(
       sorted
-        .filter((r) => r.status === "running")
+        .filter((t) => t.latestRun.status === "running")
         .slice(0, MAX_LIVE_MINI_GANTT_CARDS)
-        .map((r) => r.adwId),
+        .map((t) => t.ticketId),
     );
 
     this.container.innerHTML = `${filterBar}<div class="run-grid">${sorted
-      .map((run) => {
-        if (liveEligibleIds.has(run.adwId)) {
+      .map((ticket) => {
+        if (liveEligibleIds.has(ticket.ticketId)) {
           // Placeholder shell — the RunningCardController wired up below
           // fills this in immediately and owns it from then on.
-          return `<a class="run-card run-card-running" href="#/runs/${encodeURIComponent(run.adwId)}" data-adw-id="${escapeHtml(run.adwId)}" data-live-card="1"></a>`;
+          return `<a class="run-card run-card-running" href="#/tickets/${encodeURIComponent(ticket.ticketId)}" data-ticket-id="${escapeHtml(ticket.ticketId)}" data-live-card="1"></a>`;
         }
-        if (run.status === "running") {
+        if (ticket.latestRun.status === "running") {
           // Over the live cap — still a real running card (status pill,
-          // pulsing glow) with its Gantt from the last outer-grid poll
-          // (`run.steps`, batched — see finishedCardHtml), it just doesn't
-          // get its OWN faster per-card poll cycle on top of that.
-          return cardOuterHtml(run, `${finishedCardHtml(run, nowMs)}<div class="mini-gantt-note">not live-updating (too many concurrent runs)</div>`);
+          // pulsing glow) with its Gantt from the last outer-grid poll, it
+          // just doesn't get its OWN faster per-card poll cycle on top of
+          // that, and no attempt-nav wiring (a card this far down the "too
+          // many running" overflow isn't worth the interaction either).
+          const nav = ticket.runCount > 1 ? attemptNavHtml(ticket.ticketId, 0, ticket.runCount) : "";
+          return cardOuterHtml(
+            ticket.ticketId,
+            ticket.latestRun,
+            `${finishedCardHtml(ticket.latestRun, nowMs, nav)}<div class="mini-gantt-note">not live-updating (too many concurrent runs)</div>`,
+          );
         }
-        return cardOuterHtml(run, finishedCardHtml(run, nowMs));
+        // Finished card placeholder — TicketCardController (below) owns
+        // rendering so its attempt-nav clicks work without a full outer
+        // grid re-render forcing a reset back to the latest attempt.
+        return `<a class="run-card" href="#/tickets/${encodeURIComponent(ticket.ticketId)}" data-ticket-id="${escapeHtml(ticket.ticketId)}" data-finished-card="1"></a>`;
       })
       .join("")}</div>`;
 
     this.wireFilterSelect();
 
-    // Tear down controllers for runs no longer running/visible. For every
-    // still-live run, REBIND the existing controller (if any) to the fresh
-    // DOM node this very innerHTML write just created — never skip an
-    // already-existing controller silently, or it keeps updating a node
-    // that's no longer attached to the document (see RunningCardController's
-    // class doc comment for the real bug this fixes, confirmed live). Only
-    // construct a genuinely NEW controller (and start its own independent
-    // poll cycle) for a run that wasn't already being tracked.
+    // Tear down running controllers for tickets no longer running/visible.
+    // For every still-live ticket, REBIND the existing controller (if any)
+    // to the fresh DOM node this very innerHTML write just created — never
+    // skip an already-existing controller silently, or it keeps updating a
+    // node that's no longer attached to the document (see
+    // RunningCardController's class doc comment for the real bug this
+    // fixes, confirmed live). Only construct a genuinely NEW controller
+    // (and start its own independent poll cycle) for a ticket that wasn't
+    // already being tracked.
     const stillLive = new Set(liveEligibleIds);
-    for (const [adwId, controller] of this.runningControllers) {
-      if (!stillLive.has(adwId)) {
+    for (const [ticketId, controller] of this.runningControllers) {
+      if (!stillLive.has(ticketId)) {
         controller.stop();
-        this.runningControllers.delete(adwId);
+        this.runningControllers.delete(ticketId);
       }
     }
-    for (const run of sorted) {
-      if (!liveEligibleIds.has(run.adwId)) continue;
-      const cardEl = this.container.querySelector<HTMLElement>(`[data-adw-id="${cssEscape(run.adwId)}"][data-live-card="1"]`);
+    for (const ticket of sorted) {
+      if (!liveEligibleIds.has(ticket.ticketId)) continue;
+      const cardEl = this.container.querySelector<HTMLElement>(`[data-ticket-id="${cssEscape(ticket.ticketId)}"][data-live-card="1"]`);
       if (!cardEl) continue;
-      const existing = this.runningControllers.get(run.adwId);
+      const existing = this.runningControllers.get(ticket.ticketId);
       if (existing) {
         existing.rebindCardEl(cardEl);
         continue;
       }
-      const controller = new RunningCardController(cardEl, run);
-      this.runningControllers.set(run.adwId, controller);
+      const controller = new RunningCardController(cardEl, ticket.ticketId, ticket.latestRun, ticket.runCount);
+      this.runningControllers.set(ticket.ticketId, controller);
       controller.start();
+    }
+
+    // Finished cards — every ticket visible this tick whose latest run
+    // isn't running gets a TicketCardController, rebound (or newly
+    // constructed) exactly like the running case above, so an
+    // already-paged-to-an-older-attempt card doesn't silently reset to
+    // latest on the next outer poll tick.
+    const stillFinishedIds = new Set(sorted.filter((t) => t.latestRun.status !== "running").map((t) => t.ticketId));
+    for (const [ticketId, controller] of this.finishedControllers) {
+      void controller;
+      if (!stillFinishedIds.has(ticketId)) this.finishedControllers.delete(ticketId);
+    }
+    for (const ticket of sorted) {
+      if (ticket.latestRun.status === "running") continue;
+      const cardEl = this.container.querySelector<HTMLElement>(`[data-ticket-id="${cssEscape(ticket.ticketId)}"][data-finished-card="1"]`);
+      if (!cardEl) continue;
+      const existing = this.finishedControllers.get(ticket.ticketId);
+      if (existing) {
+        existing.rebindCardEl(cardEl);
+        continue;
+      }
+      const controller = new TicketCardController(cardEl, ticket.ticketId, ticket.latestRun, ticket.runCount);
+      this.finishedControllers.set(ticket.ticketId, controller);
+      controller.render();
     }
   }
 
@@ -398,7 +593,7 @@ export class ListView {
   }
 }
 
-/** Minimal `CSS.escape` fallback for the `data-adw-id` attribute selector above — adwIds are plain identifiers in practice, but this avoids relying on a DOM global that may not exist in every test/runtime context. */
+/** Minimal `CSS.escape` fallback for the `data-ticket-id` attribute selector above — ticket ids are plain identifiers in practice, but this avoids relying on a DOM global that may not exist in every test/runtime context. */
 function cssEscape(value: string): string {
   return value.replace(/["\\]/g, "\\$&");
 }

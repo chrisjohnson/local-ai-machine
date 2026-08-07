@@ -57,6 +57,10 @@ import { join } from "node:path";
 import { SCHEMA } from "../modules/schema.ts";
 import { WORKTREE_SUBDIR } from "../modules/worktree.ts";
 import { DEFAULT_BASE_URL, DEFAULT_WAIT_FOR_COMPLETION_TIMEOUT_MS } from "../modules/piwebClient.ts";
+import { loadRolesConfig } from "../modules/roles.ts";
+import { Tracer } from "../modules/tracer.ts";
+import { triggerRetryIfNeeded } from "../modules/retryTrigger.ts";
+import { loadedWorkflows } from "../chains/registry.ts";
 import index from "./src/index.html";
 
 /**
@@ -147,6 +151,20 @@ const RECONCILE_INTERVAL_MS = (() => {
 
 /** Base URL for the pi-web instance whose live session list this pass cross-checks against — same env var / default `piwebClient.ts` itself uses, so this pass talks to the same pi-web the job runner does. */
 const PIWEB_BASE_URL = process.env["PI_WEB_FACTORY_BASE_URL"] ?? DEFAULT_BASE_URL;
+
+// ── M-103: retry-decision trigger (Phase 3) ────────────────────────────────
+//
+// Opt-in via PI_WEB_FACTORY_VISUALIZER_RETRY_TRIGGER=1 — deliberately OFF by
+// default. `retryTrigger.ts`'s own module header has the full story: the
+// actual next-attempt COMMAND is computed and logged, never executed (this
+// container has no docker.sock / spawn transport to `pi-web`, confirmed
+// directly, not assumed). Running this by default on every deploy would mean
+// every reconciliation sweep silently starts making REAL, costing decision-
+// Role model calls against every failed run in the db, with no operator
+// having asked for that — opt-in avoids that surprise until a real spawn
+// mechanism exists and this becomes genuinely actionable.
+const RETRY_TRIGGER_ENABLED = process.env["PI_WEB_FACTORY_VISUALIZER_RETRY_TRIGGER"] === "1";
+const FACTORY_CONFIG_PATH = process.env["PI_WEB_FACTORY_CONFIG"] ?? join(import.meta.dir, "..", "factory.config.yaml");
 
 interface StaleCandidateRow {
   phase_id: string;
@@ -266,6 +284,47 @@ async function reconcileStuckRuns(): Promise<{ scanned: number; markedFailed: nu
   return { scanned: rows.length, markedFailed };
 }
 
+/**
+ * M-103 Phase 3: after each reconciliation sweep, check every currently-
+ * undecided `status='fail'` run for a retry decision. Runs on the SAME
+ * `reconcileDb` read-write handle reconciliation already uses (both are the
+ * one deliberate writer this process has — module header comment on
+ * `reconcileDb` above) and its own fresh `Tracer` instance (needed for
+ * `traceRetryDecision`'s event-write helper — `reconcileDb`'s raw SQL calls
+ * above don't go through `Tracer` at all, but `retryTrigger.ts`'s functions
+ * are shared with `cli.ts`'s own call sites, which DO use `Tracer`, so this
+ * is the natural shared shape rather than a second event-write path).
+ * `loadedWorkflows()`/`loadRolesConfig()` are cheap, already-loaded/cached
+ * lookups (`chains/registry.ts` loads its YAML once at module-load time;
+ * `loadRolesConfig` re-reads the config file — negligible cost on a
+ * multi-minute sweep cadence, matches `cli.ts`'s own per-invocation load).
+ */
+async function runRetryTriggerPass(): Promise<void> {
+  if (!RETRY_TRIGGER_ENABLED) return;
+  try {
+    const config = loadRolesConfig(FACTORY_CONFIG_PATH);
+    const workflows = loadedWorkflows();
+    const tracer = new Tracer(DB_PATH);
+    try {
+      const { decided, skipped } = await triggerRetryIfNeeded({
+        db: reconcileDb,
+        tracer,
+        config,
+        workflows,
+        baseUrl: PIWEB_BASE_URL,
+        log: (message) => console.log(`[visualizer] ${message}`),
+      });
+      if (decided > 0 || skipped > 0) {
+        console.log(`[visualizer] retry-trigger: decided ${String(decided)}, skipped ${String(skipped)}`);
+      }
+    } finally {
+      tracer.close();
+    }
+  } catch (error) {
+    console.error("[visualizer] retry-trigger pass failed:", error);
+  }
+}
+
 async function runReconciliationSweep(label: string): Promise<void> {
   try {
     const { scanned, markedFailed } = await reconcileStuckRuns();
@@ -275,6 +334,10 @@ async function runReconciliationSweep(label: string): Promise<void> {
   } catch (error) {
     console.error(`[visualizer] reconciliation (${label}) failed:`, error);
   }
+  // M-103: retry-trigger check runs AFTER reconciliation, in the same sweep —
+  // a run reconciliation just marked failed is immediately eligible, no need
+  // to wait for the next cadence.
+  await runRetryTriggerPass();
 }
 
 // Runs once on startup, per M-100's explicit "on startup, IN ADDITION TO
@@ -302,7 +365,21 @@ interface SessionRow {
   total_tokens: number;
   total_cost: number;
   archived: number;
+  ticket_id: string | null;
 }
+
+/** M-103: one `tickets` row — the grid/detail ticket-level grouping anchor. */
+interface TicketRow {
+  ticket_id: string;
+  file_path: string | null;
+  created_at: string | null;
+  title: string | null;
+  latest_run_adw_id: string | null;
+}
+
+const SESSION_COLUMNS =
+  `adw_id, adw_name, project_cwd, title, request, status, engineer,
+   started_at, ended_at, total_tokens, total_cost, archived, ticket_id`;
 
 interface PhaseRow {
   phase_id: string;
@@ -367,6 +444,8 @@ function runToApi(r: SessionRow, steps: ReturnType<typeof stepToApi>[] = []) {
     totalTokens: r.total_tokens,
     totalCost: r.total_cost,
     archived: Boolean(r.archived),
+    /** M-103: the ticket this run belongs to — every run has exactly one, always (see modules/ticket.ts). */
+    ticketId: r.ticket_id,
     steps,
   };
 }
@@ -421,6 +500,60 @@ function stepToApi(r: PhaseRow) {
     startedAt: r.started_at,
     endedAt: r.ended_at,
   };
+}
+
+/**
+ * M-103: one ticket, ready for the grid — its own fields plus its LATEST
+ * run's full summary (reusing `runToApi`'s shape unchanged, steps and all,
+ * so the grid's ticket-level card can render the exact same mini-Gantt/
+ * status-pill markup it already does for a bare run — see
+ * `visualizer/src/listView.ts`'s ticket-card rendering) and `runCount` (so
+ * the grid knows whether to show the arrow-paging affordance at all — no
+ * point rendering arrows for a ticket with exactly one attempt).
+ */
+function ticketToApi(t: TicketRow, latestRun: ReturnType<typeof runToApi> | null, runCount: number) {
+  return {
+    ticketId: t.ticket_id,
+    filePath: t.file_path,
+    createdAt: t.created_at,
+    title: t.title,
+    latestRun,
+    runCount,
+  };
+}
+
+/**
+ * Batches every ticket's latest run (by `tickets.latest_run_adw_id`, the
+ * denormalized fast-path column — `modules/ticket.ts`'s `setTicketLatestRun`)
+ * plus a per-ticket run count, in TWO extra queries total (not one per
+ * ticket) — same batching discipline `runsToApi` already established for a
+ * run's Steps.
+ */
+function ticketsToApi(tickets: TicketRow[]): ReturnType<typeof ticketToApi>[] {
+  if (tickets.length === 0) return [];
+  const latestAdwIds = tickets.map((t) => t.latest_run_adw_id).filter((id): id is string => id !== null);
+  const latestRunsByAdwId = new Map<string, SessionRow>();
+  if (latestAdwIds.length > 0) {
+    const placeholders = latestAdwIds.map(() => "?").join(",");
+    const rows = db.query<SessionRow, string[]>(`SELECT ${SESSION_COLUMNS} FROM sessions WHERE adw_id IN (${placeholders})`).all(...latestAdwIds);
+    for (const row of rows) latestRunsByAdwId.set(row.adw_id, row);
+  }
+  const latestRunApiByAdwId = runsToApi([...latestRunsByAdwId.values()]);
+  const latestRunApiIndex = new Map(latestRunApiByAdwId.map((r) => [r.adwId, r]));
+
+  const ticketIds = tickets.map((t) => t.ticket_id);
+  const placeholders = ticketIds.map(() => "?").join(",");
+  const countRows = db
+    .query<{ ticket_id: string; n: number }, string[]>(
+      `SELECT ticket_id, COUNT(*) as n FROM sessions WHERE ticket_id IN (${placeholders}) GROUP BY ticket_id`,
+    )
+    .all(...ticketIds);
+  const countByTicketId = new Map(countRows.map((r) => [r.ticket_id, r.n]));
+
+  return tickets.map((t) => {
+    const latestRun = t.latest_run_adw_id ? (latestRunApiIndex.get(t.latest_run_adw_id) ?? null) : null;
+    return ticketToApi(t, latestRun, countByTicketId.get(t.ticket_id) ?? 0);
+  });
 }
 
 function eventToApi(r: EventRow) {
@@ -484,8 +617,7 @@ const server = Bun.serve({
         const project = url.searchParams.get("project");
         const allRows = db
           .query<SessionRow, []>(
-            `SELECT adw_id, adw_name, project_cwd, title, request, status, engineer,
-                    started_at, ended_at, total_tokens, total_cost, archived
+            `SELECT ${SESSION_COLUMNS}
              FROM sessions
              ORDER BY started_at DESC, adw_id DESC`,
           )
@@ -500,11 +632,7 @@ const server = Bun.serve({
       GET(req) {
         const adwId = req.params.adwId;
         const run = db
-          .query<SessionRow, [string]>(
-            `SELECT adw_id, adw_name, project_cwd, title, request, status, engineer,
-                    started_at, ended_at, total_tokens, total_cost, archived
-             FROM sessions WHERE adw_id = ?`,
-          )
+          .query<SessionRow, [string]>(`SELECT ${SESSION_COLUMNS} FROM sessions WHERE adw_id = ?`)
           .get(adwId);
         if (!run) return json({ error: `no such Workflow Run: ${adwId}` }, { status: 404 });
 
@@ -518,6 +646,65 @@ const server = Bun.serve({
           .all(adwId);
 
         return json({ run: runToApi(run), steps: steps.map(stepToApi) });
+      },
+    },
+
+    // ── GET /api/tickets — ticket-level grid data (M-103) ──────────────────
+    //
+    // One row per ticket, each carrying its LATEST run's full summary
+    // (`ticketsToApi`, above) — the grid's cards are ticket-level now (card
+    // header/doc comment plan). Ordered by the latest linked run's
+    // `started_at` (most recently active ticket first), falling back to the
+    // ticket's own `created_at` for a ticket with no runs at all (shouldn't
+    // happen in practice — `mintOrAttachTicket` always creates a ticket
+    // alongside its first run — but a raw INSERT into `tickets` with no
+    // session yet is not actively prevented at the SQL level, so this stays
+    // defensive rather than assuming it can't occur).
+    "/api/tickets": {
+      GET(req) {
+        const url = new URL(req.url);
+        const project = url.searchParams.get("project");
+
+        const allTickets = db
+          .query<TicketRow, []>(
+            `SELECT t.ticket_id, t.file_path, t.created_at, t.title, t.latest_run_adw_id
+             FROM tickets t
+             LEFT JOIN sessions s ON s.adw_id = t.latest_run_adw_id
+             ORDER BY COALESCE(s.started_at, t.created_at) DESC, t.ticket_id DESC`,
+          )
+          .all();
+
+        const apiTickets = ticketsToApi(allTickets);
+        const rows = project ? apiTickets.filter((t) => t.latestRun !== null && t.latestRun.projectRoot === project) : apiTickets;
+        return json(rows);
+      },
+    },
+
+    // ── GET /api/tickets/:ticketId — one ticket + its FULL attempt history
+    // (every linked run's summary, most recent first — the arrow-paging
+    // affordance's data source, `visualizer/src/listView.ts`/`detailView.ts`)
+    "/api/tickets/:ticketId": {
+      GET(req) {
+        const ticketId = req.params.ticketId;
+        const ticket = db
+          .query<TicketRow, [string]>(
+            "SELECT ticket_id, file_path, created_at, title, latest_run_adw_id FROM tickets WHERE ticket_id = ?",
+          )
+          .get(ticketId);
+        if (!ticket) return json({ error: `no such ticket: ${ticketId}` }, { status: 404 });
+
+        const runRows = db
+          .query<SessionRow, [string]>(`SELECT ${SESSION_COLUMNS} FROM sessions WHERE ticket_id = ? ORDER BY started_at DESC, adw_id DESC`)
+          .all(ticketId);
+        const runs = runsToApi(runRows);
+
+        return json({
+          ticketId: ticket.ticket_id,
+          filePath: ticket.file_path,
+          createdAt: ticket.created_at,
+          title: ticket.title,
+          runs,
+        });
       },
     },
 

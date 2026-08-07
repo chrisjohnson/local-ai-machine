@@ -150,6 +150,28 @@ export const DocumentOutputSchema = EnvelopeBaseSchema.extend({
 });
 export type DocumentOutput = z.infer<typeof DocumentOutputSchema>;
 
+// ── RetryDecisionOutput (decide-retry, M-103) ────────────────────────────
+
+/**
+ * NOT extended from `EnvelopeBaseSchema` — deliberately its own minimal
+ * shape. The retry-decision Role isn't a Workflow Step in the
+ * plan/build/review sense (it never runs inside a Workflow Run's own Step
+ * sequence, has no `artifacts`/`notes_for_next_agent` concept, and isn't
+ * looked up via `envelopeSchemaForRole` in workflow.ts) — forcing it into
+ * the same base shape as a real Step's envelope would carry fields that
+ * mean nothing here. `{decision, reasoning}` is the whole contract:
+ *   - `decision`: "retry" (same session/worktree) | "new-run" (fresh
+ *     session/worktree) | "give-up" (leave the ticket for a human).
+ *   - `reasoning`: the model's own explanation — not just for humans
+ *     reading the trace db after the fact, but forces the Role to actually
+ *     reason about the evidence rather than pattern-matching a bare enum.
+ */
+export const RetryDecisionOutputSchema = z.object({
+  decision: z.enum(["retry", "new-run", "give-up"]),
+  reasoning: z.string().min(1),
+});
+export type RetryDecisionOutput = z.infer<typeof RetryDecisionOutputSchema>;
+
 // ── Registry ──────────────────────────────────────────────────────────────
 
 /**

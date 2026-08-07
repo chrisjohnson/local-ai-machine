@@ -56,6 +56,8 @@ export interface ParsedArgs {
   project: string;
   workflow: string;
   sessionId?: string;
+  /** M-103: optional ticket to attach this run to (an existing internal ticket_<hex> id, or an external id like a `.fleet` board id). Omitted -> a fresh internal ticket is minted for this run. This is the mechanism a human resuming a run, or a future automated retry, uses to keep multiple attempts grouped under one ticket. */
+  ticketId?: string;
   promptArg: string;
 }
 
@@ -67,23 +69,24 @@ export class CliUsageError extends Error {
 }
 
 const USAGE =
-  'usage: bun cli.ts --project <abs-path> --workflow <name> [--session-id <id>] "<prompt or path/to/prompt.md>"';
+  'usage: bun cli.ts --project <abs-path> --workflow <name> [--session-id <id>] [--ticket-id <id>] "<prompt or path/to/prompt.md>"';
 
 /**
  * Parses `argv` (i.e. everything after `bun cli.ts`) into `--project`,
- * `--workflow`, `--session-id` (optional), and exactly one positional
- * prompt-or-path argument. Throws `CliUsageError` (never a bare stack trace)
- * for anything malformed — unknown flags, missing required flags, a missing
- * flag value, more than one positional argument, or zero positional
- * arguments.
+ * `--workflow`, `--session-id` (optional), `--ticket-id` (optional, M-103),
+ * and exactly one positional prompt-or-path argument. Throws `CliUsageError`
+ * (never a bare stack trace) for anything malformed — unknown flags, missing
+ * required flags, a missing flag value, more than one positional argument, or
+ * zero positional arguments.
  */
 export function parseArgs(argv: string[]): ParsedArgs {
   let project: string | undefined;
   let workflow: string | undefined;
   let sessionId: string | undefined;
+  let ticketId: string | undefined;
   const positionals: string[] = [];
 
-  const knownFlags = new Set(["--project", "--workflow", "--session-id"]);
+  const knownFlags = new Set(["--project", "--workflow", "--session-id", "--ticket-id"]);
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -100,6 +103,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
       if (arg === "--project") project = value;
       else if (arg === "--workflow") workflow = value;
       else if (arg === "--session-id") sessionId = value;
+      else if (arg === "--ticket-id") ticketId = value;
       continue;
     }
     positionals.push(arg);
@@ -117,7 +121,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     );
   }
 
-  return { project, workflow, sessionId, promptArg: positionals[0] as string };
+  return { project, workflow, sessionId, ticketId, promptArg: positionals[0] as string };
 }
 
 /**
@@ -380,7 +384,11 @@ async function main(): Promise<number> {
   const adwId = `adw_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
   console.log(
     `${args.sessionId ? "resuming" : "starting"} workflow ${JSON.stringify(args.workflow)}: adwId=${adwId}` +
-      (args.sessionId ? ` sessionId=${args.sessionId}` : " sessionId=(minting a fresh pi-web session...)"),
+      (args.sessionId ? ` sessionId=${args.sessionId}` : " sessionId=(minting a fresh pi-web session...)") +
+      // M-103: ticketId isn't known until sessionStart resolves it (a fresh
+      // internal id is minted there when --ticket-id is omitted) — this line
+      // only echoes what was EXPLICITLY passed, never guesses the minted one.
+      (args.ticketId ? ` ticketId=${args.ticketId}` : " ticketId=(minting a fresh ticket...)"),
   );
 
   const tracer = new Tracer(resolveDbPath());
@@ -391,6 +399,7 @@ async function main(): Promise<number> {
       cwd: args.project,
       taskPrompt,
       sessionId: args.sessionId,
+      ticketId: args.ticketId,
       adwId,
       testCmd,
       testCwd: resolveTestCwd(args.project),

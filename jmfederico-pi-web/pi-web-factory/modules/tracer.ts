@@ -45,6 +45,7 @@
 
 import { Database } from "bun:sqlite";
 import { PRAGMAS, SCHEMA } from "./schema.ts";
+import { mintOrAttachTicket, setTicketLatestRun } from "./ticket.ts";
 
 export type EventType =
   | "phase_start"
@@ -88,6 +89,8 @@ export interface WorkflowRun {
   totalTokens: number;
   totalCost: number;
   archived: boolean;
+  /** M-103: the ticket this run is linked to — every run has exactly one, always (see ticket.ts). */
+  ticketId: string | null;
 }
 
 /**
@@ -204,13 +207,39 @@ export class Tracer {
 
   // ── sessions ────────────────────────────────────────────────────────────
 
-  sessionStart(adwId: string, opts: { engineer?: string; projectCwd?: string; adwName?: string } = {}): void {
+  /**
+   * `opts.ticketId`/`opts.taskPromptForTicket` (M-103): every run belongs to
+   * exactly one ticket, always — mints a fresh internal ticket
+   * (`ticket.ts`'s `mintOrAttachTicket`) when `ticketId` is omitted, or
+   * attaches to (creating if novel) the given id when one is passed. Needs
+   * `taskPromptForTicket` alongside `ticketId` (rather than deriving it from
+   * `sessionRequest`, called separately/later by callers) so a BRAND NEW
+   * ticket's title can be set from the very first call that creates its row —
+   * callers that don't care about tickets (none should exist going forward,
+   * but existing tests that only exercise unrelated Tracer methods) can omit
+   * both and get NULL, same as any other optional column.
+   */
+  sessionStart(
+    adwId: string,
+    opts: { engineer?: string; projectCwd?: string; adwName?: string; ticketId?: string; taskPromptForTicket?: string } = {},
+  ): void {
+    const resolvedTicketId =
+      opts.ticketId !== undefined || opts.taskPromptForTicket !== undefined
+        ? mintOrAttachTicket(this.db, {
+            explicitTicketId: opts.ticketId,
+            taskPrompt: opts.taskPromptForTicket ?? "",
+            deriveTitleFromPrompt,
+          })
+        : null;
+
     this.db.run(
-      `INSERT INTO sessions (adw_id, status, engineer, project_cwd, started_at)
-       VALUES (?, 'running', ?, ?, ?)
+      `INSERT INTO sessions (adw_id, status, engineer, project_cwd, started_at, ticket_id)
+       VALUES (?, 'running', ?, ?, ?, ?)
        ON CONFLICT(adw_id) DO UPDATE SET status='running'`,
-      [adwId, opts.engineer ?? null, opts.projectCwd ?? null, nowIso()],
+      [adwId, opts.engineer ?? null, opts.projectCwd ?? null, nowIso(), resolvedTicketId],
     );
+    if (resolvedTicketId) setTicketLatestRun(this.db, resolvedTicketId, adwId);
+
     if (!opts.adwName) return;
     const row = this.db
       .query<{ adw_name: string | null }, [string]>("SELECT adw_name FROM sessions WHERE adw_id=?")

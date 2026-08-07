@@ -101,3 +101,16 @@ roles:
   - name: run-tests
     kind: code
     function: run-tests
+
+  # M-103: retry/new-run/give-up classification for a failed Workflow Run —
+  # a narrow decision, not a judgment-heavy one like plan/review, so it uses
+  # medium-moe (this codebase's cheaper of the two live model tiers, not
+  # big-moe) per the card's own instruction ("doesn't need a strong model").
+  # low thinking: a bounded classification over a compact evidence summary,
+  # not open-ended reasoning over a full codebase.
+  - name: decide-retry
+    kind: agent
+    model: local-litellm/medium-moe
+    thinking: low
+    writes: [] # read-only: this Role only classifies, never touches the repo
+    system_prompt: prompts/decide-retry.md

@@ -34,9 +34,31 @@
  *     [Workflow Run] level... needs new columns on the steps table").
  *   - `phases.output_summary` — a Step's short outcome summary (§7.3: "an
  *     agent step's envelope `summary`, a code step's gate result headline").
+ *
+ * ── M-103: `tickets` table + `sessions.ticket_id` ─────────────────────────
+ * M-103 adds a `tickets` table — the grouping anchor for "conceptually the
+ * same job, retried N times" (a ticket has many runs/`sessions` rows, always
+ * exactly one ticket per run, no run without a ticket — see
+ * `modules/ticket.ts`). `ticket_id` is a plain string, deliberately NOT
+ * shaped like this codebase's own `adw_<hex>` ids, so it can hold either an
+ * externally-minted id (e.g. a `.fleet` board id like `M-103`) or an
+ * internally-minted one (`ticket_<hex>`, mirroring `adw_<hex>` but visually
+ * distinct so the two id spaces never collide). `file_path` is a pure
+ * reference field — never opened/parsed/watched by any code in this
+ * codebase, see `modules/ticket.ts`'s header comment. `sessions.ticket_id`
+ * is additive/nullable at the SQL level (existing rows keep NULL, no
+ * migration needed) even though every NEW run always sets it — see
+ * `modules/ticket.ts`'s `mintOrAttachTicket`.
  */
 
 export const SCHEMA = `
+CREATE TABLE IF NOT EXISTS tickets (
+  ticket_id           TEXT PRIMARY KEY,  -- external (e.g. "M-103") or internal ("ticket_<hex>") — see module header
+  file_path           TEXT,              -- nullable: pure reference to an external ticket file (e.g. a .fleet board path); never read/parsed by this codebase
+  created_at          TEXT,
+  title               TEXT,              -- derived (deriveTitleFromPrompt) from the FIRST linked run's prompt
+  latest_run_adw_id    TEXT               -- denormalized fast-path for "this ticket's latest run" (avoids an aggregate query over sessions on every list fetch)
+);
 CREATE TABLE IF NOT EXISTS sessions (
   adw_id        TEXT PRIMARY KEY,
   adw_name      TEXT,                -- ADW script(s) run, e.g. "adw_plan + adw_build_test"
@@ -47,7 +69,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   engineer      TEXT,
   started_at    TEXT, ended_at TEXT,
   total_tokens  INTEGER DEFAULT 0, total_cost REAL DEFAULT 0,
-  archived      INTEGER DEFAULT 0    -- review triage, set by the UI; never by a run
+  archived      INTEGER DEFAULT 0,   -- review triage, set by the UI; never by a run
+  ticket_id     TEXT REFERENCES tickets  -- M-103: every run belongs to exactly one ticket (additive/nullable at the SQL level; every NEW run always sets it — see modules/ticket.ts)
 );
 CREATE TABLE IF NOT EXISTS phases (
   phase_id      TEXT PRIMARY KEY,

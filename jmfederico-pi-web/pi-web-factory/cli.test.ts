@@ -21,7 +21,13 @@ const TEST_LINK: PlanBuildTestLinkInfo = { projectId: "proj_1", workspaceId: "ws
 describe("parseArgs", () => {
   test("parses the full flag set plus a positional prompt", () => {
     const args = parseArgs(["--project", "/abs/path", "--workflow", "plan-build-test", "do the thing"]);
-    expect(args).toEqual({ project: "/abs/path", workflow: "plan-build-test", sessionId: undefined, promptArg: "do the thing" });
+    expect(args).toEqual({
+      project: "/abs/path",
+      workflow: "plan-build-test",
+      sessionId: undefined,
+      ticketId: undefined,
+      promptArg: "do the thing",
+    });
   });
 
   test("parses an optional --session-id", () => {
@@ -35,6 +41,24 @@ describe("parseArgs", () => {
       "do the thing",
     ]);
     expect(args.sessionId).toBe("sess_123");
+  });
+
+  test("parses an optional --ticket-id (M-103)", () => {
+    const args = parseArgs([
+      "--project",
+      "/abs/path",
+      "--workflow",
+      "plan-build-test",
+      "--ticket-id",
+      "M-103",
+      "do the thing",
+    ]);
+    expect(args.ticketId).toBe("M-103");
+  });
+
+  test("--ticket-id is undefined when omitted", () => {
+    const args = parseArgs(["--project", "/abs/path", "--workflow", "plan-build-test", "do the thing"]);
+    expect(args.ticketId).toBeUndefined();
   });
 
   test("flags may appear in any order relative to the positional", () => {

@@ -605,3 +605,58 @@ a.back-link:hover {
 .error-banner {
   color: var(--pi-danger);
 }
+
+/* ── M-103: attempt-navigation arrows ─────────────────────────────────────
+   Chris, explicit: "subtle arrow icons, not big fat buttons" — small,
+   low-contrast by default, only picking up real color on hover/focus so
+   they read as a secondary affordance next to the card's own status pill,
+   never competing with it for attention. Used both on a grid card (paging
+   through a ticket's attempts inline, without leaving the grid) and the
+   ticket detail page (same control, larger touch target via more padding,
+   not a different visual language). */
+.attempt-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--pi-dim);
+  white-space: nowrap;
+}
+.attempt-nav-btn {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  color: var(--pi-dim);
+  opacity: 0.55;
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
+}
+.attempt-nav-btn:hover,
+.attempt-nav-btn:focus-visible {
+  opacity: 1;
+  color: var(--pi-accent);
+  background: var(--pi-surface-hover);
+}
+.attempt-nav-btn:disabled {
+  opacity: 0.2;
+  cursor: default;
+  pointer-events: none;
+}
+.attempt-nav-label {
+  min-width: 3.5em;
+  text-align: center;
+}
+.attempt-nav-detail-link {
+  color: var(--pi-dim);
+  text-decoration: none;
+}
+.attempt-nav-detail-link:hover {
+  color: var(--pi-accent);
+  text-decoration: underline;
+}

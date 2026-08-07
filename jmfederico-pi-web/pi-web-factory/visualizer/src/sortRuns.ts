@@ -19,7 +19,7 @@
  * oldest-completed.
  */
 
-import type { RunSummary } from "./api";
+import type { RunSummary, TicketSummary } from "./api";
 
 /** Parses an ISO timestamp to epoch ms; `null`/unparseable sorts as `0` (oldest) rather than `NaN` (which would corrupt comparator ordering). */
 function toMs(iso: string | null): number {
@@ -42,4 +42,23 @@ export function sortRuns(runs: readonly RunSummary[]): RunSummary[] {
   });
 
   return [...running, ...other];
+}
+
+/**
+ * M-103: the grid is ticket-level now — sorts tickets by the EXACT SAME
+ * rule `sortRuns` already applies to bare runs, keyed off each ticket's
+ * `latestRun` (the attempt the grid shows by default). A ticket with no
+ * `latestRun` at all (the defensive edge case server.ts's own doc comment
+ * flags — shouldn't happen in practice) sorts last, stably, rather than
+ * crashing on a missing `status`/`startedAt`.
+ */
+export function sortTickets(tickets: readonly TicketSummary[]): TicketSummary[] {
+  const withRun = tickets.filter((t): t is TicketSummary & { latestRun: RunSummary } => t.latestRun !== null);
+  const withoutRun = tickets.filter((t) => t.latestRun === null);
+
+  const sortedRuns = sortRuns(withRun.map((t) => t.latestRun));
+  const byAdwId = new Map(withRun.map((t) => [t.latestRun.adwId, t]));
+  const ordered = sortedRuns.map((run) => byAdwId.get(run.adwId)!);
+
+  return [...ordered, ...withoutRun];
 }

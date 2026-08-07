@@ -63,6 +63,44 @@ describe("the shipped bounded-build-review.yaml", () => {
   });
 });
 
+describe("retries (M-103)", () => {
+  test("defaults to 0 when omitted — both shipped Workflow files (no retries field authored)", () => {
+    const [pbr] = loadWorkflows(join(WORKFLOWS_DIR, "plan-build-review.yaml"));
+    const [bbr] = loadWorkflows(join(WORKFLOWS_DIR, "bounded-build-review.yaml"));
+    expect(pbr?.retries).toBe(0);
+    expect(bbr?.retries).toBe(0);
+  });
+
+  test("a Workflow YAML can declare a real retries budget, distinct from a loop's max_rounds", () => {
+    const yaml = `
+workflows:
+  - name: retry-demo
+    retries: 2
+    steps:
+      - kind: agent
+        name: build
+        role: build
+        prompt: do the thing
+`;
+    const [workflow] = loadWorkflowsFromString(yaml);
+    expect(workflow?.retries).toBe(2);
+  });
+
+  test("rejects a negative retries value", () => {
+    const yaml = `
+workflows:
+  - name: bad-retries
+    retries: -1
+    steps:
+      - kind: agent
+        name: build
+        role: build
+        prompt: do the thing
+`;
+    expect(() => loadWorkflowsFromString(yaml)).toThrow(ConfigError);
+  });
+});
+
 describe("loadWorkflowsFromString — validation", () => {
   test("rejects a workflow with duplicate step names, including across a loop boundary", () => {
     const yaml = `
