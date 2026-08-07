@@ -2,8 +2,8 @@
 id: M-100
 title: visualizer shows stuck "running" cards long after the session is dead
 initiative_id: null
-claimed_by: null
-claimed_at: null
+claimed_by: claude
+claimed_at: 2026-08-07T00:00Z
 blocks: null
 blocked_by: null
 status: null
@@ -100,6 +100,44 @@ try/catch in an already-understood code path — then (2) as a follow-up,
 since it requires a new pi-web-session cross-check call the visualizer
 doesn't currently make. Both are new cards if picked up (this one is
 research-only per the task brief).
+
+**Refinement, 2026-08-07 (Chris, direct):** terminology — "CLI" undersells
+what `cli.ts` actually is; think of it as the **job runner** (one job-runner
+process per Workflow Run) going forward, in docs/comments/future naming.
+Not renaming the file in this pass, just using the clearer term.
+
+Also refined part (2)'s check to be explicitly **OR-based**, matching
+Chris's framing ("detect any jobs that don't have an active runner, OR
+don't have an active session"), not the AND-based version originally
+drafted:
+- **No active session** (definitive on its own): `GET
+  /api/sessions?cwd=<project>` on pi-web returns no live session for the
+  row's project — the underlying agent conversation is provably gone,
+  mark failed regardless of how fresh the row's timestamp looks.
+- **No active runner** (definitive on its own, independent of session
+  state): the row is stale — `status='running'` with no fresh
+  `phase_start`/`phase_end`/`event` write within the staleness threshold
+  (reuse `PI_WEB_FACTORY_STEP_TIMEOUT_MS`) — even if pi-web's session API
+  still shows something for that project. A live pi-web session doesn't
+  imply the job runner driving it is still alive; the runner could have
+  died while the session it opened sits idle indefinitely. Staleness is
+  the only observable proxy for "no job runner is present" today (there's
+  no runner heartbeat/registration anywhere in the codebase to check more
+  directly) — worth flagging that a first-class heartbeat mechanism would
+  be a cleaner signal than a staleness proxy, but is out of scope for this
+  pass; the sub-agent implementing this should note it as a possible
+  follow-on rather than build it now.
+Either condition alone is sufficient to mark a row failed — this is a
+logical OR of two independently-checkable, definitive signals, not a
+combined AND requiring both.
+
+Chris also confirmed the reconciliation pass should run **on startup**, in
+addition to (not instead of) whatever periodic cadence gets built.
+
+Proceeding with implementation now — both fixes, one card (not splitting
+into two, per Chris's "let's proceed with the fixes" covering both in one
+go; the original suggestion to split was about independent shippability,
+not a requirement).
 
 ## Signals
 
